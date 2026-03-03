@@ -1,7 +1,3 @@
-
-
-
-
 # [Stylehub](https://bwj1207.tistory.com/category/stylehub%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) 
 > 💡 **Tip:**</br>
 > 본 README의 모든 **파란색 키워드**는 프로젝트관련 위키 or 개발 블로그로 연결됩니다.  
@@ -9,42 +5,54 @@
 > 궁금하신 기술 키워드를 클릭하여 설계 근거와 고민의 흔적을 확인해 보세요!
 ---
 
-## 
+## [1. 프로젝트 소개](https://github.com/ccommit/stylehub/wiki/%EA%B8%B0%ED%9A%8D%EC%84%9C)
 
+“**동시에 10만 명이 몰려도, 데이터는 절대 틀리지 않는다.**”
 
+ 대용량 쿠폰 발급과 주문/결제 동시성 문제를 해결하기 위해 설계한 트래픽 대응형 커머스 백엔드 프로젝트입니다.
+ 
+ 데이터 정합성 보장, 동시성 제어 전략, 테스트 코드 기반 검증, CI/CD 자동화를 통해 실제 운영 환경을 가정한 시스템 안정성을 구현했습니다.
 
-- [1. 프로젝트 소개](https://github.com/ccommit/stylehub/wiki/%EA%B8%B0%ED%9A%8D%EC%84%9C)  
-- [2. 이슈 및 트러블 슈팅 블로그 (예정)](https://bwj1207.tistory.com/)  
-- [3. 컨벤션(issue, pull request, code convention)](https://github.com/ccommit/stylehub/wiki/convention)  
-- [4. 브렌치 관리 전략](https://github.com/ccommit/stylehub/wiki/%EB%B8%8C%EB%A0%8C%EC%B9%98-%EA%B4%80%EB%A6%AC-%EC%A0%84%EB%9E%B5)
+---
+## 2. 기술 스택
+Java 17
+Spring Boot
+MySQL (InnoDB)
+JPA + QueryDSL
+Redis (동시성 제어 및 캐시)Redis는 대량 쿠폰 발급 시 선점 제어를 위해 사용
+AWS EC2 / S3
 
 ---
 
-## 개요
+## 3. 해결하고자 한 핵심 기술 과제
+   - 대용량 쿠폰 발급 동시성 제어
+   - 재고 선점 경쟁 해결 전략
+   - 주문/결제 트랜잭션 정합성 보장
 
 ---
 
-## 사용기술
-
----
-
-## 아키텍쳐
-
----
-
+## 4. ERD 
 <details>
-  <summary>ERD</summary>
-  
-
+  <summary> ERD</summary>
 </details>
 
 ---
 
-
-## API문서
+## 5.API 문서
 
 ---
 
+## 6.테스트 전략
+
+---
+
+## 7.트러블 슈팅 / 기술 블로그
+
+---
+## 8. 협업 방식 (컨벤션 & 브랜치 전략)
+- [1. 이슈 및 트러블 슈팅 블로그 (예정)](https://bwj1207.tistory.com/)  
+- [2. 컨벤션(issue, pull request, code convention)](https://github.com/ccommit/stylehub/wiki/convention)  
+- [3. 브렌치 관리 전략](https://github.com/ccommit/stylehub/wiki/%EB%B8%8C%EB%A0%8C%EC%B9%98-%EA%B4%80%EB%A6%AC-%EC%A0%84%EB%9E%B5)
 
 
 
