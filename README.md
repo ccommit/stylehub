@@ -1,4 +1,5 @@
 # [Stylehub](https://bwj1207.tistory.com/category/stylehub%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) 
+무신사 같은 패션 커머스 플랫폼 StyleHub
 > 💡 **Guide:**</br>
 > 본 README의 모든 **파란색 키워드**는 프로젝트관련 위키 or 개발 블로그로 연결됩니다.  
 > `Ctrl + 마우스 좌클릭`을 활용해 새 탭에서 상세 내용을 확인하며 읽으시는 것을 추천합니다</br>
@@ -28,18 +29,18 @@
 
  > 이 프로젝트를 시작하게 된  자세한 배경 → 👉[주제 선정 이유](https://bwj1207.tistory.com/116) `Ctrl + 마우스 좌클릭`
 ---
-## 2. 기술 스택
-Java 17
+## 🛠 기술 스택 및 선정 이유
+> 각 기술 스택을 클릭하면 해당 기술을 도입하며 고민했던 상세 블로그 포스팅으로 이동합니다.
 
-Spring Boot 3.5.6
 
-MySQL (InnoDB)
-
-JPA + QueryDSL
-
-Redis
-
-AWS EC2 / S3
+| 분류 | 기술 스택 | 기술 선택 이유 |
+|------|-----------|----------------|
+| Language | [Java 17](https://bwj1207.tistory.com/116) | LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
+| Framework | [Spring Boot 3.5.6](https://bwj1207.tistory.com/116) | 생태계 확장성 우수, 의존성 관리 최적화 |
+| Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
+| ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
+| Caching | [Redis](https://bwj1207.tistory.com/116) | 분산 락 기반 동시성 제어, 빠른 캐싱 처리 |
+| Infrastructure | [AWS EC2 / S3](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
 ---
 
