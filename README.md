@@ -30,10 +30,15 @@
 ---
 ## 2. 기술 스택
 Java 17
-Spring Boot
+
+Spring Boot 3.5.6
+
 MySQL (InnoDB)
+
 JPA + QueryDSL
-Redis (동시성 제어 및 캐시)Redis는 대량 쿠폰 발급 시 선점 제어를 위해 사용
+
+Redis
+
 AWS EC2 / S3
 
 ---
