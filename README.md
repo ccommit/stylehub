@@ -53,6 +53,8 @@
 ---
 
 ## 4. ERD 
+> DB를 설계 하면서 고민했던 상세 내용 확인 → 👉[db설계 고민](https://bwj1207.tistory.com/118) `Ctrl + 마우스 좌클릭`
+---
 <details>
   <summary> ERD</summary>
 </details>
