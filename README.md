@@ -33,13 +33,13 @@
  > 이 프로젝트를 시작하게 된  자세한 배경 → 👉[주제 선정 이유](https://bwj1207.tistory.com/116) `Ctrl + 마우스 좌클릭`
 ---
 ## 🛠 기술 스택 및 선정 이유
-> 각 기술 스택을 클릭하면 해당 기술을 도입하며 고민했던 상세 블로그 포스팅으로 이동합니다.
+> 트레이드오프가 있었던 기술 스택에 한해 도입 고민 과정을 상세히 정리했습니다.
 
 
 | 분류 | 기술 스택 | 기술 선택 이유 |
 |------|-----------|----------------|
-| Language | [Java 17](https://bwj1207.tistory.com/116) | LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
-| Framework | [Spring Boot 3.5.6](https://bwj1207.tistory.com/116) | 생태계 확장성 우수, 의존성 관리 최적화 |
+| Language | Java 17| LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
+| Framework | Spring Boot 3.5.6 | 생태계 확장성 우수, 의존성 관리 최적화 |
 | Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
 | ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
 | Caching | [Redis](https://bwj1207.tistory.com/116) | 분산 락 기반 동시성 제어, 빠른 캐싱 처리 |
