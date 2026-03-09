@@ -73,11 +73,15 @@
 
 ## 7. 트러블슈팅
 
+
+## 가장 어려웠던 이슈
 ---
 ## 8. 협업 방식
 - [1. 컨벤션(issue, pull request, code convention)](https://github.com/ccommit/stylehub/wiki/convention)  
 - [2. 브렌치 관리 전략](https://github.com/ccommit/stylehub/wiki/%EB%B8%8C%EB%A0%8C%EC%B9%98-%EA%B4%80%EB%A6%AC-%EC%A0%84%EB%9E%B5)
-- 
 
+--- 
+
+## 9. 가장 어려웠던 이슈
 
 
