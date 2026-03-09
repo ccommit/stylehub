@@ -6,7 +6,7 @@
 > 궁금하신 기술 키워드를 클릭하여 설계 근거와 고민의 흔적을 확인해 보세요!
 
 
-> [프론트 기획서](https://github.com/user-attachments/files/25795434/index.html)
+> 사용자의 이용화면을 보실 수 있습니다.👉 [프론트 기획서](https://github.com/user-attachments/files/25795434/index.html)`Ctrl + 마우스 좌클릭`
 ---
 ## 목차
 1. [프로젝트 소개](#1-프로젝트-소개)
