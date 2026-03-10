@@ -1,9 +1,20 @@
-# [Stylehub](https://bwj1207.tistory.com/category/stylehub%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) 
-무신사 같은 패션 커머스 플랫폼 StyleHub
+
+ # [Stylehub](https://bwj1207.tistory.com/category/stylehub%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) 
+---
+
+
+<img width="1000" height="310" alt="image" src="https://github.com/user-attachments/assets/3e2f0549-1b24-4288-90d6-12c8a4f6bb92" />
+
+
+---
+무신사 같은 패션 커머스 플랫폼  **StyleHub**
+
 > 💡 **Guide:**</br>
 > 본 README의 모든 **파란색 키워드**는 프로젝트관련 위키 or 개발 블로그로 연결됩니다.  
 > `Ctrl + 마우스 좌클릭`을 활용해 새 탭에서 상세 내용을 확인하며 읽으시는 것을 추천합니다</br>
 > 궁금하신 기술 키워드를 클릭하여 설계 근거와 고민의 흔적을 확인해 보세요!
+
+---
 
 ## 서비스 화면 미리보기
 
