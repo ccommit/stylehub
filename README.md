@@ -26,37 +26,40 @@
 
 ## 목차
 1. [프로젝트 소개](#1-프로젝트-소개)
-2. [기술 스택 및 선정 이유](#2.-기술-스택-및-선정-이유)
+2. [기술 스택](#2-기술-스택)
 3. [해결하고자 한 핵심 기술 과제](#3-해결하고자-한-핵심-기술-과제)
 4. [API 문서](#4-api-문서)
 5. [테스트 전략](#5-테스트-전략)
 6. [트러블슈팅](#6-트러블슈팅)
-7. [협업 방식](#7-협업-방식)
+7. [가장 어려웠던 이슈](#7-가장-어려웠던-이슈)
+8. [시퀀스 다이어그램](#8-시퀀스-다이어그램)
+9. [협업 방식](#9-협업-방식)
 
 --- 
-<details><summary><b> 개발 철학 및 마음가짐</b></summary>
- 
-### 협업을 고려한 개발
-```
- 프로그램은 컴퓨터가 실행하기 위해서가 아니라 사람이 읽기 위해 작성되어야 한다.
-  — Harold Abelson
-```
+<details><summary><b> 🛠️ 개발 철학 및 마음가짐</b></summary>
 
-> 좋은 개발자란 단순히 동작하는 코드를 작성하는 사람이 아니라 다른 사람이 읽었을 때 쉽게 이해할 수 있는 코드를 작성하는 사람이라고 생각합니다.</br>
-> 코드를 작성할 때 항상 미래의 유지보수 담당자가 누가 될지를 생각하며 개발에 임하였습니다.</br>
-> 코드의 의도가 명확하게 드러나도록 작성하고, 지속적인 리팩토링을 통해 가독성과 구조를 개선하려 노력하였습니다.</br>
+### 1. 협업의 시작은 '문서화'로부터
+> **"기억은 기록을 이길 수 없고, 기록은 삭제를 이길 수 없다. 하지만 기록된 지식은 팀의 문화를 만든다."**
 
----
-```
-빠르게 틀리고, 빠르게 개선하자
-```
-
-> 개발 과정에서 완벽한 설계를 처음부터 만드는 것은 어렵다고 판단하였습니다.</br>
-> 대신 빠르게 구현하고, 실행해보고, 문제를 발견하고, 개선하는 과정을 반복하는 것이 더 효율적이라고 생각하였습니다.
+* 1인 프로젝트였지만 언제든 동료가 합류할 수 있는 확장성을 염두에 두었습니다.
+* 기술적 의사 결정,구현 로직, 시퀀스 다이어그램, 트러블슈팅 과정을 체계적으로 문서화하여, 별도의 온보딩 없이도 즉시 기여할 수 있는 고효율 개발 환경을 구축하였습니다.
 
 ---
 
- 
+### 2. 읽기 쉬운 코드가 최고의 협업 도구
+> **" 컴퓨터가 이해할 수 있는 코드는 어느 바보나 다 짤 수 있다. 좋은 프로그래머는 사람이 이해할 수 있는 코드를 짠다. "**
+
+* **동료를 위한 배려:** 코드는 쓰는 시간보다 읽히는 시간이 더 길기에 항상 '미래의 담당자'를 배려하며 개발하였습니다..
+* **의도가 드러나는 설계:** 명확한 네이밍과 지속적인 리팩토링을 통해 별도의 설명 없이 코드 자체로 의도가 전달되는 'Self-describing Code'를 작성하려고 끊임없이 고민하였습니다.
+
+---
+
+### 3. '동작'을 넘어 '검증'에 집중한 완결성
+> **"테스트는 버그가 없음을 증명하는 것이 아니라, 버그가 있음을 찾아내는 과정이다."**
+
+  * **철저한 단위 테스트(Unit Test) 수행:** 로직의 가장 작은 단위부터 견고하게 구축하기 위해 핵심 비즈니스 로직에 대한 단위 테스트를 수행했습니다. 이는 코드 변경 시 발생할 수 있는 사이드 이펙트를 방지하고, 리팩토링의 심리적 안정감을 확보하는 기반이 되었습니다.
+* **실패 케이스 중심의 검증:** 단순히 기능이 작동하는 '성공 케이스(Happy Path)'에만 만족하지 않았습니다. 의도적으로 잘못된 입력값이나 예외 상황(Edge Case)을 설정한 **실패 테스트를 병행**하여, 어떤 극한의 상황에서도 시스템이 안전하게 대응할 수 있도록 설계했습니다.
+* **추적 가능한 구조와 완결성:** 테스트를 통해 발견된 취약점을 즉각 보완하며 코드의 기술적 완결성을 높였습니다. 검증 가능한 구조를 유지함으로써 문제 발생 시 원인을 빠르게 파악할 수 있는 환경을 조성했습니다.
 
 </details>
 
@@ -191,7 +194,7 @@ src
 ---
 
  
-## 2. 기술 스택 및 선정 이유 
+## 2. 기술 스택
 
  
 | 분류 | 기술 스택 | 기술 선택 이유 |
@@ -228,11 +231,148 @@ src
 
 ---
 
-## 7.가장 어려웠던 이슈
+## 7. 가장 어려웠던 이슈
 
 ---
 
-## 8. 협업 방식
+## 8. 시퀀스 다이어그램
+<details>
+<summary><b>주문 단건 처리 시퀀스</b></summary>
+
+ ``` mermaid
+
+sequenceDiagram
+    actor Client as Client
+    participant Controller as OrderController
+    participant Service as OrderService
+    participant Repository as OrderRepository (JPA)
+    participant DB as DB
+
+    Client->>Controller: POST /api/v1/orders
+
+    Controller->>Service: 주문 생성 요청
+
+    Service->>Repository: 상품 옵션 조회
+    Repository->>DB: SELECT products_options
+    DB-->>Repository: ProductOption 엔티티 목록
+
+    alt 재고 부족
+        Repository-->>Service: 재고 부족
+        Service-->>Controller: OutOfStockException
+        Controller-->>Client: 409 재고 부족
+    end
+
+    Repository-->>Service: 상품 옵션 조회 성공
+
+    Service->>Repository: 쿠폰 / 포인트 조회
+    Repository->>DB: SELECT user_coupons, users
+    DB-->>Repository: 쿠폰 / 포인트 정보 (없으면 0)
+
+    Service->>Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
+
+    Service->>Repository: 재고 차감 (비관적 락)
+    Repository->>DB: SELECT ... FOR UPDATE → UPDATE stock
+    DB-->>Repository: 재고 차감 완료
+
+    Service->>Repository: 주문 저장
+    Repository->>DB: INSERT orders status=PENDING
+    DB-->>Repository: 저장 완료
+
+    Repository-->>Service: 주문 저장 완료
+    Service-->>Controller: 주문 생성 완료
+    Controller-->>Client: 201 Created {orderId, finalAmount}
+
+    Note over Client: 결제하기 버튼 클릭
+    Note over Client: tossOrderId, finalAmount로<br/>토스 결제 위젯 호출
+
+
+ ```
+</details> 
+
+<details>
+<summary><b>토스 결제 시퀀스</b></summary>
+
+``` mermaid
+    actor User as 사용자
+    participant Sandbox as 토스 샌드박스<br/>(프론트 대역)
+    participant Server as 우리 서버<br/>(Spring Boot)
+    participant DB as DB
+    participant Toss as 토스페이먼츠 서버
+
+    Note over User,Toss: 1. 결제 준비 및 주문 데이터 생성 (Internal 사전 작업)
+
+    User->>Server: 주문 요청
+    Server->>DB: order_id(자동증가) 저장
+    Server->>Server: toss_order_id(UUID) 생성
+    Server->>DB: toss_order_id + requested_amount 저장<br/>(위변조 검증 기준값)
+    Server-->>User: toss_order_id, requested_amount 반환
+
+    Note over User,Toss: 2. 토스 결제창 진입 및 사용자 인증
+
+    User->>Sandbox: toss_order_id, requested_amount,<br/>successUrl, failUrl 입력
+    Sandbox->>Toss: 결제창 오픈 요청
+    Toss-->>User: 결제창 표시
+    User->>Toss: 생체/PIN 인증 진행
+
+    Note over User,Toss: 3. 인증 완료 후 리다이렉트 (Toss → 우리 서버)
+
+    Toss-->>Server: GET /api/v1/payments/success<br/>?paymentKey=&orderId=&amount=(approved_amount)
+    Note right of Toss: 아직 돈이 빠져나간 상태가 아님
+
+    Note over User,Toss: 4. 최종 결제 승인 요청 (우리 서버 → 토스)
+
+    Server->>DB: toss_order_id로 주문 데이터 조회
+    DB-->>Server: requested_amount 반환
+
+    alt 금액 불일치 (requested_amount ≠ approved_amount)
+        Server-->>User: 위변조 감지, 결제 실패 처리
+    else 금액 일치 (requested_amount = approved_amount)
+        Server->>Toss: POST /v1/payments/confirm<br/>Authorization: Basic Base64(secretKey:)<br/>{ paymentKey, orderId, requested_amount }
+        Toss-->>Server: 200 OK<br/>{ total_amount, status: DONE ... }
+
+        Note over User,Toss: 5. 결과 처리 및 비즈니스 로직 확정
+
+        Server->>DB: payments.total_amount 저장<br/>payments.status = DONE
+        Server->>DB: orders.order_status = PAYMENT_COMPLETED
+        Server-->>User: 결제 완료 응답
+    end
+```
+ 
+</details> 
+
+<details>
+<summary><b>쿠폰 발행 시퀀스</b></summary>
+
+``` mermaid
+
+sequenceDiagram
+    actor Client as Client (Manager or Admin)
+    participant Controller as CouponController
+    participant Service as CouponService
+    participant Repository as CouponRepository (JPA)
+    participant DB as DB
+
+    Client->>Controller: POST /api/v1/coupons
+
+    Note over Controller: @Valid 요청값 검증<br/>(할인타입, 발급수량, 시작일/종료일)
+
+    Controller->>Service: 쿠폰 발행 요청
+
+    Service->>Repository: 쿠폰 저장
+    Repository->>DB: INSERT coupons
+    DB-->>Repository: 저장 완료
+
+    Repository-->>Service: 쿠폰 저장 완료
+    Service-->>Controller: 쿠폰 발행 완료
+    Controller-->>Client: 201 Created
+```
+ 
+</details> 
+
+---
+
+
+## 9. 협업 방식
 - [1. 컨벤션(issue, pull request, code convention)](https://github.com/ccommit/stylehub/wiki/convention)  
 - [2. 브렌치 관리 전략](https://github.com/ccommit/stylehub/wiki/%EB%B8%8C%EB%A0%8C%EC%B9%98-%EA%B4%80%EB%A6%AC-%EC%A0%84%EB%9E%B5)
 
