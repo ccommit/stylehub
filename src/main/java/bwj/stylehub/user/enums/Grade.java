@@ -4,5 +4,14 @@ import lombok.Getter;
 
 @Getter
 public enum Grade {
-    BRONZE, SILVER, GOLD
+
+    BRONZE(2),
+    SILVER(4),
+    GOLD(7);
+
+    private final int discountRate;
+
+    Grade(int discountRate) {
+        this.discountRate = discountRate;
+    }
 }

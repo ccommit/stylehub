@@ -27,6 +27,9 @@ import java.time.LocalDate;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User extends BaseEntity {
 
+    private static final int FIRST_LOGIN_POINT = 1000;
+    private static final int DAILY_LOGIN_POINT = 10;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
@@ -75,11 +78,29 @@ public class User extends BaseEntity {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
-    public static User create(String name, String email, String password, LocalDate birthDate) {
+    /**
+     * 로그인 포인트 지급
+     * - 첫 로그인: 1000 포인트
+     * - 하루 1회 로그인: 10 포인트 (같은 날 중복 지급 없음)
+     */
+    public void rewardLoginPoint(LocalDate today) {
+        if (role == Role.ADMIN) {
+            return;
+        }
+
+        if (lastLoginDate == null) {
+            pointBalance += FIRST_LOGIN_POINT;
+        } else if (!lastLoginDate.equals(today)) {
+            pointBalance += DAILY_LOGIN_POINT;
+        }
+        lastLoginDate = today;
+    }
+
+    public static User create(String name, String email, String encodedPassword, LocalDate birthDate) {
         return User.builder()
                 .name(name)
                 .email(email)
-                .password(password)
+                .password(encodedPassword)
                 .birthDate(birthDate)
                 .build();
     }
