@@ -4,5 +4,6 @@ import lombok.Getter;
 
 @Getter
 public enum Provider {
-    GOOGLE
+    GOOGLE  // 구글
+
 }
