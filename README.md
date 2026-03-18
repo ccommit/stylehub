@@ -233,7 +233,7 @@ src
 | Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
 | ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
 | Caching | [Redis](https://bwj1207.tistory.com/116) | 분산 락 기반 동시성 제어, 빠른 캐싱 처리 |
-| Infrastructure | [AWS EC2 / S3](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
+| Infrastructure | [AWS EC2](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
 
 ---
