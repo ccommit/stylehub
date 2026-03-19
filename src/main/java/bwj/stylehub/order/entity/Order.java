@@ -34,6 +34,9 @@ public class Order extends BaseEntity {
     @Column(name = "order_id")
     private Long orderId;
 
+    @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
+    private String pgOrderId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
