@@ -278,38 +278,63 @@ sequenceDiagram
     participant DB as DB
 
     Client->>Controller: POST /api/v1/orders
-
+    activate Controller
+    Note over Controller: @Valid 요청값 검증
     Controller->>Service: 주문 생성 요청
+    activate Service
+    Note over Service: @Transactional
 
     Service->>Repository: 상품 옵션 조회
-    Repository->>DB: SELECT products_options
-    DB-->>Repository: ProductOption 엔티티 목록
-
-    alt 재고 부족
-        Repository-->>Service: 재고 부족
-        Service-->>Controller: OutOfStockException
-        Controller-->>Client: 409 재고 부족
-    end
-
-    Repository-->>Service: 상품 옵션 조회 성공
+    activate Repository
+    Repository->>DB: SELECT FROM product_options
+    activate DB
+    DB-->>Repository: ProductOption 엔티티 반환
+    deactivate DB
+    Repository-->>Service: Optional(ProductOption)
+    deactivate Repository
 
     Service->>Repository: 쿠폰 / 포인트 조회
-    Repository->>DB: SELECT user_coupons, users
-    DB-->>Repository: 쿠폰 / 포인트 정보 (없으면 0)
+    activate Repository
+    Repository->>DB: SELECT FROM user_coupons, users
+    activate DB
+    DB-->>Repository: 쿠폰 / 포인트 정보 반환 (없으면 0)
+    deactivate DB
+    Repository-->>Service: CouponAndPointResult
+    deactivate Repository
 
-    Service->>Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
+    Note over Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
 
-    Service->>Repository: 재고 차감 (비관적 락)
-    Repository->>DB: SELECT ... FOR UPDATE → UPDATE stock
-    DB-->>Repository: 재고 차감 완료
+    Service->>Repository: 재고 차감 요청 (비관적 락)
+    activate Repository
+    Repository->>DB: SELECT FROM product_options FOR UPDATE
+    activate DB
 
-    Service->>Repository: 주문 저장
-    Repository->>DB: INSERT orders status=PENDING
-    DB-->>Repository: 저장 완료
+    alt 동시 주문으로 인한 재고 부족 or 락 타임아웃
+        DB-->>Repository: LockTimeoutException or 재고 0
+        Repository-->>Service: 예외 전파 (StockLockTimeoutException)
+        Service-->>Controller: 예외 전파
+        Controller-->>Client: 503 주문이 집중되고 있습니다. 잠시 후 다시 시도해주세요
+    else 재고 차감 성공
+        DB-->>Repository: 재고 차감 완료
+        deactivate DB
+        Repository-->>Service: 재고 차감 완료
+        deactivate Repository
 
-    Repository-->>Service: 주문 저장 완료
-    Service-->>Controller: 주문 생성 완료
-    Controller-->>Client: 201 Created {orderId, finalAmount}
+        Service->>Repository: 주문 저장
+        activate Repository
+        Repository->>DB: INSERT INTO orders status=PENDING
+        activate DB
+        DB-->>Repository: 저장 완료
+        deactivate DB
+        Repository-->>Service: Order 엔티티 반환
+        deactivate Repository
+
+        Service-->>Controller: 주문 생성 완료
+        Controller-->>Client: 201 Created (orderId, pgOrderId, finalAmount)
+    end
+
+    deactivate Service
+    deactivate Controller
 
     Note over Client: 결제하기 버튼 클릭
     Note over Client: tossOrderId, finalAmount로<br/>토스 결제 위젯 호출
