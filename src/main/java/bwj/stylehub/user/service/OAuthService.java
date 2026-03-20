@@ -12,7 +12,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -41,39 +40,39 @@ public class OAuthService {
         OAuthUserInfo userInfo = getClient(provider).authenticate(code);
 
         try {
-            return transactionTemplate.execute(status -> {
-                Optional<User> existingUser = userRepository.findByEmail(userInfo.email());
-
-                if (existingUser.isPresent()) {
-                    User user = existingUser.get();
-
-                    if (user.getProvider() == null) {
-                        throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
-                    }
-
-                    user.rewardLoginPoint(LocalDate.now());
-                    return OAuthLoginResponse.from(user, false);
-                }
-
-                User newUser = User.createOAuth(
-                        userInfo.name(),
-                        userInfo.email(),
-                        provider,
-                        userInfo.providerId()
-                );
-                newUser.rewardLoginPoint(LocalDate.now());
-                User savedUser = userRepository.save(newUser);
-
-                return OAuthLoginResponse.from(savedUser, true);
-            });
+            return transactionTemplate.execute(status ->
+                    userRepository.findByEmail(userInfo.email())
+                            .map(user -> handleExistingUser(user, provider))
+                            .orElseGet(() -> handleNewUser(userInfo, provider))
+            );
         } catch (DataIntegrityViolationException e) {
-            // 동시 요청으로 이미 저장된 경우 → 재조회하여 기존 유저로 로그인 처리
-            return transactionTemplate.execute(status -> {
-                User user = userRepository.findByEmail(userInfo.email()).orElseThrow();
-                user.rewardLoginPoint(LocalDate.now());
-                return OAuthLoginResponse.from(user, false);
-            });
+            return handleConcurrentSignUp(userInfo);
         }
+    }
+
+    private OAuthLoginResponse handleExistingUser(User user, Provider provider) {
+        if (user.getProvider() == null) {
+            throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
+        }
+        user.rewardLoginPoint(LocalDate.now());
+        return OAuthLoginResponse.from(user, false);
+    }
+
+    private OAuthLoginResponse handleNewUser(OAuthUserInfo userInfo, Provider provider) {
+        User newUser = User.createOAuth(
+                userInfo.name(), userInfo.email(), provider, userInfo.providerId()
+        );
+        newUser.rewardLoginPoint(LocalDate.now());
+        return OAuthLoginResponse.from(userRepository.save(newUser), true);
+    }
+
+    // 동시 요청으로 이미 저장된 경우 → 재조회하여 기존 유저로 로그인 처리
+    private OAuthLoginResponse handleConcurrentSignUp(OAuthUserInfo userInfo) {
+        return transactionTemplate.execute(status -> {
+            User user = userRepository.findByEmail(userInfo.email()).orElseThrow();
+            user.rewardLoginPoint(LocalDate.now());
+            return OAuthLoginResponse.from(user, false);
+        });
     }
 
     private OAuthClient getClient(Provider provider) {
