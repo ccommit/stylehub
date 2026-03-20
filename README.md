@@ -330,7 +330,7 @@ sequenceDiagram
         deactivate Repository
 
         Service-->>Controller: 주문 생성 완료
-        Controller-->>Client: 201 Created (orderId, pgOrderId, finalAmount)
+        Controller-->>Client: 201 Created (orderId, tossOrderId, finalAmount)
     end
 
     deactivate Service
