@@ -322,49 +322,72 @@ sequenceDiagram
 <summary><b>토스 결제 시퀀스</b></summary>
 
 ``` mermaid
-    actor User as 사용자
-    participant Sandbox as 토스 샌드박스<br/>(프론트 대역)
-    participant Server as 우리 서버<br/>(Spring Boot)
+   sequenceDiagram
+    actor Client as 클라이언트
+    participant CT as PaymentController
+    participant SV as PaymentService
+    participant Repo as PaymentRepository (JPA)
     participant DB as DB
-    participant Toss as 토스페이먼츠 서버
 
-    Note over User,Toss: 1. 결제 준비 및 주문 데이터 생성 (Internal 사전 작업)
+    Note over Client,DB: ① 결제 준비
 
-    User->>Server: 주문 요청
-    Server->>DB: order_id(자동증가) 저장
-    Server->>Server: toss_order_id(UUID) 생성
-    Server->>DB: toss_order_id + requested_amount 저장<br/>(위변조 검증 기준값)
-    Server-->>User: toss_order_id, requested_amount 반환
-
-    Note over User,Toss: 2. 토스 결제창 진입 및 사용자 인증
-
-    User->>Sandbox: toss_order_id, requested_amount,<br/>successUrl, failUrl 입력
-    Sandbox->>Toss: 결제창 오픈 요청
-    Toss-->>User: 결제창 표시
-    User->>Toss: 생체/PIN 인증 진행
-
-    Note over User,Toss: 3. 인증 완료 후 리다이렉트 (Toss → 우리 서버)
-
-    Toss-->>Server: GET /api/v1/payments/success<br/>?paymentKey=&orderId=&amount=(approved_amount)
-    Note right of Toss: 아직 돈이 빠져나간 상태가 아님
-
-    Note over User,Toss: 4. 최종 결제 승인 요청 (우리 서버 → 토스)
-
-    Server->>DB: toss_order_id로 주문 데이터 조회
-    DB-->>Server: requested_amount 반환
-
-    alt 금액 불일치 (requested_amount ≠ approved_amount)
-        Server-->>User: 위변조 감지, 결제 실패 처리
-    else 금액 일치 (requested_amount = approved_amount)
-        Server->>Toss: POST /v1/payments/confirm<br/>Authorization: Basic Base64(secretKey:)<br/>{ paymentKey, orderId, requested_amount }
-        Toss-->>Server: 200 OK<br/>{ total_amount, status: DONE ... }
-
-        Note over User,Toss: 5. 결과 처리 및 비즈니스 로직 확정
-
-        Server->>DB: payments.total_amount 저장<br/>payments.status = DONE
-        Server->>DB: orders.order_status = PAYMENT_COMPLETED
-        Server-->>User: 결제 완료 응답
+    Client->>CT: POST /api/payments/prepare
+    Note over CT: @Valid 요청값 검증<br/>(orderName, amount, customerEmail)
+    CT->>SV: preparePayment(request)
+    Note over SV: orderId 생성 / status = READY
+    SV->>Repo: 결제 정보 저장
+    Repo->>DB: INSERT payments
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
     end
+    DB-->>Repo: 저장 완료
+    Repo-->>SV: 결제 저장 완료
+    SV-->>CT: 결제 준비 완료
+    CT-->>Client: 200 OK (orderId, amount)
+
+    Note over Client,DB: ② 결제 승인
+
+    Client->>CT: POST /api/payments/confirm
+    Note over CT: @Valid 요청값 검증<br/>(paymentKey, orderId, amount)
+    CT->>SV: confirmPayment(request)
+    SV->>Repo: 결제 정보 조회
+    Repo->>DB: SELECT payments WHERE orderId
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
+    end
+    DB-->>Repo: 조회 완료
+    Repo-->>SV: Payment(READY)
+    Note over SV: 금액 검증 (amount 비교)
+    alt 주문 없음 / 금액 불일치
+        SV-->>CT: CustomException
+        CT-->>Client: 400 / 404
+    end
+    alt 결제 인증 후 10분 초과
+        SV-->>CT: CustomException (PAYMENT_EXPIRED)
+        CT-->>Client: 400 Bad Request
+    end
+    Note over SV: POST /v1/payments/confirm<br/>Authorization: Basic {secretKey:Base64}
+    SV->>Repo: 결제 상태 업데이트
+    Repo->>DB: UPDATE payments SET paymentKey, status=DONE
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
+    end
+    DB-->>Repo: 저장 완료
+    Repo-->>SV: 결제 상태 업데이트 완료
+    SV-->>CT: 결제 승인 완료
+    CT-->>Client: 200 OK (paymentKey, orderId, status, amount, approvedAt)
 ```
  
 </details> 
@@ -375,25 +398,46 @@ sequenceDiagram
 ``` mermaid
 
 sequenceDiagram
-    actor Client as Client (Manager or Admin)
+    actor Client as Client (STORE or Admin)
     participant Controller as CouponController
     participant Service as CouponService
     participant Repository as CouponRepository (JPA)
     participant DB as DB
 
-    Client->>Controller: POST /api/v1/coupons
-
+    Client->>Controller: POST /api/v1/coupons<br/>CouponCreateRequest(discountType, quantity, startAt, endAt)
+    activate Controller
     Note over Controller: @Valid 요청값 검증<br/>(할인타입, 발급수량, 시작일/종료일)
+    Controller->>Service: createCoupon(role, storeId, CouponCreateRequest)
+    activate Service
+    Note over Service: @Transactional<br/>role=STORE: storeId 쿠폰 발행<br/>role=ADMIN: 플랫폼 전체 쿠폰 발행
 
-    Controller->>Service: 쿠폰 발행 요청
+    Service->>Repository: findByCondition(discountType, startAt, endAt)
+    activate Repository
+    Repository->>DB: SELECT FROM coupons
+    activate DB
+    DB-->>Repository: 조회 결과 반환
+    deactivate DB
+    Repository-->>Service: Optional(Coupon)
+    deactivate Repository
 
-    Service->>Repository: 쿠폰 저장
-    Repository->>DB: INSERT coupons
-    DB-->>Repository: 저장 완료
+    alt 중복 쿠폰 존재
+        Service-->>Controller: 예외 전파 (중복 쿠폰)
+        Controller-->>Client: 쿠폰 생성 비즈니스예외 발생
+    else 중복 없음
+        Service->>Repository: save(Coupon)
+        activate Repository
+        Repository->>DB: INSERT INTO coupons
+        activate DB
+        DB-->>Repository: 저장 완료
+        Repository-->>Service: Coupon (저장된 엔티티)
+        Service-->>Controller: CouponResponse(couponId, discountType, quantity, startAt, endAt)
+        Controller-->>Client: 201 Created CouponResponse
+    end
 
-    Repository-->>Service: 쿠폰 저장 완료
-    Service-->>Controller: 쿠폰 발행 완료
-    Controller-->>Client: 201 Created
+    deactivate DB
+    deactivate Repository
+    deactivate Service
+    deactivate Controller
 ```
  
 </details> 
