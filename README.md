@@ -322,48 +322,45 @@ sequenceDiagram
 <summary><b>토스 결제 시퀀스</b></summary>
 
 ``` mermaid
-    actor User as 사용자
-    participant Sandbox as 토스 샌드박스<br/>(프론트 대역)
-    participant Server as 우리 서버<br/>(Spring Boot)
-    participant DB as DB
+sequenceDiagram
+    actor Dev as 개발자 (수동)
     participant Toss as 토스페이먼츠 서버
+    participant Controller as PaymentController
+    participant Service as PaymentService
+    participant DB as DB
 
-    Note over User,Toss: 1. 결제 준비 및 주문 데이터 생성 (Internal 사전 작업)
+    Note over Dev,Toss: ① 샌드박스에서 결제창 진입 및 인증
 
-    User->>Server: 주문 요청
-    Server->>DB: order_id(자동증가) 저장
-    Server->>Server: toss_order_id(UUID) 생성
-    Server->>DB: toss_order_id + requested_amount 저장<br/>(위변조 검증 기준값)
-    Server-->>User: toss_order_id, requested_amount 반환
+    Dev->>Toss: pg_order_id, amount, successUrl, failUrl 입력 후 인증 진행
+    Toss-->>Controller: successUrl 리다이렉트<br/>GET /api/v1/payments/success
 
-    Note over User,Toss: 2. 토스 결제창 진입 및 사용자 인증
+    Note over Controller,DB: ② 결제 승인 요청
 
-    User->>Sandbox: toss_order_id, requested_amount,<br/>successUrl, failUrl 입력
-    Sandbox->>Toss: 결제창 오픈 요청
-    Toss-->>User: 결제창 표시
-    User->>Toss: 생체/PIN 인증 진행
+    Controller->>Service: 결제 승인 요청
+    Service->>DB: pg_order_id로 결제 정보 조회
 
-    Note over User,Toss: 3. 인증 완료 후 리다이렉트 (Toss → 우리 서버)
+    Note over Service: 금액 변조 검증<br/>(requested_amount vs amount)
 
-    Toss-->>Server: GET /api/v1/payments/success<br/>?paymentKey=&orderId=&amount=(approved_amount)
-    Note right of Toss: 아직 돈이 빠져나간 상태가 아님
-
-    Note over User,Toss: 4. 최종 결제 승인 요청 (우리 서버 → 토스)
-
-    Server->>DB: toss_order_id로 주문 데이터 조회
-    DB-->>Server: requested_amount 반환
-
-    alt 금액 불일치 (requested_amount ≠ approved_amount)
-        Server-->>User: 위변조 감지, 결제 실패 처리
-    else 금액 일치 (requested_amount = approved_amount)
-        Server->>Toss: POST /v1/payments/confirm<br/>Authorization: Basic Base64(secretKey:)<br/>{ paymentKey, orderId, requested_amount }
-        Toss-->>Server: 200 OK<br/>{ total_amount, status: DONE ... }
-
-        Note over User,Toss: 5. 결과 처리 및 비즈니스 로직 확정
-
-        Server->>DB: payments.total_amount 저장<br/>payments.status = DONE
-        Server->>DB: orders.order_status = PAYMENT_COMPLETED
-        Server-->>User: 결제 완료 응답
+    alt 금액 불일치
+        Service-->>Controller: CustomException(INVALID_PAYMENT_AMOUNT)
+        Controller-->>Dev: 400 Bad Request
+    else 유효시간 30분 초과
+        Service-->>Controller: CustomException(PAYMENT_EXPIRED)
+        Controller-->>Dev: 400 Bad Request
+    else 상태가 IN_PROGRESS (정상)
+        Service->>Toss: 최종 승인 요청<br/>POST /v1/payments/confirm
+        alt 승인 실패
+            Toss-->>Service: 4xx / 5xx
+            Service->>DB: UPDATE payments status=ABORTED
+            Service-->>Controller: CustomException(PAYMENT_FAILED)
+            Controller-->>Dev: 400 Bad Request
+        else 승인 성공
+            Toss-->>Service: 승인 완료
+            Service->>DB: UPDATE payments status=DONE
+            Service->>DB: UPDATE orders order_status=PAYMENT_COMPLETED
+            Service-->>Controller: 결제 완료
+            Controller-->>Dev: 200 OK
+        end
     end
 ```
  
