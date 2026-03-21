@@ -2,7 +2,7 @@ package ccommit.stylehub.user.entity;
 
 import ccommit.stylehub.user.enums.Grade;
 import ccommit.stylehub.user.enums.OAuthProvider;
-import ccommit.stylehub.user.enums.Role;
+import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.common.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -63,7 +63,7 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private Role role = Role.USER;
+    private UserRole role = UserRole.USER;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
