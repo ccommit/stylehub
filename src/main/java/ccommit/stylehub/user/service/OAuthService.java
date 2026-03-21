@@ -63,7 +63,7 @@ public class OAuthService {
     }
 
     private OAuthLoginResponse handleExistingUser(User user, OAuthProvider provider) {
-        if (user.getOAuthProvider() == null) {
+        if (user.getProvider() == null) {
             throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
         }
         user.rewardLoginPoint(LocalDate.now());
