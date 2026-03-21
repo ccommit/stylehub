@@ -15,6 +15,17 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * 일반 회원가입과 로그인의 비즈니스 로직을 처리한다.
+ * BCrypt 해싱을 트랜잭션 밖에서 실행하여 커넥션 점유를 최소화한다.
+ * </p>
+ */
+
 @Service
 @RequiredArgsConstructor
 public class UserService {

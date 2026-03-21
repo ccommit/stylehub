@@ -15,6 +15,18 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * 상품의 색상/사이즈별 옵션과 재고를 관리한다.
+ * OrderItem이 이 옵션을 직접 참조하여 옵션 단위 주문을 지원한다.
+ * </p>
+ */
+
 @Entity
 @Table(name = "products_options")
 @Getter

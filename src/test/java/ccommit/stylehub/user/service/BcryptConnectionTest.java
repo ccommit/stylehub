@@ -21,6 +21,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * BCrypt 해싱 위치에 따른 커넥션 풀 영향을 비교하는 성능 테스트이다.
+ * 트랜잭션 분리 설계가 커넥션 풀 고갈을 방지함을 실증한다.
+ * </p>
+ */
+
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @summary BCrypt 커넥션 점유 비교 테스트
+ */
+
+/**
  * BCrypt 커넥션 점유 문제 — 변경 전/후 비교 테스트
  *
  * HikariCP 커넥션 풀(최대 10개)에 동시 50개 요청을 보내서

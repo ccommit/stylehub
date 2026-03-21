@@ -15,6 +15,18 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/20 11:40 by WonJin - refactor: OAuthService.login() 메서드 추출로 가독성 개선
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * OAuth 소셜 로그인의 비즈니스 로직을 처리한다.
+ * 동시 가입 요청에 대한 동시성 대응 로직을 포함한다.
+ * </p>
+ */
+
 @Service
 public class OAuthService {
 

@@ -5,6 +5,16 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * User 엔티티의 데이터 접근을 담당한다.
+ * </p>
+ */
+
 public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
