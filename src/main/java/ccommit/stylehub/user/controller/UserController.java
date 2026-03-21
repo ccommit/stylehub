@@ -2,17 +2,25 @@ package ccommit.stylehub.user.controller;
 
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
+import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.dto.response.UserSignUpResponse;
+import ccommit.stylehub.user.enums.OAuthProvider;
+import ccommit.stylehub.user.service.OAuthService;
 import ccommit.stylehub.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * @author WonJin Bae
@@ -20,8 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  *
  * <p>
- * 일반 회원가입과 로그인 API 엔드포인트를 제공한다.
- * 입력값 검증 후 비즈니스 로직은 UserService에 위임한다.
+ * 회원가입, 로그인, OAuth 소셜 로그인 API 엔드포인트를 제공한다.
  * </p>
  */
 
@@ -31,6 +38,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final OAuthService oAuthService;
 
     @PostMapping("/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
@@ -40,5 +48,19 @@ public class UserController {
     @PostMapping("/login")
     public ResponseEntity<UserLoginResponse> login(@Valid @RequestBody UserLoginRequest request) {
         return ResponseEntity.ok(userService.login(request));
+    }
+
+    @GetMapping("/oauth/{provider}")
+    public ResponseEntity<Map<String, String>> authorizationUrl(
+            @PathVariable OAuthProvider provider) {
+        String url = oAuthService.getAuthorizationUrl(provider);
+        return ResponseEntity.ok(Map.of("authorizationUrl", url));
+    }
+
+    @GetMapping("/oauth/{provider}/callback")
+    public ResponseEntity<OAuthLoginResponse> callback(
+            @PathVariable OAuthProvider provider,
+            @RequestParam String code) {
+        return ResponseEntity.ok(oAuthService.login(provider, code));
     }
 }
