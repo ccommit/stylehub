@@ -1,7 +1,7 @@
 package ccommit.stylehub.user.controller;
 
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
-import ccommit.stylehub.user.enums.Provider;
+import ccommit.stylehub.user.enums.OAuthProvider;
 import ccommit.stylehub.user.service.OAuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -33,14 +33,14 @@ public class OAuthController {
 
     @GetMapping("/{provider}")
     public ResponseEntity<Map<String, String>> authorizationUrl(
-            @PathVariable Provider provider) {
+            @PathVariable OAuthProvider provider) {
         String url = oAuthService.getAuthorizationUrl(provider);
         return ResponseEntity.ok(Map.of("authorizationUrl", url));
     }
 
     @GetMapping("/{provider}/callback")
     public ResponseEntity<OAuthLoginResponse> callback(
-            @PathVariable Provider provider,
+            @PathVariable OAuthProvider provider,
             @RequestParam String code) {
         return ResponseEntity.ok(oAuthService.login(provider, code));
     }
