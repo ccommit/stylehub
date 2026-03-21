@@ -22,6 +22,18 @@ import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
+ * store 필드의 null 여부로 관리자/스토어 쿠폰을 구분한다.
+ * </p>
+ */
+
 @Entity
 @Table(name = "coupon_events")
 @Getter

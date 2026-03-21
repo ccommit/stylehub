@@ -2,6 +2,17 @@ package ccommit.stylehub.payment.enums;
 
 import lombok.Getter;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * 결제 처리 상태를 정의한다.
+ * 토스페이먼츠의 결제 상태 모델을 그대로 반영했다.
+ * </p>
+ */
+
 @Getter
 public enum PaymentStatus {
 

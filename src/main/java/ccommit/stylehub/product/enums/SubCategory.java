@@ -2,6 +2,17 @@ package ccommit.stylehub.product.enums;
 
 import lombok.Getter;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ *
+ * <p>
+ * 상품 소분류를 정의한다.
+ * 대분류별 3개씩 총 12개의 소분류로 구성된다.
+ * </p>
+ */
+
 @Getter
 public enum SubCategory {
 
