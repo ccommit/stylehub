@@ -1,6 +1,6 @@
 package ccommit.stylehub.user.service;
 
-import ccommit.stylehub.common.config.PasswordEncoder;
+import ccommit.stylehub.common.config.PasswordHasher;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
@@ -31,7 +31,7 @@ import java.util.Objects;
 public class UserService {
 
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordHasher passwordHasher;
     private final UserValidator userValidator;
     private final TransactionTemplate transactionTemplate;
 
@@ -40,7 +40,7 @@ public class UserService {
     public UserSignUpResponse signUp(UserSignUpRequest request) {
 
         // BCrypt: 트랜잭션 밖에서 실행 → DB 커넥션 점유 안 함
-        String encodedPassword = passwordEncoder.encode(request.password());
+        String hashedPassword = passwordHasher.hash(request.password());
 
         User savedUser;
         try {
@@ -51,7 +51,7 @@ public class UserService {
                         User user = User.create(
                                 request.name(),
                                 request.email(),
-                                encodedPassword,
+                                hashedPassword,
                                 request.birthDate()
                         );
 
@@ -77,7 +77,7 @@ public class UserService {
                 )
         );
 
-        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+        if (!passwordHasher.matches(request.password(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다");
         }
 
