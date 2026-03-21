@@ -3,7 +3,7 @@ package ccommit.stylehub.user.service;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.entity.User;
-import ccommit.stylehub.user.enums.Provider;
+import ccommit.stylehub.user.enums.OAuthProvider;
 import ccommit.stylehub.user.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 @Service
 public class OAuthService {
 
-    private final Map<Provider, OAuthClient> clients;
+    private final Map<OAuthProvider, OAuthClient> clients;
     private final UserRepository userRepository;
     private final TransactionTemplate transactionTemplate;
 
@@ -43,12 +43,12 @@ public class OAuthService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    public String getAuthorizationUrl(Provider provider) {
+    public String getAuthorizationUrl(OAuthProvider provider) {
         return getClient(provider).getAuthorizationUrl();
     }
 
     // TODO: 글로벌 예외 처리 PR에서 커스텀 예외 도입 예정
-    public OAuthLoginResponse login(Provider provider, String code) {
+    public OAuthLoginResponse login(OAuthProvider provider, String code) {
         OAuthUserInfo userInfo = getClient(provider).authenticate(code);
 
         try {
@@ -62,15 +62,15 @@ public class OAuthService {
         }
     }
 
-    private OAuthLoginResponse handleExistingUser(User user, Provider provider) {
-        if (user.getProvider() == null) {
+    private OAuthLoginResponse handleExistingUser(User user, OAuthProvider provider) {
+        if (user.getOAuthProvider() == null) {
             throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
         }
         user.rewardLoginPoint(LocalDate.now());
         return OAuthLoginResponse.from(user, false);
     }
 
-    private OAuthLoginResponse handleNewUser(OAuthUserInfo userInfo, Provider provider) {
+    private OAuthLoginResponse handleNewUser(OAuthUserInfo userInfo, OAuthProvider provider) {
         User newUser = User.createOAuth(
                 userInfo.name(), userInfo.email(), provider, userInfo.providerId()
         );
@@ -87,10 +87,10 @@ public class OAuthService {
         });
     }
 
-    private OAuthClient getClient(Provider provider) {
+    private OAuthClient getClient(OAuthProvider provider) {
         OAuthClient client = clients.get(provider);
         if (client == null) {
-            throw new IllegalArgumentException("지원하지 않는 OAuth Provider: " + provider);
+            throw new IllegalArgumentException("지원하지 않는 OAuth OAuthProvider: " + provider);
         }
         return client;
     }

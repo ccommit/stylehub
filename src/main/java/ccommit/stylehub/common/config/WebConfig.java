@@ -1,6 +1,6 @@
 package ccommit.stylehub.common.config;
 
-import ccommit.stylehub.user.enums.Provider;
+import ccommit.stylehub.user.enums.OAuthProvider;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.format.FormatterRegistry;
@@ -13,7 +13,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  *
  * <p>
  * Spring MVC 커스텀 Converter를 등록한다.
- * provider 문자열을 Provider enum으로 자동 변환한다.
+ * provider 문자열을 OAuthProvider enum으로 자동 변환한다.
  * </p>
  */
 
@@ -22,14 +22,14 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addFormatters(FormatterRegistry registry) {
-        registry.addConverter(new StringToProviderConverter());
+        registry.addConverter(new StringToOAuthProviderConverter());
     }
 
-    private static class StringToProviderConverter implements Converter<String, Provider> {
+    private static class StringToOAuthProviderConverter implements Converter<String, OAuthProvider> {
 
         @Override
-        public Provider convert(String source) {
-            return Provider.valueOf(source.toUpperCase());
+        public OAuthProvider convert(String source) {
+            return OAuthProvider.valueOf(source.toUpperCase());
         }
     }
 }

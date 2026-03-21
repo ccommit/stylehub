@@ -4,7 +4,7 @@ import ccommit.stylehub.common.config.GoogleOAuthProperties;
 import ccommit.stylehub.user.dto.response.GoogleTokenResponse;
 import ccommit.stylehub.user.dto.response.GoogleUserInfoResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
-import ccommit.stylehub.user.enums.Provider;
+import ccommit.stylehub.user.enums.OAuthProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -25,8 +25,8 @@ public class GoogleOAuthClient implements OAuthClient {
     private final RestClient restClient = RestClient.create();
 
     @Override
-    public Provider provider() {
-        return Provider.GOOGLE;
+    public OAuthProvider provider() {
+        return OAuthProvider.GOOGLE;
     }
 
     @Override

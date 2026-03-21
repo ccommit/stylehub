@@ -1,7 +1,7 @@
 package ccommit.stylehub.user.entity;
 
 import ccommit.stylehub.user.enums.Grade;
-import ccommit.stylehub.user.enums.Provider;
+import ccommit.stylehub.user.enums.OAuthProvider;
 import ccommit.stylehub.user.enums.Role;
 import ccommit.stylehub.common.entity.BaseEntity;
 import jakarta.persistence.Column;
@@ -55,7 +55,7 @@ public class User extends BaseEntity {
     private String providerUserId;
 
     @Enumerated(EnumType.STRING)
-    private Provider provider;
+    private OAuthProvider provider;
 
     @Column(nullable = false, length = 100, unique = true)
     private String email;
@@ -118,7 +118,7 @@ public class User extends BaseEntity {
                 .build();
     }
 
-    public static User createOAuth(String name, String email, Provider provider, String providerUserId) {
+    public static User createOAuth(String name, String email, OAuthProvider provider, String providerUserId) {
         return User.builder()
                 .name(name)
                 .email(email)
