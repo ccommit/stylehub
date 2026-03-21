@@ -14,7 +14,7 @@ import lombok.Getter;
  */
 
 @Getter
-public enum Grade {
+public enum UserGrade {
 
     BRONZE(2),
     SILVER(4),
@@ -22,7 +22,7 @@ public enum Grade {
 
     private final int discountRate;
 
-    Grade(int discountRate) {
+    UserGrade(int discountRate) {
         this.discountRate = discountRate;
     }
 }

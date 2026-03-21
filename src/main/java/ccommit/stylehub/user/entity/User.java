@@ -1,6 +1,6 @@
 package ccommit.stylehub.user.entity;
 
-import ccommit.stylehub.user.enums.Grade;
+import ccommit.stylehub.user.enums.UserGrade;
 import ccommit.stylehub.user.enums.OAuthProvider;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.common.entity.BaseEntity;
@@ -68,7 +68,7 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private Grade grade = Grade.BRONZE;
+    private UserGrade grade = UserGrade.BRONZE;
 
     @Column(name = "total_spent", nullable = false)
     @Builder.Default
