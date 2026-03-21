@@ -6,8 +6,10 @@ import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.dto.response.UserSignUpResponse;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.event.LoginEvent;
 import ccommit.stylehub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -33,6 +35,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordHasher passwordHasher;
     private final UserValidator userValidator;
+    private final ApplicationEventPublisher eventPublisher;
     private final TransactionTemplate transactionTemplate;
 
 
@@ -81,11 +84,9 @@ public class UserService {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다");
         }
 
-        // 트랜잭션 1에서 조회한 user는 준영속 상태이므로 다시 조회하여 영속 상태로 만든다
-        transactionTemplate.executeWithoutResult(status -> {
-            User managedUser = userRepository.findById(user.getUserId()).orElseThrow();
-            managedUser.rewardLoginPoint(LocalDate.now());
-        });
+        transactionTemplate.executeWithoutResult(status ->
+            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now()))
+        );
 
         return UserLoginResponse.from(user);
     }
