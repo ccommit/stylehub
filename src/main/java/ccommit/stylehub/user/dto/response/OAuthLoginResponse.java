@@ -1,7 +1,7 @@
 package ccommit.stylehub.user.dto.response;
 
 import ccommit.stylehub.user.entity.User;
-import ccommit.stylehub.user.enums.Role;
+import ccommit.stylehub.user.enums.UserRole;
 import lombok.Builder;
 
 /**
@@ -21,7 +21,7 @@ public record OAuthLoginResponse(
         Long userId,
         String name,
         String email,
-        Role role,
+        UserRole role,
         boolean newUser
 ) {
     public static OAuthLoginResponse from(User user, boolean newUser) {
