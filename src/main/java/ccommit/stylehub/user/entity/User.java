@@ -109,11 +109,11 @@ public class User extends BaseEntity {
         lastLoginDate = today;
     }
 
-    public static User create(String name, String email, String encodedPassword, LocalDate birthDate) {
+    public static User create(String name, String email, String hashedPassword, LocalDate birthDate) {
         return User.builder()
                 .name(name)
                 .email(email)
-                .password(encodedPassword)
+                .password(hashedPassword)
                 .birthDate(birthDate)
                 .build();
     }
