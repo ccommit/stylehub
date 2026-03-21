@@ -17,10 +17,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 @RequiredArgsConstructor
 public class GoogleOAuthClient implements OAuthClient {
 
-    private static final String GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-    private static final String GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
-    private static final String GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
-
     private final GoogleOAuthProperties properties;
     private final RestClient restClient = RestClient.create();
 
@@ -31,7 +27,7 @@ public class GoogleOAuthClient implements OAuthClient {
 
     @Override
     public String getAuthorizationUrl() {
-        return UriComponentsBuilder.fromUriString(GOOGLE_AUTH_URL)
+        return UriComponentsBuilder.fromUriString(properties.authUrl())
                 .queryParam("client_id", properties.clientId())
                 .queryParam("redirect_uri", properties.redirectUri())
                 .queryParam("response_type", "code")
@@ -55,7 +51,7 @@ public class GoogleOAuthClient implements OAuthClient {
         params.add("grant_type", "authorization_code");
 
         return restClient.post()
-                .uri(GOOGLE_TOKEN_URL)
+                .uri(properties.tokenUrl())
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(params)
                 .retrieve()
@@ -64,7 +60,7 @@ public class GoogleOAuthClient implements OAuthClient {
 
     private GoogleUserInfoResponse getUserInfo(String accessToken) {
         return restClient.get()
-                .uri(GOOGLE_USERINFO_URL)
+                .uri(properties.userinfoUrl())
                 .header("Authorization", "Bearer " + accessToken)
                 .retrieve()
                 .body(GoogleUserInfoResponse.class);
