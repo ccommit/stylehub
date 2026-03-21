@@ -78,26 +78,11 @@ public class CouponEvent extends BaseEntity {
 
     private Boolean active = true;
 
-    public static CouponEvent createAdminCoupon(String name, DiscountType discountType,
-                                                Integer discountValue, Integer minOrderAmount,
-                                                Integer issueCount, LocalDateTime startedAt,
-                                                LocalDateTime expiredAt) {
-        return buildCoupon(null, name, discountType, discountValue,
-                minOrderAmount, issueCount, startedAt, expiredAt);
-    }
-
-    public static CouponEvent createStoreCoupon(Store store, String name, DiscountType discountType,
-                                                Integer discountValue, Integer minOrderAmount,
-                                                Integer issueCount, LocalDateTime startedAt,
-                                                LocalDateTime expiredAt) {
-        return buildCoupon(store, name, discountType, discountValue,
-                minOrderAmount, issueCount, startedAt, expiredAt);
-    }
-
-    private static CouponEvent buildCoupon(Store store, String name, DiscountType discountType,
-                                           Integer discountValue, Integer minOrderAmount,
-                                           Integer issueCount, LocalDateTime startedAt,
-                                           LocalDateTime expiredAt) {
+    // store가 null이면 플랫폼 쿠폰, 값이 있으면 스토어 쿠폰
+    public static CouponEvent create(Store store, String name, DiscountType discountType,
+                                     Integer discountValue, Integer minOrderAmount,
+                                     Integer issueCount, LocalDateTime startedAt,
+                                     LocalDateTime expiredAt) {
         return CouponEvent.builder()
                 .store(store)
                 .name(name)
