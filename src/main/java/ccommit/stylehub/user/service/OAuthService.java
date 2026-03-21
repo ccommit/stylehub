@@ -4,7 +4,9 @@ import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.OAuthProvider;
+import ccommit.stylehub.user.event.LoginEvent;
 import ccommit.stylehub.user.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -32,14 +34,17 @@ public class OAuthService {
 
     private final Map<OAuthProvider, OAuthClient> clients;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final TransactionTemplate transactionTemplate;
 
     public OAuthService(List<OAuthClient> clientList,
                         UserRepository userRepository,
+                        ApplicationEventPublisher eventPublisher,
                         TransactionTemplate transactionTemplate) {
         this.clients = clientList.stream()
                 .collect(Collectors.toMap(OAuthClient::provider, Function.identity()));
         this.userRepository = userRepository;
+        this.eventPublisher = eventPublisher;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -66,7 +71,7 @@ public class OAuthService {
         if (user.getProvider() == null) {
             throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
         }
-        user.rewardLoginPoint(LocalDate.now());
+        eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now()));
         return OAuthLoginResponse.from(user, false);
     }
 
@@ -74,15 +79,16 @@ public class OAuthService {
         User newUser = User.createOAuth(
                 userInfo.name(), userInfo.email(), provider, userInfo.providerId()
         );
-        newUser.rewardLoginPoint(LocalDate.now());
-        return OAuthLoginResponse.from(userRepository.save(newUser), true);
+        User savedUser = userRepository.save(newUser);
+        eventPublisher.publishEvent(new LoginEvent(savedUser.getUserId(), LocalDate.now()));
+        return OAuthLoginResponse.from(savedUser, true);
     }
 
     // 동시 요청으로 이미 저장된 경우 → 재조회하여 기존 유저로 로그인 처리
     private OAuthLoginResponse handleConcurrentSignUp(OAuthUserInfo userInfo) {
         return transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userInfo.email()).orElseThrow();
-            user.rewardLoginPoint(LocalDate.now());
+            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now()));
             return OAuthLoginResponse.from(user, false);
         });
     }
