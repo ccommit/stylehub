@@ -1,5 +1,12 @@
 package ccommit.stylehub.user.dto.request;
 
+import static ccommit.stylehub.common.constants.ValidationPatterns.EMAIL_MESSAGE;
+import static ccommit.stylehub.common.constants.ValidationPatterns.EMAIL_PATTERN;
+import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_MESSAGE;
+import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_PATTERN;
+import static ccommit.stylehub.common.constants.ValidationPatterns.PASSWORD_MESSAGE;
+import static ccommit.stylehub.common.constants.ValidationPatterns.PASSWORD_PATTERN;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -23,17 +30,16 @@ public record UserSignUpRequest(
 
         @NotBlank
         @Size(min = 2, max = 10)
-        @Pattern(regexp = "^[가-힣a-zA-Z0-9]+$", message = "한글, 알파벳, 숫자만 허용됩니다")
+        @Pattern(regexp = NAME_PATTERN, message = NAME_MESSAGE)
         String name,
 
         @NotBlank
-        @Email(regexp = ".+@.+\\..+", message = "이메일 형식이 올바르지 않습니다")
+        @Email(regexp = EMAIL_PATTERN, message = EMAIL_MESSAGE)
         String email,
 
         @NotBlank
         @Size(min = 8, max = 15)
-        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,15}$",
-                message = "비밀번호는 8~15자이며, 영문·숫자·특수문자(@$!%*?&)를 각각 1개 이상 포함해야 합니다")
+        @Pattern(regexp = PASSWORD_PATTERN, message = PASSWORD_MESSAGE)
         String password,
 
         @NotNull
