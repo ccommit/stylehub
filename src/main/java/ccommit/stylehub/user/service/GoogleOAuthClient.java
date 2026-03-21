@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @Component
@@ -50,19 +51,28 @@ public class GoogleOAuthClient implements OAuthClient {
         params.add("redirect_uri", properties.redirectUri());
         params.add("grant_type", "authorization_code");
 
-        return restClient.post()
-                .uri(properties.tokenUrl())
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(params)
-                .retrieve()
-                .body(GoogleTokenResponse.class);
+        try {
+            return restClient.post()
+                    .uri(properties.tokenUrl())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(params)
+                    .retrieve()
+                    .body(GoogleTokenResponse.class);
+        } catch (RestClientException e) {
+            //TODO : 글로벌 예외 도입후 커스텀 예외로 전환 예정
+            throw new IllegalStateException("구글 인증 서버와 통신에 실패했습니다", e);
+        }
     }
 
     private GoogleUserInfoResponse getUserInfo(String accessToken) {
-        return restClient.get()
-                .uri(properties.userinfoUrl())
-                .header("Authorization", "Bearer " + accessToken)
-                .retrieve()
-                .body(GoogleUserInfoResponse.class);
+        try {
+            return restClient.get()
+                    .uri(properties.userinfoUrl())
+                    .header("Authorization", "Bearer " + accessToken)
+                    .retrieve()
+                    .body(GoogleUserInfoResponse.class);
+        } catch (RestClientException e) {
+            throw new IllegalStateException("구글 사용자 정보 조회에 실패했습니다", e);
+        }
     }
 }
