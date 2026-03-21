@@ -74,7 +74,8 @@ public class CouponEvent extends BaseEntity {
     private LocalDateTime expiredAt;
 
     @Column(name = "is_active", nullable = false)
-    @Builder.Default
+    @Builder.Default  // 빌더로 객체 생성 시 이 필드를 명시하지 않으면 선언된 기본값을 사용한다
+
     private Boolean active = true;
 
     public static CouponEvent createAdminCoupon(String name, DiscountType discountType,
