@@ -21,7 +21,7 @@ public enum ErrorCode {
     ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "O001", "이미 일반 회원가입으로 등록된 이메일입니다"),
     ALREADY_REGISTERED_OTHER_PROVIDER(HttpStatus.CONFLICT, "O002", "이미 다른 소셜 계정으로 가입된 이메일입니다"),
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "O003", "지원하지 않는 OAuth Provider입니다"),
-    OAUTH_AUTHENTICATION_FAILED(HttpStatus.BAD_GATEWAY, "O004", "OAuth 인증에 실패했습니다");
+    OAUTH_AUTHENTICATION_FAILED(HttpStatus.UNAUTHORIZED, "O004", "OAuth 인증에 실패했습니다");
 
     private final HttpStatus status;
     private final String code;
