@@ -2,6 +2,7 @@ package ccommit.stylehub;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 /**
@@ -19,7 +20,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @EnableJpaAuditing
 @ConfigurationPropertiesScan
-@EnableJpaAuditing // @CreatedDate, @LastModifiedDate 자동 설정 활성화
 @SpringBootApplication
 public class StylehubApplication {
 
