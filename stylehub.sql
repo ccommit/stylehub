@@ -222,3 +222,7 @@ ALTER TABLE `payments`
 ALTER TABLE `point_histories`
 	ADD CONSTRAINT `fk_point_histories_user`  FOREIGN KEY (`user_id`)  REFERENCES `users`  (`user_id`),
 	ADD CONSTRAINT `fk_point_histories_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`);
+
+
+
+ALTER TABLE orders ADD COLUMN pg_order_id VARCHAR(64) NOT NULL UNIQUE;
