@@ -21,6 +21,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     protected ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
         ErrorCode errorCode = e.getErrorCode();
+        log.warn("Business exception: {}", errorCode);
         return ResponseEntity
                 .status(errorCode.getStatus())
                 .body(ErrorResponse.of(errorCode));
@@ -81,7 +82,7 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
-    // 예상치 못한 모든 예외 — 안전망
+    // 예상치 못한 모든 예외
     @ExceptionHandler(Exception.class)
     protected ResponseEntity<ErrorResponse> handleException(Exception e) {
         log.error("Unhandled exception", e);
