@@ -1,4 +1,4 @@
-package bwj.stylehub.common.exception;
+package ccommit.stylehub.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
