@@ -1,4 +1,4 @@
-package bwj.stylehub.common.exception;
+package ccommit.stylehub.common.exception;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
