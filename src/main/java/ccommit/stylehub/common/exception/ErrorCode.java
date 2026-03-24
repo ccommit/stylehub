@@ -2,6 +2,16 @@ package ccommit.stylehub.common.exception;
 
 import org.springframework.http.HttpStatus;
 
+/**
+ * @author WonJin Bae
+ * @created 2026/03/22
+ * @modified 2026/03/24 by WonJin - refactor: bwj 패키지명 ccommit으로 변경, Auth 에러코드 추가
+ *
+ * <p>
+ * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
+ * HttpStatus, 에러 코드, 메시지를 하나로 관리한다.
+ * </p>
+ */
 public enum ErrorCode {
 
     // Common
