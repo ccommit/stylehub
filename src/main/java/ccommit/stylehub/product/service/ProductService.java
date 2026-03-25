@@ -40,6 +40,9 @@ public class ProductService {
     private final StoreService storeService;
     private final TransactionTemplate transactionTemplate;
 
+    /**
+     * 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
+     */
     public ProductResponse registerProduct(Long userId, Long storeId, ProductCreateRequest request) {
         validateCategoryCombination(request.mainCategory(), request.subCategory());
 
@@ -58,6 +61,9 @@ public class ProductService {
         return ProductResponse.from(result.product(), result.options());
     }
 
+    /**
+     * 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
+     */
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
