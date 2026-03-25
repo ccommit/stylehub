@@ -12,11 +12,12 @@ import java.lang.annotation.Target;
  * @created 2026/03/23
  *
  * <p>
- * 컨트롤러 메서드에 필요한 역할을 지정하는 어노테이션이다.
+ * 컨트롤러 클래스 또는 메서드에 필요한 역할을 지정하는 어노테이션이다.
+ * 메서드에 선언하면 클래스 레벨보다 우선 적용된다.
  * RoleCheckInterceptor가 이 어노테이션을 읽어 역할 검증을 수행한다.
  * </p>
  */
-@Target(ElementType.METHOD)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RequiredRole {
 

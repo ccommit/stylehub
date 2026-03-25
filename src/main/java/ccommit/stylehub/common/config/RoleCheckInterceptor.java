@@ -18,7 +18,8 @@ import java.util.Arrays;
  * @created 2026/03/23
  *
  * <p>
- * 컨트롤러 메서드에 @RequiredRole이 선언된 경우 세션의 역할 정보를 검증하는 인터셉터이다.
+ * 컨트롤러 클래스 또는 메서드에 @RequiredRole이 선언된 경우 세션의 역할 정보를 검증하는 인터셉터이다.
+ * 메서드 레벨이 클래스 레벨보다 우선 적용된다.
  * 요구 역할과 일치하지 않으면 FORBIDDEN 예외를 던진다.
  * </p>
  */
@@ -31,7 +32,11 @@ public class RoleCheckInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 메서드 레벨 우선, 없으면 클래스 레벨 확인
         RequiredRole requiredRole = handlerMethod.getMethodAnnotation(RequiredRole.class);
+        if (requiredRole == null) {
+            requiredRole = handlerMethod.getBeanType().getAnnotation(RequiredRole.class);
+        }
         if (requiredRole == null) {
             return true;
         }
