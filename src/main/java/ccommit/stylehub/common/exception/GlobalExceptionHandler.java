@@ -14,6 +14,11 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
+ * 글로벌 예외 처리 핸들러
+ *
+ * @author bwj
+ * @since 2026-03-23
+=======
  * @author WonJin Bae
  * @created 2026/03/22
  * @modified 2026/03/24 by WonJin - refactor: bwj 패키지명 ccommit으로 변경, log.warn/error 분리, timestamp/path/traceId 추가

@@ -1,5 +1,6 @@
 package ccommit.stylehub.user.controller;
 
+import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
@@ -8,6 +9,7 @@ import ccommit.stylehub.user.dto.response.UserSignUpResponse;
 import ccommit.stylehub.user.enums.OAuthProvider;
 import ccommit.stylehub.user.service.OAuthService;
 import ccommit.stylehub.user.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -26,12 +28,12 @@ import java.util.Map;
  * @author WonJin Bae
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/03/23 by WonJin - feat: HTTP 세션 기반 인증 적용 (로그인/OAuth 세션 생성, 로그아웃)
  *
  * <p>
- * 회원가입, 로그인, OAuth 소셜 로그인 API 엔드포인트를 제공한다.
+ * 회원가입, 로그인, OAuth 소셜 로그인, 로그아웃 API 엔드포인트를 제공한다.
  * </p>
  */
-
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
@@ -46,8 +48,12 @@ public class UserController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<UserLoginResponse> login(@Valid @RequestBody UserLoginRequest request) {
-        return ResponseEntity.ok(userService.login(request));
+    public ResponseEntity<UserLoginResponse> login(
+            @Valid @RequestBody UserLoginRequest request,
+            HttpServletRequest httpRequest) {
+        UserLoginResponse loginResult = userService.login(request);
+        SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
+        return ResponseEntity.ok(loginResult);
     }
 
     @GetMapping("/oauth/{provider}")
@@ -60,7 +66,16 @@ public class UserController {
     @GetMapping("/oauth/{provider}/callback")
     public ResponseEntity<OAuthLoginResponse> callback(
             @PathVariable OAuthProvider provider,
-            @RequestParam String code) {
-        return ResponseEntity.ok(oAuthService.login(provider, code));
+            @RequestParam String code,
+            HttpServletRequest httpRequest) {
+        OAuthLoginResponse loginResult = oAuthService.login(provider, code);
+        SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
+        return ResponseEntity.ok(loginResult);
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
+        SessionUtils.invalidateSession(httpRequest);
+        return ResponseEntity.ok().build();
     }
 }

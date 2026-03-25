@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
  * HttpStatus, 에러 코드, 메시지를 하나로 관리한다.
  * </p>
  */
+
 public enum ErrorCode {
 
     // Common
