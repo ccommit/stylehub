@@ -1,0 +1,103 @@
+package ccommit.stylehub.product.service;
+
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.product.dto.request.ProductCreateRequest;
+import ccommit.stylehub.product.dto.request.ProductOptionRequest;
+import ccommit.stylehub.product.dto.response.ProductOptionResponse;
+import ccommit.stylehub.product.dto.response.ProductResponse;
+import ccommit.stylehub.product.entity.Product;
+import ccommit.stylehub.product.entity.ProductOption;
+import ccommit.stylehub.product.enums.MainCategory;
+import ccommit.stylehub.product.enums.SubCategory;
+import ccommit.stylehub.product.repository.ProductOptionRepository;
+import ccommit.stylehub.product.repository.ProductRepository;
+import ccommit.stylehub.store.entity.Store;
+import ccommit.stylehub.store.service.StoreService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * @author WonJin Bae
+ * @created 2026/03/25
+ *
+ * <p>
+ * 상품 등록 및 재고 관리 비즈니스 로직을 처리한다.
+ * 스토어 검증은 StoreService를 통해 처리하여 도메인 간 결합을 방지한다.
+ * </p>
+ */
+@Service
+@RequiredArgsConstructor
+public class ProductService {
+
+    private final ProductRepository productRepository;
+    private final ProductOptionRepository productOptionRepository;
+    private final StoreService storeService;
+    private final TransactionTemplate transactionTemplate;
+
+    public ProductResponse registerProduct(Long userId, Long storeId, ProductCreateRequest request) {
+        validateCategoryCombination(request.mainCategory(), request.subCategory());
+
+        record RegisterResult(Product product, List<ProductOption> options) {}
+
+        RegisterResult result = Objects.requireNonNull(
+                transactionTemplate.execute(status -> {
+                    Store store = storeService.findApprovedStoreByOwner(userId, storeId);
+                    Product savedProduct = saveProduct(store, request.name(), request.mainCategory(),
+                            request.subCategory(), request.description(), request.price(), request.imageUrl());
+                    List<ProductOption> savedOptions = saveOptions(savedProduct, request.options());
+                    return new RegisterResult(savedProduct, savedOptions);
+                })
+        );
+
+        return ProductResponse.from(result.product(), result.options());
+    }
+
+    public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
+        ProductOption option = Objects.requireNonNull(
+                transactionTemplate.execute(status -> {
+                    storeService.findApprovedStoreByOwner(userId, storeId);
+
+                    ProductOption target = productOptionRepository
+                            .findByProductOptionIdAndProductProductId(optionId, productId)
+                            .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+
+                    target.updateStockQuantity(stockQuantity);
+                    return target;
+                })
+        );
+
+        return ProductOptionResponse.from(option);
+    }
+
+    private Product saveProduct(Store store, String name, MainCategory mainCategory,
+                                SubCategory subCategory, String description, Integer price, String imageUrl) {
+        Product product = Product.create(store, name, mainCategory, subCategory, description, price, imageUrl);
+        return productRepository.save(product);
+    }
+
+    private List<ProductOption> saveOptions(Product product, List<ProductOptionRequest> optionRequests) {
+        List<ProductOption> options = new ArrayList<>(optionRequests.size());
+        for (ProductOptionRequest request : optionRequests) {
+            options.add(ProductOption.create(
+                    product,
+                    request.color(),
+                    request.size(),
+                    request.stockQuantity(),
+                    request.maxPointAmount()
+            ));
+        }
+        return productOptionRepository.saveAll(options);
+    }
+
+    private void validateCategoryCombination(MainCategory mainCategory, SubCategory subCategory) {
+        if (!subCategory.belongsTo(mainCategory)) {
+            throw new BusinessException(ErrorCode.INVALID_CATEGORY_COMBINATION);
+        }
+    }
+}
