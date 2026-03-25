@@ -18,6 +18,15 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
  *
  * @author bwj
  * @since 2026-03-23
+=======
+ * @author WonJin Bae
+ * @created 2026/03/22
+ * @modified 2026/03/24 by WonJin - refactor: bwj 패키지명 ccommit으로 변경, log.warn/error 분리, timestamp/path/traceId 추가
+ *
+ * <p>
+ * 애플리케이션 전역 예외를 처리하는 핸들러이다.
+ * 비즈니스 예외는 warn, 시스템 예외는 error로 로그 레벨을 분리한다.
+ * </p>
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
