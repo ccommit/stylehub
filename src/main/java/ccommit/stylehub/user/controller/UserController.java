@@ -51,9 +51,9 @@ public class UserController {
     public ResponseEntity<UserLoginResponse> login(
             @Valid @RequestBody UserLoginRequest request,
             HttpServletRequest httpRequest) {
-        UserLoginResponse response = userService.login(request);
-        SessionUtils.createSession(httpRequest, response.userId(), response.role());
-        return ResponseEntity.ok(response);
+        UserLoginResponse loginResult = userService.login(request);
+        SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
+        return ResponseEntity.ok(loginResult);
     }
 
     @GetMapping("/oauth/{provider}")
@@ -68,9 +68,9 @@ public class UserController {
             @PathVariable OAuthProvider provider,
             @RequestParam String code,
             HttpServletRequest httpRequest) {
-        OAuthLoginResponse response = oAuthService.login(provider, code);
-        SessionUtils.createSession(httpRequest, response.userId(), response.role());
-        return ResponseEntity.ok(response);
+        OAuthLoginResponse loginResult = oAuthService.login(provider, code);
+        SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
+        return ResponseEntity.ok(loginResult);
     }
 
     @PostMapping("/logout")
