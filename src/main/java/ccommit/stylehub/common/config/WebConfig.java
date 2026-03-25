@@ -39,7 +39,10 @@ public class WebConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/api/v1/users/sign-up", // 회원가입 — 비로그인 상태에서 호출
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
-                        "/api/v1/users/oauth/**"  // OAuth — 비로그인 상태에서 호출
+                        "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
+                        "/v3/api-docs/**",         // Swagger API 문서
+                        "/swagger-ui/**",          // Swagger UI 웹 화면
+                        "/actuator/**"             // Spring Boot Actuator 모니터링
                 );
 
         // 2순위: 역할 검사 — @RequiredRole이 붙은 메서드만 역할 검증
