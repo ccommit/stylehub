@@ -17,6 +17,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
  *
  * <p>
  * 인증이 필요한 API 요청에서 세션 존재 여부를 검증하는 인터셉터이다.
+ * 비인증 API는 WebConfig의 excludePathPatterns에서 관리된다.
  * HandlerMethod가 아닌 요청(정적 리소스 등)은 인증 체크 없이 통과시킨다.
  * 세션이 없거나 사용자 정보가 없으면 UNAUTHORIZED 예외를 던진다.
  * </p>
