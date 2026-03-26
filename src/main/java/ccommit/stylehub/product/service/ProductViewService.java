@@ -62,9 +62,7 @@ public class ProductViewService {
         return ProductCursorResponse.of(productList, pageSize);
     }
 
-    /**
-     * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
-     */
+    // 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
     public ProductResponse getProduct(Long productId) {
         Product product = productRepository.findByIdWithStore(productId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
