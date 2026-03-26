@@ -31,7 +31,11 @@ public class RoleCheckInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // 메서드 레벨 우선, 없으면 클래스 레벨 확인
         RequiredRole requiredRole = handlerMethod.getMethodAnnotation(RequiredRole.class);
+        if (requiredRole == null) {
+            requiredRole = handlerMethod.getBeanType().getAnnotation(RequiredRole.class);
+        }
         if (requiredRole == null) {
             return true;
         }

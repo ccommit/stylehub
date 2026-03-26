@@ -26,6 +26,7 @@ import java.time.LocalDate;
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/16 18:16 by WonJin - feat: 회원 API 개발 (회원가입, 로그인, 구글 OAuth, 포인트 지급)
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/03/25 by WonJin - feat: STORE 역할 회원 생성 팩토리 메서드 추가
  *
  * <p>
  * 회원 정보와 포인트, 등급, OAuth 연동을 관리하는 핵심 엔티티이다.
@@ -96,12 +97,13 @@ public class User extends BaseEntity {
         this.lastLoginDate = today;
     }
 
-    public static User create(String name, String email, String hashedPassword, LocalDate birthDate) {
+    public static User create(String name, String email, String hashedPassword, LocalDate birthDate, UserRole role) {
         return User.builder()
                 .name(name)
                 .email(email)
                 .password(hashedPassword)
                 .birthDate(birthDate)
+                .role(role)
                 .build();
     }
 
