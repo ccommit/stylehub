@@ -4,6 +4,8 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.product.dto.request.ProductCreateRequest;
 import ccommit.stylehub.product.dto.request.ProductOptionRequest;
+import ccommit.stylehub.product.dto.response.ProductCursorResponse;
+import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.entity.Product;
@@ -11,6 +13,7 @@ import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
+import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
 import ccommit.stylehub.store.entity.Store;
 import ccommit.stylehub.store.service.StoreService;
@@ -25,9 +28,11 @@ import java.util.Objects;
 /**
  * @author WonJin Bae
  * @created 2026/03/25
+ * @modified 2026/03/27 by WonJin - refactor: 조회 로직을 ProductViewService로 분리
+ * @modified 2026/03/27 by WonJin - feat: 내 스토어 상품 목록 조회 추가
  *
  * <p>
- * 상품 등록 및 재고 관리 비즈니스 로직을 처리한다.
+ * STORE 역할 사용자의 상품 등록, 내 스토어 상품 조회, 재고 관리 비즈니스 로직을 처리한다.
  * 스토어 검증은 StoreService를 통해 처리하여 도메인 간 결합을 방지한다.
  * </p>
  */
@@ -35,8 +40,12 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class ProductService {
 
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
+    private final ProductQueryRepository productQueryRepository;
     private final StoreService storeService;
     private final TransactionTemplate transactionTemplate;
 
@@ -59,6 +68,25 @@ public class ProductService {
         );
 
         return ProductResponse.from(result.product(), result.options());
+    }
+
+    /**
+     * 본인 스토어의 상품 목록을 커서 기반으로 조회한다.
+     */
+    public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
+        storeService.findApprovedStoreByOwner(userId, storeId);
+
+        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        List<Product> products = productQueryRepository.findProductsWithCursor(
+                cursor, storeId, null, null, pageSize + 1
+        );
+
+        List<ProductListResponse> productList = products.stream()
+                .map(ProductListResponse::from)
+                .toList();
+
+        return ProductCursorResponse.of(productList, pageSize);
     }
 
     /**

@@ -4,6 +4,7 @@ import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.product.dto.request.ProductCreateRequest;
 import ccommit.stylehub.product.dto.request.StockUpdateRequest;
+import ccommit.stylehub.product.dto.response.ProductCursorResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.service.ProductService;
@@ -13,11 +14,13 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -25,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @created 2026/03/25
  *
  * <p>
- * STORE 역할 사용자의 상품 등록 및 재고 관리 API를 제공한다.
+ * STORE 역할 사용자의 상품 등록, 내 스토어 상품 조회, 재고 관리 API를 제공한다.
  * </p>
  */
 @RestController
@@ -35,6 +38,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProductController {
 
     private final ProductService productService;
+
+    @GetMapping
+    public ResponseEntity<ProductCursorResponse> getMyStoreProducts(
+            @PathVariable Long storeId,
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer size,
+            HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        return ResponseEntity.ok(productService.getMyStoreProducts(userId, storeId, cursor, size));
+    }
 
     @PostMapping
     public ResponseEntity<ProductResponse> registerProduct(
