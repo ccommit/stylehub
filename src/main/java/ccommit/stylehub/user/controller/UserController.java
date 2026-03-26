@@ -3,8 +3,7 @@ package ccommit.stylehub.user.controller;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.store.dto.request.StoreSignUpRequest;
 import ccommit.stylehub.store.dto.response.StoreSignUpResponse;
-import ccommit.stylehub.store.entity.Store;
-import ccommit.stylehub.store.service.StoreService;
+import ccommit.stylehub.store.service.StoreSignUpFacade;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
@@ -49,7 +48,7 @@ public class UserController {
 
     private final UserService userService;
     private final OAuthService oAuthService;
-    private final StoreService storeService;
+    private final StoreSignUpFacade storeSignUpFacade;
 
     @PostMapping("/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
@@ -59,9 +58,7 @@ public class UserController {
 
     @PostMapping("/sign-up/store")
     public ResponseEntity<StoreSignUpResponse> signUpWithStore(@Valid @RequestBody StoreSignUpRequest request) {
-        User user = userService.signUp(request.name(), request.email(), request.password(), null, UserRole.STORE);
-        Store store = storeService.saveStore(user, request.storeName(), request.storeDescription());
-        return ResponseEntity.status(HttpStatus.CREATED).body(StoreSignUpResponse.from(user, store));
+        return ResponseEntity.status(HttpStatus.CREATED).body(storeSignUpFacade.signUpWithStore(request));
     }
 
     @PostMapping("/login")
