@@ -30,6 +30,7 @@ import java.util.Objects;
  * @created 2026/03/25
  * @modified 2026/03/27 by WonJin - refactor: 조회 로직을 ProductViewService로 분리
  * @modified 2026/03/27 by WonJin - feat: 내 스토어 상품 목록 조회 추가
+ * @modified 2026/03/27 by WonJin - feat: 비관적 락 재고 차감/복구 메서드 추가
  *
  * <p>
  * STORE 역할 사용자의 상품 등록, 내 스토어 상품 조회, 재고 관리 비즈니스 로직을 처리한다.
@@ -49,9 +50,7 @@ public class ProductService {
     private final StoreService storeService;
     private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
-     */
+    // 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
     public ProductResponse registerProduct(Long userId, Long storeId, ProductCreateRequest request) {
         validateCategoryCombination(request.mainCategory(), request.subCategory());
 
@@ -70,9 +69,7 @@ public class ProductService {
         return ProductResponse.from(result.product(), result.options());
     }
 
-    /**
-     * 본인 스토어의 상품 목록을 커서 기반으로 조회한다.
-     */
+    // 본인 스토어의 상품 목록을 커서 기반으로 조회한다.
     public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
         storeService.findApprovedStoreByOwner(userId, storeId);
 
@@ -89,9 +86,7 @@ public class ProductService {
         return ProductCursorResponse.of(productList, pageSize);
     }
 
-    /**
-     * 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
-     */
+    // 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
@@ -107,6 +102,27 @@ public class ProductService {
         );
 
         return ProductOptionResponse.from(option);
+    }
+
+    /**
+     * 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
+     * @throws BusinessException PRODUCT_OPTION_NOT_FOUND, INSUFFICIENT_STOCK
+     */
+    public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
+        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+        option.decreaseStock(quantity);
+        return option;
+    }
+
+    /**
+     * 재고를 복구한다. 주문 취소 시 사용.
+     * @throws BusinessException PRODUCT_OPTION_NOT_FOUND
+     */
+    public void increaseStock(Long optionId, int quantity) {
+        ProductOption option = productOptionRepository.findById(optionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+        option.increaseStock(quantity);
     }
 
     private Product saveProduct(Store store, String name, MainCategory mainCategory,
