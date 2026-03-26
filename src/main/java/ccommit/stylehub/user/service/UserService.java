@@ -23,6 +23,7 @@ import java.util.Objects;
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/25 by WonJin - feat: STORE 역할 회원 생성 메서드 추가
+ * @modified 2026/03/26 by WonJin - refactor: 해싱과 저장 분리로 외부 트랜잭션 참여 지원
  *
  * <p>
  * 일반 회원가입과 로그인의 비즈니스 로직을 처리한다.
@@ -42,20 +43,33 @@ public class UserService {
 
 
     public User signUp(String name, String email, String password, LocalDate birthDate, UserRole role) {
-        // BCrypt: 트랜잭션 밖에서 실행 → DB 커넥션 점유 안 함
-        String hashedPassword = passwordHasher.hash(password);
+        String hashedPassword = hashPassword(password);
 
         try {
             return Objects.requireNonNull(
-                    transactionTemplate.execute(status -> {
-                        userValidator.validateSignUp(email, name);
-                        User user = User.create(name, email, hashedPassword, birthDate, role);
-                        return userRepository.save(user);
-                    })
+                    transactionTemplate.execute(status ->
+                            saveUser(name, email, hashedPassword, birthDate, role)
+                    )
             );
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(ErrorCode.DUPLICATE_EMAIL_OR_NAME);
         }
+    }
+
+    /**
+     * BCrypt 해싱. 트랜잭션 밖에서 호출하여 DB 커넥션 점유를 방지한다.
+     */
+    public String hashPassword(String rawPassword) {
+        return passwordHasher.hash(rawPassword);
+    }
+
+    /**
+     * 검증 + User 저장. 트랜잭션 내에서 호출되어야 한다.
+     */
+    public User saveUser(String name, String email, String hashedPassword, LocalDate birthDate, UserRole role) {
+        userValidator.validateSignUp(email, name);
+        User user = User.create(name, email, hashedPassword, birthDate, role);
+        return userRepository.save(user);
     }
 
     public UserLoginResponse login(UserLoginRequest request) {

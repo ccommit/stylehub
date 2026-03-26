@@ -40,6 +40,12 @@ public enum ErrorCode {
     INVALID_STORE_STATUS(HttpStatus.BAD_REQUEST, "S003", "현재 상태에서는 처리할 수 없습니다"),
     UNAUTHORIZED_STORE_ACCESS(HttpStatus.FORBIDDEN, "S004", "본인 스토어만 접근할 수 있습니다"),
 
+    // Product
+    STORE_NOT_APPROVED(HttpStatus.FORBIDDEN, "P001", "입점 승인된 스토어만 상품을 등록할 수 있습니다"),
+    PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P002", "존재하지 않는 상품입니다"),
+    INVALID_CATEGORY_COMBINATION(HttpStatus.BAD_REQUEST, "P003", "메인카테고리와 서브 카테고리가 일치하지 않습니다"),
+    PRODUCT_OPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "P004", "존재하지 않는 상품 옵션입니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),

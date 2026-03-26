@@ -40,6 +40,24 @@ public class StoreService {
         }
     }
 
+    /**
+     * @throws BusinessException STORE_NOT_FOUND, UNAUTHORIZED_STORE_ACCESS, STORE_NOT_APPROVED
+     */
+    public Store findApprovedStoreByOwner(Long userId, Long storeId) {
+        Store store = storeRepository.findById(storeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+
+        if (!store.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_STORE_ACCESS);
+        }
+
+        if (store.getStatus() != StoreStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.STORE_NOT_APPROVED);
+        }
+
+        return store;
+    }
+
     @Transactional(readOnly = true)
     public StoreResponse getMyStore(Long userId) {
         Store store = storeRepository.findByUserUserId(userId)
