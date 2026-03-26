@@ -3,7 +3,9 @@ package ccommit.stylehub.user.service;
 import ccommit.stylehub.common.config.PasswordHasher;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
+import ccommit.stylehub.user.repository.AddressRepository;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.UserRole;
@@ -24,6 +26,7 @@ import java.util.Objects;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/25 by WonJin - feat: STORE 역할 회원 생성 메서드 추가
  * @modified 2026/03/26 by WonJin - refactor: 해싱과 저장 분리로 외부 트랜잭션 참여 지원
+ * @modified 2026/03/27 by WonJin - feat: findUserById, findAddressByOwner 추가
  *
  * <p>
  * 일반 회원가입과 로그인의 비즈니스 로직을 처리한다.
@@ -36,6 +39,7 @@ import java.util.Objects;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final AddressRepository addressRepository;
     private final PasswordHasher passwordHasher;
     private final UserValidator userValidator;
     private final ApplicationEventPublisher eventPublisher;
@@ -56,20 +60,35 @@ public class UserService {
         }
     }
 
-    /**
-     * BCrypt 해싱. 트랜잭션 밖에서 호출하여 DB 커넥션 점유를 방지한다.
-     */
+    // BCrypt 해싱. 트랜잭션 밖에서 호출하여 DB 커넥션 점유를 방지한다.
     public String hashPassword(String rawPassword) {
         return passwordHasher.hash(rawPassword);
     }
 
-    /**
-     * 검증 + User 저장. 트랜잭션 내에서 호출되어야 한다.
-     */
+    // 검증 + User 저장. 트랜잭션 내에서 호출되어야 한다.
     public User saveUser(String name, String email, String hashedPassword, LocalDate birthDate, UserRole role) {
         userValidator.validateSignUp(email, name);
         User user = User.create(name, email, hashedPassword, birthDate, role);
         return userRepository.save(user);
+    }
+
+    public User findUserById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    /**
+     * @throws BusinessException ADDRESS_NOT_FOUND, UNAUTHORIZED_ORDER_ACCESS
+     */
+    public Address findAddressByOwner(Long userId, Long addressId) {
+        Address address = addressRepository.findByIdWithUser(addressId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ADDRESS_NOT_FOUND));
+
+        if (!address.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_ORDER_ACCESS);
+        }
+
+        return address;
     }
 
     public UserLoginResponse login(UserLoginRequest request) {
