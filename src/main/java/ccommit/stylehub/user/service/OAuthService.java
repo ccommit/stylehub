@@ -71,7 +71,7 @@ public class OAuthService {
         if (user.getProvider() == null) {
             throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
         }
-        eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now()));
+        eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now(), user.getRole()));
         return OAuthLoginResponse.from(user, false);
     }
 
@@ -80,7 +80,7 @@ public class OAuthService {
                 userInfo.name(), userInfo.email(), provider, userInfo.providerId()
         );
         User savedUser = userRepository.save(newUser);
-        eventPublisher.publishEvent(new LoginEvent(savedUser.getUserId(), LocalDate.now()));
+        eventPublisher.publishEvent(new LoginEvent(savedUser.getUserId(), LocalDate.now(), savedUser.getRole()));
         return OAuthLoginResponse.from(savedUser, true);
     }
 
@@ -88,7 +88,7 @@ public class OAuthService {
     private OAuthLoginResponse handleConcurrentSignUp(OAuthUserInfo userInfo) {
         return transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userInfo.email()).orElseThrow();
-            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now()));
+            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now(), user.getRole()));
             return OAuthLoginResponse.from(user, false);
         });
     }

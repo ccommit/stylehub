@@ -1,6 +1,7 @@
 package ccommit.stylehub.point.event;
 
 import ccommit.stylehub.point.service.PointRewardService;
+import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.event.LoginEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  *
  * <p>
  * 로그인 이벤트를 수신하여 포인트를 지급한다.
+ * USER 역할만 포인트를 지급하고, STORE/ADMIN은 무시한다.
  * user 도메인과 point 도메인 간의 결합을 이벤트로 분리한다.
  * </p>
  */
@@ -24,6 +26,9 @@ public class LoginEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
     public void handleLoginEvent(LoginEvent event) {
+        if (event.role() != UserRole.USER) {
+            return;
+        }
         pointRewardService.rewardLoginPoint(event.userId(), event.loginDate());
     }
 }

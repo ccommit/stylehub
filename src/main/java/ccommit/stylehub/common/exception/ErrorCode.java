@@ -34,6 +34,12 @@ public enum ErrorCode {
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "O003", "지원하지 않는 OAuth Provider입니다"),
     OAUTH_AUTHENTICATION_FAILED(HttpStatus.UNAUTHORIZED, "O004", "OAuth 인증에 실패했습니다"),
 
+    // Store
+    STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "존재하지 않는 스토어입니다"),
+    STORE_ALREADY_EXISTS(HttpStatus.CONFLICT, "S002", "이미 입점 신청한 스토어가 존재합니다"),
+    INVALID_STORE_STATUS(HttpStatus.BAD_REQUEST, "S003", "현재 상태에서는 처리할 수 없습니다"),
+    UNAUTHORIZED_STORE_ACCESS(HttpStatus.FORBIDDEN, "S004", "본인 스토어만 접근할 수 있습니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),

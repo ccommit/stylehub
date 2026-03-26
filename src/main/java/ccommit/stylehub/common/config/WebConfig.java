@@ -37,7 +37,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/v1/**") // 모든 API에 적용
                 .excludePathPatterns(
-                        "/api/v1/users/sign-up", // 회원가입 — 비로그인 상태에서 호출
+                        "/api/v1/users/sign-up/**", // 회원가입 — 비로그인 상태에서 호출
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
                         "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
                         "/v3/api-docs/**",         // Swagger API 문서
