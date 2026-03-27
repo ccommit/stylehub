@@ -19,6 +19,7 @@ import ccommit.stylehub.store.entity.Store;
 import ccommit.stylehub.store.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
@@ -70,9 +71,7 @@ public class ProductService {
         return ProductResponse.from(result.product(), result.options());
     }
 
-    /**
-     * 본인 스토어의 상품 목록을 커서 기반으로 조회한다.
-     */
+    @Transactional(readOnly = true)
     public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
         storeService.findApprovedStoreByOwner(userId, storeId);
 
