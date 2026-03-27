@@ -3,6 +3,7 @@ package ccommit.stylehub.order.service;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
+import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.entity.Order;
@@ -24,8 +25,7 @@ import java.util.Map;
  * @created 2026/03/27
  *
  * <p>
- * 주문 내역 조회 비즈니스 로직을 처리한다.
- * 모든 메서드에 읽기 전용 트랜잭션을 적용하여 조회 성능을 최적화한다.
+ * 주문 내역 조회 비즈니스 로직을 처리한다. (CQRS Query)
  * </p>
  */
 @Service
@@ -81,6 +81,16 @@ public class OrderViewService {
 
         List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
 
-        return OrderResponse.from(order, items);
+        List<OrderItemResponse> itemResponses = items.stream()
+                .map(OrderItemResponse::from)
+                .toList();
+
+        int totalAmount = itemResponses.stream()
+                .mapToInt(OrderItemResponse::totalPrice)
+                .sum();
+
+        int finalAmount = totalAmount - order.getDiscountAmount() - order.getUsedPoint();
+
+        return OrderResponse.from(order, itemResponses, totalAmount, finalAmount);
     }
 }

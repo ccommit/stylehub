@@ -4,6 +4,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
+import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderItem;
@@ -28,9 +29,8 @@ import java.util.TreeMap;
  * @created 2026/03/27
  *
  * <p>
- * 주문 생성 및 취소의 트랜잭션 단위를 담당한다.
+ * 주문 생성/취소의 트랜잭션 단위를 담당한다.
  * 비관적 락으로 재고를 차감하고, 주문 + 주문 항목을 한 트랜잭션으로 저장한다.
- * OrderService에서 호출되며, @Transactional 프록시가 정상 동작하도록 별도 클래스로 분리했다.
  * </p>
  */
 @Service
@@ -61,7 +61,17 @@ public class OrderTransactionService {
         // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
         // TODO: 적립 포인트 계산 (결제 완료 시 적립)
 
-        return OrderResponse.from(savedOrder, savedItems);
+        List<OrderItemResponse> itemResponses = savedItems.stream()
+                .map(OrderItemResponse::from)
+                .toList();
+
+        int totalAmount = itemResponses.stream()
+                .mapToInt(OrderItemResponse::totalPrice)
+                .sum();
+
+        int finalAmount = totalAmount - savedOrder.getDiscountAmount() - savedOrder.getUsedPoint();
+
+        return OrderResponse.from(savedOrder, itemResponses, totalAmount, finalAmount);
     }
 
     // PENDING 상태인 주문을 취소하고 재고를 복구한다.

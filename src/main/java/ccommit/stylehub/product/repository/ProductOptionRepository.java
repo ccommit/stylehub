@@ -25,19 +25,9 @@ public interface ProductOptionRepository extends JpaRepository<ProductOption, Lo
 
     List<ProductOption> findByProductProductId(Long productId);
 
-    /**
-     * 비관적 락(SELECT FOR UPDATE)으로 옵션을 조회한다.
-     * 주문 시 재고 차감의 동시성을 보장한다.
-     */
-    /**
-     * 비관적 락(SELECT FOR UPDATE)으로 옵션과 상품을 함께 조회한다.
-     * 주문 시 재고 차감의 동시성을 보장하고, Product 프록시 초기화를 방지한다.
-     */
-    /**
-     * 비관적 락(SELECT FOR UPDATE)으로 옵션, 상품, 스토어를 함께 조회한다.
-     * 주문 시 재고 차감의 동시성을 보장하고, Product/Store 프록시 초기화를 방지한다.
-     */
+    // 비관적 락(SELECT FOR UPDATE)으로 옵션, 상품, 스토어를 함께 조회한다. (재고 수정 시 사용)
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT po FROM ProductOption po JOIN FETCH po.product p JOIN FETCH p.store WHERE po.productOptionId = :optionId")
     Optional<ProductOption> findByIdWithLock(@Param("optionId") Long optionId);
+
 }
