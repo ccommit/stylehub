@@ -29,17 +29,8 @@ public record OrderResponse(
         Integer finalAmount,
         LocalDateTime createdAt
 ) {
-    public static OrderResponse from(Order order, List<OrderItem> items) {
-        List<OrderItemResponse> itemResponses = items.stream()
-                .map(OrderItemResponse::from)
-                .toList();
-
-        int totalAmount = itemResponses.stream()
-                .mapToInt(OrderItemResponse::totalPrice)
-                .sum();
-
-        int finalAmount = totalAmount - order.getDiscountAmount() - order.getUsedPoint();
-
+    public static OrderResponse from(Order order, List<OrderItemResponse> itemResponses,
+                                      int totalAmount, int finalAmount) {
         return OrderResponse.builder()
                 .orderId(order.getOrderId())
                 .pgOrderId(order.getPgOrderId())

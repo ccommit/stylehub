@@ -104,10 +104,8 @@ public class ProductService {
         return ProductOptionResponse.from(option);
     }
 
-    /**
-     * 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
-     * @throws BusinessException PRODUCT_OPTION_NOT_FOUND, INSUFFICIENT_STOCK
-     */
+    // 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
+    // TODO: 대용량 트래픽 대응 시 Redis DECR 원자적 연산으로 전환 예정
     public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
         ProductOption option = productOptionRepository.findByIdWithLock(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
@@ -115,10 +113,7 @@ public class ProductService {
         return option;
     }
 
-    /**
-     * 재고를 복구한다. 주문 취소 시 사용.
-     * @throws BusinessException PRODUCT_OPTION_NOT_FOUND
-     */
+    // 재고를 복구한다. 주문 취소 시 사용.
     public void increaseStock(Long optionId, int quantity) {
         ProductOption option = productOptionRepository.findById(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));

@@ -1,5 +1,8 @@
 package ccommit.stylehub.order.scheduler;
 
+import ccommit.stylehub.order.entity.Order;
+import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderTransactionService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -9,6 +12,8 @@ import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -16,9 +21,8 @@ import java.util.Set;
  * @created 2026/03/27
  *
  * <p>
- * Redis ZSET Delay Queue 기반 주문 타임아웃 처리기이다.
- * score를 만료 시각(epoch ms)으로 사용하여 만료된 주문만 정확히 처리한다.
- * DB 전체 스캔 없이 Redis에서 만료 주문을 탐색한다.
+ * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
+ * 1초마다 Redis에서 만료 주문을 탐색하고, 1시간마다 DB에서 누락 주문을 보정한다.
  * </p>
  */
 @Component
@@ -28,7 +32,10 @@ public class OrderTimeoutScheduler {
     private static final Logger log = LoggerFactory.getLogger(OrderTimeoutScheduler.class);
     public static final String ORDER_TIMEOUT_KEY = "order:timeout";
 
+    private static final int TIMEOUT_MINUTES = 30;
+
     private final StringRedisTemplate redisTemplate;
+    private final OrderRepository orderRepository;
     private final OrderTransactionService orderTransactionService;
 
     /**
@@ -63,6 +70,28 @@ public class OrderTimeoutScheduler {
                 log.info("주문 타임아웃 취소: orderId={}", orderId);
             } catch (Exception e) {
                 log.error("주문 타임아웃 취소 실패: orderId={}, error={}", orderId, e.getMessage());
+            }
+        }
+    }
+
+    // Redis 타이머 누락 보정 — 서버 장애 등으로 Redis에 등록되지 못한 PENDING 주문을 1시간마다 탐색하여 취소
+    @Scheduled(fixedDelay = 3600000)
+    public void compensateOrphanedOrders() {
+        LocalDateTime expiredTime = LocalDateTime.now().minusMinutes(TIMEOUT_MINUTES);
+        List<Order> orphanedOrders = orderRepository.findExpiredOrders(OrderStatus.PENDING, expiredTime);
+
+        if (orphanedOrders.isEmpty()) {
+            return;
+        }
+
+        log.warn("Redis 타이머 누락 보정: {}건 발견", orphanedOrders.size());
+
+        for (Order order : orphanedOrders) {
+            try {
+                orderTransactionService.cancelOrder(order.getOrderId());
+                log.info("보정 취소 완료: orderId={}", order.getOrderId());
+            } catch (Exception e) {
+                log.error("보정 취소 실패: orderId={}, error={}", order.getOrderId(), e.getMessage());
             }
         }
     }
