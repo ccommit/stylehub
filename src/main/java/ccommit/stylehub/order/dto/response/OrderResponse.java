@@ -1,7 +1,6 @@
 package ccommit.stylehub.order.dto.response;
 
 import ccommit.stylehub.order.entity.Order;
-import ccommit.stylehub.order.entity.OrderItem;
 import ccommit.stylehub.order.enums.OrderStatus;
 import lombok.Builder;
 

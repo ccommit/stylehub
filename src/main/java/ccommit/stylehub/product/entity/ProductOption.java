@@ -75,6 +75,22 @@ public class ProductOption {
         this.stockQuantity += quantity;
     }
 
+    public String getProductName() {
+        return product.getName();
+    }
+
+    public Integer getProductPrice() {
+        return product.getPrice();
+    }
+
+    public Long getStoreId() {
+        return product.getStore().getStoreId();
+    }
+
+    public String getStoreName() {
+        return product.getStore().getName();
+    }
+
     public static ProductOption create(Product product, String color, String size,
                                        Integer stockQuantity, Integer maxPointAmount) {
         return ProductOption.builder()

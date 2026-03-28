@@ -27,10 +27,10 @@ public record OrderItemResponse(
     public static OrderItemResponse from(OrderItem item) {
         return OrderItemResponse.builder()
                 .orderItemId(item.getOrderItemId())
-                .storeId(item.getProductOption().getProduct().getStore().getStoreId())
-                .storeName(item.getProductOption().getProduct().getStore().getName())
+                .storeId(item.getProductOption().getStoreId())
+                .storeName(item.getProductOption().getStoreName())
                 .productOptionId(item.getProductOption().getProductOptionId())
-                .productName(item.getProductOption().getProduct().getName())
+                .productName(item.getProductOption().getProductName())
                 .color(item.getProductOption().getColor())
                 .size(item.getProductOption().getSize())
                 .quantity(item.getQuantity())

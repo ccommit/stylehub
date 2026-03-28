@@ -89,8 +89,6 @@ public class OrderViewService {
                 .mapToInt(OrderItemResponse::totalPrice)
                 .sum();
 
-        int finalAmount = totalAmount - order.getDiscountAmount() - order.getUsedPoint();
-
-        return OrderResponse.from(order, itemResponses, totalAmount, finalAmount);
+        return OrderResponse.from(order, itemResponses, totalAmount, order.calculateFinalAmount(totalAmount));
     }
 }

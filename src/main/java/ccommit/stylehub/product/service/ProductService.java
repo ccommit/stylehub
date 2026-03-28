@@ -93,7 +93,7 @@ public class ProductService {
                     storeService.findApprovedStoreByOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
-                            .findByProductOptionIdAndProductProductId(optionId, productId)
+                            .findByIdWithLock(optionId)
                             .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
 
                     target.updateStockQuantity(stockQuantity);
@@ -113,9 +113,9 @@ public class ProductService {
         return option;
     }
 
-    // 재고를 복구한다. 주문 취소 시 사용.
+    // 비관적 락으로 재고를 복구한다. 주문 취소 시 사용.
     public void increaseStock(Long optionId, int quantity) {
-        ProductOption option = productOptionRepository.findById(optionId)
+        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
         option.increaseStock(quantity);
     }
