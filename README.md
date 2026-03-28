@@ -401,7 +401,7 @@ sequenceDiagram
     end
     Note over SV: POST /v1/payments/confirm<br/>Authorization: Basic {secretKey:Base64}
     SV->>Repo: 결제 상태 업데이트
-    Repo->>DB: UPDATE payments SET paymentKey, status=DONE
+    Repo->>DB: UPDATE payments SET paymentKey
     Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
     alt DB 타임아웃 발생
         DB-->>Repo: DataAccessException
@@ -412,7 +412,7 @@ sequenceDiagram
     DB-->>Repo: 저장 완료
     Repo-->>SV: 결제 상태 업데이트 완료
     SV-->>CT: 결제 승인 완료
-    CT-->>Client: 200 OK (paymentKey, orderId, status, amount, approvedAt)
+    CT-->>Client: 200 OK  
 ```
  
 </details> 
@@ -428,40 +428,23 @@ sequenceDiagram
     participant Service as CouponService
     participant Repository as CouponRepository (JPA)
     participant DB as DB
-
     Client->>Controller: POST /api/v1/coupons<br/>CouponCreateRequest(discountType, quantity, startAt, endAt)
     activate Controller
     Note over Controller: @Valid 요청값 검증<br/>(할인타입, 발급수량, 시작일/종료일)
     Controller->>Service: createCoupon(role, storeId, CouponCreateRequest)
     activate Service
     Note over Service: @Transactional<br/>role=STORE: storeId 쿠폰 발행<br/>role=ADMIN: 플랫폼 전체 쿠폰 발행
-
-    Service->>Repository: findByCondition(discountType, startAt, endAt)
+    Service->>Repository: save(Coupon)
     activate Repository
-    Repository->>DB: SELECT FROM coupons
+    Repository->>DB: INSERT INTO coupons
     activate DB
-    DB-->>Repository: 조회 결과 반환
+    DB-->>Repository: 저장 완료
     deactivate DB
-    Repository-->>Service: Optional(Coupon)
+    Repository-->>Service: Coupon (저장된 엔티티)
     deactivate Repository
-
-    alt 중복 쿠폰 존재
-        Service-->>Controller: 예외 전파 (중복 쿠폰)
-        Controller-->>Client: 쿠폰 생성 비즈니스예외 발생
-    else 중복 없음
-        Service->>Repository: save(Coupon)
-        activate Repository
-        Repository->>DB: INSERT INTO coupons
-        activate DB
-        DB-->>Repository: 저장 완료
-        Repository-->>Service: Coupon (저장된 엔티티)
-        Service-->>Controller: CouponResponse(couponId, discountType, quantity, startAt, endAt)
-        Controller-->>Client: 201 Created CouponResponse
-    end
-
-    deactivate DB
-    deactivate Repository
+    Service-->>Controller: CouponResponse(couponId, discountType, quantity, startAt, endAt)
     deactivate Service
+    Controller-->>Client: 201 Created CouponResponse
     deactivate Controller
 ```
  
