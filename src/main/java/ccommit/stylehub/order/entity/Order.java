@@ -98,6 +98,10 @@ public class Order extends BaseEntity {
         return "ORD-" + date + "-" + uuid;
     }
 
+    public int calculateFinalAmount(int totalAmount) {
+        return totalAmount - this.discountAmount - this.usedPoint;
+    }
+
     public void cancel() {
         if (this.orderStatus != OrderStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);

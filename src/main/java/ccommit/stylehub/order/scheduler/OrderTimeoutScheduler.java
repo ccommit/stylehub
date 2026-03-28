@@ -7,18 +7,20 @@ import ccommit.stylehub.order.service.OrderTransactionService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/03/27 by WonJin - refactor: Lua 스크립트로 ZRANGEBYSCORE+ZREM 원자적 처리, 보정 스케줄러 배치 LIMIT 추가
  *
  * <p>
  * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
@@ -33,6 +35,22 @@ public class OrderTimeoutScheduler {
     public static final String ORDER_TIMEOUT_KEY = "order:timeout";
 
     private static final int TIMEOUT_MINUTES = 30;
+    private static final int BATCH_SIZE = 100;
+
+    // Lua 스크립트: ZRANGEBYSCORE + ZREM을 원자적으로 실행하여 다중 서버 중복 처리를 방지한다.
+    private static final DefaultRedisScript<List> FETCH_AND_REMOVE_SCRIPT;
+
+    static {
+        FETCH_AND_REMOVE_SCRIPT = new DefaultRedisScript<>();
+        FETCH_AND_REMOVE_SCRIPT.setScriptText("""
+                local orders = redis.call('ZRANGEBYSCORE', KEYS[1], 0, ARGV[1], 'LIMIT', 0, ARGV[2])
+                if #orders > 0 then
+                    redis.call('ZREM', KEYS[1], unpack(orders))
+                end
+                return orders
+                """);
+        FETCH_AND_REMOVE_SCRIPT.setResultType(List.class);
+    }
 
     private final StringRedisTemplate redisTemplate;
     private final OrderRepository orderRepository;
@@ -40,32 +58,27 @@ public class OrderTimeoutScheduler {
 
     /**
      * Redis ZSET에서 만료된 주문을 1초마다 폴링하여 취소 처리한다.
-     * score <= 현재 시각인 주문만 조회하므로 정확한 시점에 처리된다.
+     * Lua 스크립트로 조회+제거를 원자적으로 수행하여 다중 서버 중복 처리를 방지한다.
      */
     @Scheduled(fixedDelay = 1000)
+    @SuppressWarnings("unchecked")
     public void cancelExpiredOrders() {
         long now = System.currentTimeMillis();
-        Set<ZSetOperations.TypedTuple<String>> expiredOrders =
-                redisTemplate.opsForZSet().rangeByScoreWithScores(ORDER_TIMEOUT_KEY, 0, now);
 
-        if (expiredOrders == null || expiredOrders.isEmpty()) {
+        List<String> expiredOrderIds = redisTemplate.execute(
+                FETCH_AND_REMOVE_SCRIPT,
+                Collections.singletonList(ORDER_TIMEOUT_KEY),
+                String.valueOf(now),
+                String.valueOf(BATCH_SIZE)
+        );
+
+        if (expiredOrderIds == null || expiredOrderIds.isEmpty()) {
             return;
         }
 
-        for (ZSetOperations.TypedTuple<String> tuple : expiredOrders) {
-            String orderIdStr = tuple.getValue();
-            if (orderIdStr == null) {
-                continue;
-            }
-
+        for (String orderIdStr : expiredOrderIds) {
             Long orderId = Long.valueOf(orderIdStr);
             try {
-                // ZSET에서 먼저 제거 (다른 서버가 중복 처리하지 않도록)
-                Long removed = redisTemplate.opsForZSet().remove(ORDER_TIMEOUT_KEY, orderIdStr);
-                if (removed == null || removed == 0) {
-                    continue; // 다른 서버가 이미 처리함
-                }
-
                 orderTransactionService.cancelOrder(orderId);
                 log.info("주문 타임아웃 취소: orderId={}", orderId);
             } catch (Exception e) {
@@ -74,11 +87,13 @@ public class OrderTimeoutScheduler {
         }
     }
 
-    // Redis 타이머 누락 보정 — 서버 장애 등으로 Redis에 등록되지 못한 PENDING 주문을 1시간마다 탐색하여 취소
+    // Redis 타이머 누락 보정 — 서버 장애 등으로 Redis에 등록되지 못한 PENDING 주문을 1시간마다 배치 탐색하여 취소
     @Scheduled(fixedDelay = 3600000)
     public void compensateOrphanedOrders() {
         LocalDateTime expiredTime = LocalDateTime.now().minusMinutes(TIMEOUT_MINUTES);
-        List<Order> orphanedOrders = orderRepository.findExpiredOrders(OrderStatus.PENDING, expiredTime);
+        List<Order> orphanedOrders = orderRepository.findExpiredOrders(
+                OrderStatus.PENDING, expiredTime, PageRequest.of(0, BATCH_SIZE)
+        );
 
         if (orphanedOrders.isEmpty()) {
             return;

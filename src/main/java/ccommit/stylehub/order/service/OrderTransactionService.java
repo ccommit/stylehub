@@ -61,28 +61,26 @@ public class OrderTransactionService {
         // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
         // TODO: 적립 포인트 계산 (결제 완료 시 적립)
 
+        int totalAmount = savedItems.stream()
+                .mapToInt(OrderItem::getTotalPrice)
+                .sum();
+
         List<OrderItemResponse> itemResponses = savedItems.stream()
                 .map(OrderItemResponse::from)
                 .toList();
 
-        int totalAmount = itemResponses.stream()
-                .mapToInt(OrderItemResponse::totalPrice)
-                .sum();
-
-        int finalAmount = totalAmount - savedOrder.getDiscountAmount() - savedOrder.getUsedPoint();
-
-        return OrderResponse.from(savedOrder, itemResponses, totalAmount, finalAmount);
+        return OrderResponse.from(savedOrder, itemResponses, totalAmount, savedOrder.calculateFinalAmount(totalAmount));
     }
 
     // PENDING 상태인 주문을 취소하고 재고를 복구한다.
     @Transactional
     public void cancelOrder(Long orderId) {
-        Order order = orderRepository.findById(orderId)
+        Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancel();
 
-        List<OrderItem> items = orderItemRepository.findByOrderOrderId(orderId);
+        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
         for (OrderItem item : items) {
             productService.increaseStock(
                     item.getProductOption().getProductOptionId(),
@@ -106,7 +104,7 @@ public class OrderTransactionService {
 
             items.add(OrderItem.create(
                     option, order, request.quantity(),
-                    option.getProduct().getPrice(), null
+                    option.getProductPrice(), null
             ));
         }
 
