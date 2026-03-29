@@ -5,7 +5,6 @@ import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
-import ccommit.stylehub.order.service.OrderViewService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
- * @modified 2026/03/27 by WonJin - feat: 주문 내역 목록/상세 조회 API 추가
+ * @modified 2026/03/29 by WonJin - refactor: OrderViewService를 OrderService로 통합
  *
  * <p>
  * 사용자의 주문 생성 및 주문 내역 조회 API를 제공한다.
@@ -35,7 +34,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
-    private final OrderViewService orderViewService;
 
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(
@@ -52,7 +50,7 @@ public class OrderController {
             @RequestParam(required = false) Integer size,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(orderViewService.getMyOrders(userId, cursor, size));
+        return ResponseEntity.ok(orderService.getMyOrders(userId, cursor, size));
     }
 
     @GetMapping("/{orderId}")
@@ -60,6 +58,6 @@ public class OrderController {
             @PathVariable Long orderId,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(orderViewService.getOrder(userId, orderId));
+        return ResponseEntity.ok(orderService.getOrder(userId, orderId));
     }
 }
