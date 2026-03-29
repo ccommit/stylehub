@@ -3,7 +3,7 @@ package ccommit.stylehub.order.scheduler;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderRepository;
-import ccommit.stylehub.order.service.OrderTransactionService;
+import ccommit.stylehub.order.service.OrderService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +21,7 @@ import java.util.List;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/03/27 by WonJin - refactor: Lua 스크립트로 ZRANGEBYSCORE+ZREM 원자적 처리, 보정 스케줄러 배치 LIMIT 추가
+ * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService → OrderService 통합에 따른 의존성 변경
  *
  * <p>
  * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
@@ -54,7 +55,7 @@ public class OrderTimeoutScheduler {
 
     private final StringRedisTemplate redisTemplate;
     private final OrderRepository orderRepository;
-    private final OrderTransactionService orderTransactionService;
+    private final OrderService orderService;
 
     /**
      * Redis ZSET에서 만료된 주문을 1초마다 폴링하여 취소 처리한다.
@@ -79,7 +80,7 @@ public class OrderTimeoutScheduler {
         for (String orderIdStr : expiredOrderIds) {
             Long orderId = Long.valueOf(orderIdStr);
             try {
-                orderTransactionService.cancelOrder(orderId);
+                orderService.cancelOrder(orderId);
                 log.info("주문 타임아웃 취소: orderId={}", orderId);
             } catch (Exception e) {
                 log.error("주문 타임아웃 취소 실패: orderId={}, error={}", orderId, e.getMessage());
@@ -103,7 +104,7 @@ public class OrderTimeoutScheduler {
 
         for (Order order : orphanedOrders) {
             try {
-                orderTransactionService.cancelOrder(order.getOrderId());
+                orderService.cancelOrder(order.getOrderId());
                 log.info("보정 취소 완료: orderId={}", order.getOrderId());
             } catch (Exception e) {
                 log.error("보정 취소 실패: orderId={}, error={}", order.getOrderId(), e.getMessage());
