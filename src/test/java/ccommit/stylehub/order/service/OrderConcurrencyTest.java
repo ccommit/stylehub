@@ -67,7 +67,7 @@ class OrderConcurrencyTest {
                             addressId,
                             List.of(new OrderItemRequest(optionId, 1))
                     );
-                    orderService.createOrder(userId, request);
+                    orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();
@@ -119,7 +119,7 @@ class OrderConcurrencyTest {
                             addressId,
                             List.of(new OrderItemRequest(optionId, 1))
                     );
-                    orderService.createOrder(userId, request);
+                    orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
                     failCount.incrementAndGet();

@@ -1,5 +1,6 @@
 package ccommit.stylehub.order.repository;
 
+import ccommit.stylehub.order.dto.response.OrderTotalAmountDto;
 import ccommit.stylehub.order.entity.OrderItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -26,7 +27,8 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             "WHERE oi.order.orderId = :orderId")
     List<OrderItem> findByOrderIdWithDetails(@Param("orderId") Long orderId);
 
-    @Query("SELECT oi.order.orderId, COALESCE(SUM(oi.quantity * oi.unitPrice), 0) " +
+    @Query("SELECT new ccommit.stylehub.order.dto.response.OrderTotalAmountDto(" +
+            "oi.order.orderId, COALESCE(SUM(oi.quantity * oi.unitPrice), 0)) " +
             "FROM OrderItem oi WHERE oi.order.orderId IN :orderIds GROUP BY oi.order.orderId")
-    List<Object[]> calculateTotalAmounts(@Param("orderIds") List<Long> orderIds);
+    List<OrderTotalAmountDto> calculateTotalAmounts(@Param("orderIds") List<Long> orderIds);
 }
