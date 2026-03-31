@@ -41,7 +41,7 @@ public class OrderController {
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.createOrder(userId, request));
+                .body(orderService.placeOrder(userId, request));
     }
 
     @GetMapping
