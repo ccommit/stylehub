@@ -27,6 +27,11 @@ public class ProductQueryRepository {
 
     private final JPAQueryFactory queryFactory;
 
+    // 스토어 필터만 적용 (카테고리 없이 조회)
+    public List<Product> findProductsWithCursor(Long cursor, Long storeId, int size) {
+        return findProductsWithCursor(cursor, storeId, null, null, size);
+    }
+
     public List<Product> findProductsWithCursor(Long cursor, Long storeId,
                                                  MainCategory mainCategory,
                                                  SubCategory subCategory, int size) {

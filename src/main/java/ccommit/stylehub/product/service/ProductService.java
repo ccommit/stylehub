@@ -4,7 +4,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.product.dto.request.ProductCreateRequest;
 import ccommit.stylehub.product.dto.request.ProductOptionRequest;
-import ccommit.stylehub.product.dto.response.ProductCursorResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
@@ -19,6 +19,7 @@ import ccommit.stylehub.store.entity.Store;
 import ccommit.stylehub.store.service.StoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
@@ -28,12 +29,12 @@ import java.util.Objects;
 /**
  * @author WonJin Bae
  * @created 2026/03/25
- * @modified 2026/03/27 by WonJin - refactor: 조회 로직을 ProductViewService로 분리
  * @modified 2026/03/27 by WonJin - feat: 내 스토어 상품 목록 조회 추가
  * @modified 2026/03/27 by WonJin - feat: 비관적 락 재고 차감/복구 메서드 추가
+ * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  *
  * <p>
- * STORE 역할 사용자의 상품 등록, 내 스토어 상품 조회, 재고 관리 비즈니스 로직을 처리한다.
+ * 상품 등록, 재고 관리, 조회를 담당한다.
  * 스토어 검증은 StoreService를 통해 처리하여 도메인 간 결합을 방지한다.
  * </p>
  */
@@ -69,28 +70,31 @@ public class ProductService {
         return ProductResponse.from(result.product(), result.options());
     }
 
-    // 본인 스토어의 상품 목록을 커서 기반으로 조회한다.
-    public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
-        storeService.findApprovedStoreByOwner(userId, storeId);
+    /**
+     * 내 스토어 상품 목록을 커서 기반으로 조회한다. 스토어 소유권 검증 포함.
+     */
+    @Transactional(readOnly = true)
+    public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
+        storeService.validateApprovedStoreOwner(userId, storeId);
 
-        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
         List<Product> products = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, null, null, pageSize + 1
+                cursor, storeId, resolvedSize + 1
         );
 
         List<ProductListResponse> productList = products.stream()
                 .map(ProductListResponse::from)
                 .toList();
 
-        return ProductCursorResponse.of(productList, pageSize);
+        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
     // 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    storeService.findApprovedStoreByOwner(userId, storeId);
+                    storeService.validateApprovedStoreOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
                             .findByIdWithLock(optionId)
@@ -118,6 +122,38 @@ public class ProductService {
         ProductOption option = productOptionRepository.findByIdWithLock(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
         option.increaseStock(quantity);
+    }
+
+    /**
+     * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
+     */
+    @Transactional(readOnly = true)
+    public CursorResponse<ProductListResponse> getProducts(Long cursor, Long storeId,
+                                              MainCategory mainCategory,
+                                              SubCategory subCategory, Integer pageSize) {
+        int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        List<Product> products = productQueryRepository.findProductsWithCursor(
+                cursor, storeId, mainCategory, subCategory, resolvedSize + 1
+        );
+
+        List<ProductListResponse> productList = products.stream()
+                .map(ProductListResponse::from)
+                .toList();
+
+        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
+    }
+
+    /**
+     * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
+     * Store와 Options를 JOIN FETCH로 한번에 조회한다.
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse getProduct(Long productId) {
+        Product product = productRepository.findByIdWithStoreAndOptions(productId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        return ProductResponse.from(product, product.getOptions());
     }
 
     private Product saveProduct(Store store, String name, MainCategory mainCategory,

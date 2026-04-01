@@ -4,6 +4,7 @@ import ccommit.stylehub.common.entity.BaseEntity;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.store.entity.Store;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,12 +15,16 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @author WonJin Bae
@@ -68,6 +73,10 @@ public class Product extends BaseEntity {
 
     @Column(name = "image_url", nullable = false, length = 300)
     private String imageUrl;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<ProductOption> options = new ArrayList<>();
 
     @Column(name = "like_count")
     @Builder.Default
