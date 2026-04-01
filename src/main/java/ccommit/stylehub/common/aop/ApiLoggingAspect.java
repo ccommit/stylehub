@@ -1,5 +1,6 @@
 package ccommit.stylehub.common.aop;
 
+import ccommit.stylehub.common.util.StopWatch;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -33,21 +34,18 @@ public class ApiLoggingAspect {
 
         log.info("[REQUEST] {} args={}", method, Arrays.toString(args));
 
-        long start = System.currentTimeMillis();
+        StopWatch stopWatch = StopWatch.start();
         boolean success = false;
         try {
             Object result = pjp.proceed();
             success = true;
-            long elapsed = System.currentTimeMillis() - start;
-            log.info("[RESPONSE] {} elapsed={}ms", method, elapsed);
+            log.info("[RESPONSE] {} elapsed={}ms", method, stopWatch.elapsed());
             return result;
         } catch (Exception e) {
-            long elapsed = System.currentTimeMillis() - start;
-            log.error("[ERROR] {} elapsed={}ms error={}", method, elapsed, e.getMessage());
+            log.error("[ERROR] {} elapsed={}ms error={}", method, stopWatch.elapsed(), e.getMessage());
             throw e;
         } finally {
-            long elapsed = System.currentTimeMillis() - start;
-            log.info("[COMPLETE] {} elapsed={}ms success={}", method, elapsed, success);
+            log.info("[COMPLETE] {} elapsed={}ms success={}", method, stopWatch.elapsed(), success);
         }
     }
 }

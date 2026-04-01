@@ -1,5 +1,6 @@
 package ccommit.stylehub.common.aop;
 
+import ccommit.stylehub.common.util.StopWatch;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
@@ -24,13 +25,12 @@ public class ExecutionTimeAspect {
 
     @Around("@annotation(executionTimeCheck)")
     public Object checkExecutionTime(ProceedingJoinPoint pjp, ExecutionTimeCheck executionTimeCheck) throws Throwable {
-        long start = System.currentTimeMillis();
+        StopWatch stopWatch = StopWatch.start();
         Object result = pjp.proceed();
-        long elapsed = System.currentTimeMillis() - start;
 
         String method = pjp.getSignature().toShortString();
-        if (elapsed > executionTimeCheck.threshold()) {
-            log.warn("[SLOW] {} elapsed={}ms threshold={}ms", method, elapsed, executionTimeCheck.threshold());
+        if (stopWatch.elapsed() > executionTimeCheck.threshold()) {
+            log.warn("[SLOW] {} elapsed={}ms threshold={}ms", method, stopWatch.elapsed(), executionTimeCheck.threshold());
         }
 
         return result;
