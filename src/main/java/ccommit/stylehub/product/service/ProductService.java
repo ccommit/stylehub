@@ -81,7 +81,7 @@ public class ProductService {
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
         List<Product> products = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, null, null, resolvedSize + 1
+                cursor, storeId, resolvedSize + 1
         );
 
         List<ProductListResponse> productList = products.stream()
