@@ -4,7 +4,8 @@ import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.product.dto.request.ProductCreateRequest;
 import ccommit.stylehub.product.dto.request.StockUpdateRequest;
-import ccommit.stylehub.product.dto.response.ProductCursorResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
+import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.enums.MainCategory;
@@ -43,7 +44,7 @@ public class ProductController {
 
     //공개 API (비인증)
     @GetMapping("/api/v1/products")
-    public ResponseEntity<ProductCursorResponse> getProducts(
+    public ResponseEntity<CursorResponse<ProductListResponse>> getProducts(
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Long storeId,
             @RequestParam(required = false) MainCategory mainCategory,
@@ -60,7 +61,7 @@ public class ProductController {
     //  스토어 API (STORE 권한 필요)
     @GetMapping("/api/v1/stores/{storeId}/products")
     @RequiredRole(UserRole.STORE)
-    public ResponseEntity<ProductCursorResponse> getMyStoreProducts(
+    public ResponseEntity<CursorResponse<ProductListResponse>> getMyStoreProducts(
             @PathVariable Long storeId,
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer pageSize,

@@ -4,7 +4,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.product.dto.request.ProductCreateRequest;
 import ccommit.stylehub.product.dto.request.ProductOptionRequest;
-import ccommit.stylehub.product.dto.response.ProductCursorResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
@@ -75,7 +75,7 @@ public class ProductService {
      * 내 스토어 상품 목록을 커서 기반으로 조회한다. 스토어 소유권 검증 포함.
      */
     @Transactional(readOnly = true)
-    public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
+    public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
         storeService.findApprovedStoreByOwner(userId, storeId);
 
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
@@ -88,7 +88,7 @@ public class ProductService {
                 .map(ProductListResponse::from)
                 .toList();
 
-        return ProductCursorResponse.of(productList, resolvedSize);
+        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
     /**
@@ -115,7 +115,7 @@ public class ProductService {
      * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
      */
     @Transactional(readOnly = true)
-    public ProductCursorResponse getProducts(Long cursor, Long storeId,
+    public CursorResponse<ProductListResponse> getProducts(Long cursor, Long storeId,
                                               MainCategory mainCategory,
                                               SubCategory subCategory, Integer pageSize) {
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
@@ -128,20 +128,19 @@ public class ProductService {
                 .map(ProductListResponse::from)
                 .toList();
 
-        return ProductCursorResponse.of(productList, resolvedSize);
+        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
     /**
      * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
+     * Store와 Options를 JOIN FETCH로 한번에 조회한다.
      */
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
-        Product product = productRepository.findByIdWithStore(productId)
+        Product product = productRepository.findByIdWithStoreAndOptions(productId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
 
-        List<ProductOption> options = productOptionRepository.findByProductProductId(productId);
-
-        return ProductResponse.from(product, options);
+        return ProductResponse.from(product, product.getOptions());
     }
 
     private Product saveProduct(Store store, String name, MainCategory mainCategory,
