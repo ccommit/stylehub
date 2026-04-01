@@ -17,6 +17,8 @@ import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.event.OrderCreatedEvent;
+import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.user.entity.Address;
@@ -52,6 +54,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final OrderQueryRepository orderQueryRepository;
+    private final PaymentRepository paymentRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final UserService userService;
     private final ProductService productService;
@@ -59,9 +62,9 @@ public class OrderService {
     /**
      * 주문을 접수한다.
      * Order.create()는 엔티티 객체 생성, placeOrder()는 주문 접수 비즈니스 흐름을 담당한다.
-     * 1. 주문 생성 + 재고 차감
+     * 1. 주문 생성 + 재고 차감 + Payment READY 상태로 저장
      * 2. 트랜잭션 커밋 후: OrderCreatedEvent → Redis 타임아웃 등록 (30분)
-     * 3. 추후: 토스페이먼츠 결제 API 호출
+     * 3. 프론트(샌드박스)에서 pgOrderId + totalAmount로 토스 결제창 진입
      */
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
@@ -77,9 +80,22 @@ public class OrderService {
         // TODO: 쿠폰 사용 처리 (UserCoupon 상태 변경)
         // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
 
+        createPaymentReady(savedOrder, savedItems);
         eventPublisher.publishEvent(new OrderCreatedEvent(savedOrder.getOrderId()));
 
         return buildOrderResponse(savedOrder, savedItems);
+    }
+
+    private void createPaymentReady(Order order, List<OrderItem> items) {
+        int totalAmount = items.stream()
+                .mapToInt(OrderItem::getTotalPrice)
+                .sum();
+        int finalAmount = order.calculateFinalAmount(totalAmount);
+
+        paymentRepository.save(Payment.create(
+                order, "", "주문 결제",
+                finalAmount, totalAmount, finalAmount
+        ));
     }
 
     /**
@@ -91,9 +107,11 @@ public class OrderService {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
-        // PENDING 상태 검증 + CANCELLED 변경 — 실패 시 재고 복구 없이 즉시 예외
         order.cancel();
+        restoreStock(orderId);
+    }
 
+    private void restoreStock(Long orderId) {
         List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
 
         // deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
@@ -114,10 +132,19 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public OrderCursorResponse getMyOrders(Long userId, Long cursor, Integer size) {
-        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        int pageSize = resolvePageSize(size);
 
         List<Order> orders = orderQueryRepository.findMyOrdersWithCursor(userId, cursor, pageSize + 1);
+        List<OrderListResponse> orderList = toOrderListResponses(orders);
 
+        return OrderCursorResponse.of(orderList, pageSize);
+    }
+
+    private int resolvePageSize(Integer size) {
+        return (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+    }
+
+    private List<OrderListResponse> toOrderListResponses(List<Order> orders) {
         List<Long> orderIds = orders.stream().map(Order::getOrderId).toList();
         Map<Long, Integer> totalAmountMap = getTotalAmountMap(orderIds);
 
@@ -126,8 +153,7 @@ public class OrderService {
             Integer totalAmount = totalAmountMap.getOrDefault(order.getOrderId(), 0);
             orderList.add(OrderListResponse.from(order, totalAmount));
         }
-
-        return OrderCursorResponse.of(orderList, pageSize);
+        return orderList;
     }
 
     /**
@@ -135,16 +161,19 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public OrderResponse getOrder(Long userId, Long orderId) {
+        Order order = findOrderByOwner(userId, orderId);
+        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
+        return buildOrderResponse(order, items);
+    }
+
+    private Order findOrderByOwner(Long userId, Long orderId) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         if (!order.getUser().getUserId().equals(userId)) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED_ORDER_ACCESS);
         }
-
-        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
-
-        return buildOrderResponse(order, items);
+        return order;
     }
 
     /**
