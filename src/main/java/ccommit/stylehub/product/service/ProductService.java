@@ -75,20 +75,20 @@ public class ProductService {
      * 내 스토어 상품 목록을 커서 기반으로 조회한다. 스토어 소유권 검증 포함.
      */
     @Transactional(readOnly = true)
-    public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
+    public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
         storeService.findApprovedStoreByOwner(userId, storeId);
 
-        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+        int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
         List<Product> products = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, null, null, pageSize + 1
+                cursor, storeId, null, null, resolvedSize + 1
         );
 
         List<ProductListResponse> productList = products.stream()
                 .map(ProductListResponse::from)
                 .toList();
 
-        return ProductCursorResponse.of(productList, pageSize);
+        return ProductCursorResponse.of(productList, resolvedSize);
     }
 
     /**
@@ -117,18 +117,18 @@ public class ProductService {
     @Transactional(readOnly = true)
     public ProductCursorResponse getProducts(Long cursor, Long storeId,
                                               MainCategory mainCategory,
-                                              SubCategory subCategory, Integer size) {
-        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+                                              SubCategory subCategory, Integer pageSize) {
+        int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
         List<Product> products = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, mainCategory, subCategory, pageSize + 1
+                cursor, storeId, mainCategory, subCategory, resolvedSize + 1
         );
 
         List<ProductListResponse> productList = products.stream()
                 .map(ProductListResponse::from)
                 .toList();
 
-        return ProductCursorResponse.of(productList, pageSize);
+        return ProductCursorResponse.of(productList, resolvedSize);
     }
 
     /**

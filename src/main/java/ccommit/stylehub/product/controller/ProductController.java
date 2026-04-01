@@ -48,8 +48,8 @@ public class ProductController {
             @RequestParam(required = false) Long storeId,
             @RequestParam(required = false) MainCategory mainCategory,
             @RequestParam(required = false) SubCategory subCategory,
-            @RequestParam(required = false) Integer size) {
-        return ResponseEntity.ok(productService.getProducts(cursor, storeId, mainCategory, subCategory, size));
+            @RequestParam(required = false) Integer pageSize) {
+        return ResponseEntity.ok(productService.getProducts(cursor, storeId, mainCategory, subCategory, pageSize));
     }
 
     @GetMapping("/api/v1/products/{productId}")
@@ -63,10 +63,10 @@ public class ProductController {
     public ResponseEntity<ProductCursorResponse> getMyStoreProducts(
             @PathVariable Long storeId,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) Integer pageSize,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(productService.getMyStoreProducts(userId, storeId, cursor, size));
+        return ResponseEntity.ok(productService.getMyStoreProducts(userId, storeId, cursor, pageSize));
     }
 
     @PostMapping("/api/v1/stores/{storeId}/products")
