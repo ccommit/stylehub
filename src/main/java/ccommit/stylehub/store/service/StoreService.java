@@ -41,7 +41,14 @@ public class StoreService {
     }
 
     /**
-     * @throws BusinessException STORE_NOT_FOUND, UNAUTHORIZED_STORE_ACCESS, STORE_NOT_APPROVED
+     * 승인된 스토어의 소유권을 검증한다. 검증 실패 시 예외를 던진다.
+     */
+    public void validateApprovedStoreOwner(Long userId, Long storeId) {
+        findApprovedStoreByOwner(userId, storeId);
+    }
+
+    /**
+     * 승인된 스토어를 소유권 검증 후 반환한다. Store 객체가 필요한 경우 사용한다.
      */
     public Store findApprovedStoreByOwner(Long userId, Long storeId) {
         Store store = storeRepository.findById(storeId)
