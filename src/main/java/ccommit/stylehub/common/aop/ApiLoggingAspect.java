@@ -12,6 +12,7 @@ import java.util.Arrays;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/04/01 by WonJin - feat: finally 블록에 종료 로그 추가
  *
  * <p>
  * 주문/결제 API의 요청/응답을 자동으로 로깅하는 AOP이다.
@@ -33,8 +34,10 @@ public class ApiLoggingAspect {
         log.info("[REQUEST] {} args={}", method, Arrays.toString(args));
 
         long start = System.currentTimeMillis();
+        boolean success = false;
         try {
             Object result = pjp.proceed();
+            success = true;
             long elapsed = System.currentTimeMillis() - start;
             log.info("[RESPONSE] {} elapsed={}ms", method, elapsed);
             return result;
@@ -42,6 +45,9 @@ public class ApiLoggingAspect {
             long elapsed = System.currentTimeMillis() - start;
             log.error("[ERROR] {} elapsed={}ms error={}", method, elapsed, e.getMessage());
             throw e;
+        } finally {
+            long elapsed = System.currentTimeMillis() - start;
+            log.info("[COMPLETE] {} elapsed={}ms success={}", method, elapsed, success);
         }
     }
 }
