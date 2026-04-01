@@ -58,10 +58,11 @@ public class OrderTimeoutScheduler {
     private final OrderService orderService;
 
     /**
-     * Redis ZSET에서 만료된 주문을 1초마다 폴링하여 취소 처리한다.
+     * Redis ZSET에서 만료된 주문을 1분마다 폴링하여 취소 처리한다.
      * Lua 스크립트로 조회+제거를 원자적으로 수행하여 다중 서버 중복 처리를 방지한다.
+     * TODO: 주문 취소 시 유저 메일 발송 추가 필요
      */
-    @Scheduled(fixedDelay = 1000)
+    @Scheduled(fixedDelay = 60000)
     @SuppressWarnings("unchecked")
     public void cancelExpiredOrders() {
         long now = System.currentTimeMillis();
