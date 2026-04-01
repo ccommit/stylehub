@@ -29,11 +29,11 @@ import java.util.Objects;
 /**
  * @author WonJin Bae
  * @created 2026/03/25
- * @modified 2026/03/27 by WonJin - refactor: 조회 로직을 ProductViewService로 분리
  * @modified 2026/03/27 by WonJin - feat: 내 스토어 상품 목록 조회 추가
+ * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  *
  * <p>
- * STORE 역할 사용자의 상품 등록, 내 스토어 상품 조회, 재고 관리 비즈니스 로직을 처리한다.
+ * 상품 등록, 재고 관리, 조회를 담당한다.
  * 스토어 검증은 StoreService를 통해 처리하여 도메인 간 결합을 방지한다.
  * </p>
  */
@@ -71,6 +71,9 @@ public class ProductService {
         return ProductResponse.from(result.product(), result.options());
     }
 
+    /**
+     * 내 스토어 상품 목록을 커서 기반으로 조회한다. 스토어 소유권 검증 포함.
+     */
     @Transactional(readOnly = true)
     public ProductCursorResponse getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer size) {
         storeService.findApprovedStoreByOwner(userId, storeId);
@@ -106,6 +109,39 @@ public class ProductService {
         );
 
         return ProductOptionResponse.from(option);
+    }
+
+    /**
+     * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
+     */
+    @Transactional(readOnly = true)
+    public ProductCursorResponse getProducts(Long cursor, Long storeId,
+                                              MainCategory mainCategory,
+                                              SubCategory subCategory, Integer size) {
+        int pageSize = (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        List<Product> products = productQueryRepository.findProductsWithCursor(
+                cursor, storeId, mainCategory, subCategory, pageSize + 1
+        );
+
+        List<ProductListResponse> productList = products.stream()
+                .map(ProductListResponse::from)
+                .toList();
+
+        return ProductCursorResponse.of(productList, pageSize);
+    }
+
+    /**
+     * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
+     */
+    @Transactional(readOnly = true)
+    public ProductResponse getProduct(Long productId) {
+        Product product = productRepository.findByIdWithStore(productId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        List<ProductOption> options = productOptionRepository.findByProductProductId(productId);
+
+        return ProductResponse.from(product, options);
     }
 
     private Product saveProduct(Store store, String name, MainCategory mainCategory,
