@@ -1,10 +1,12 @@
 package ccommit.stylehub.order.controller;
 
+import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
+import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/orders")
 @RequiredArgsConstructor
+@RequiredRole(UserRole.USER)
 public class OrderController {
 
     private final OrderService orderService;
