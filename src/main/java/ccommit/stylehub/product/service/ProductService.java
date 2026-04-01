@@ -76,7 +76,7 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
-        storeService.findApprovedStoreByOwner(userId, storeId);
+        storeService.validateApprovedStoreOwner(userId, storeId);
 
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
@@ -97,7 +97,7 @@ public class ProductService {
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    storeService.findApprovedStoreByOwner(userId, storeId);
+                    storeService.validateApprovedStoreOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
                             .findByProductOptionIdAndProductProductId(optionId, productId)
