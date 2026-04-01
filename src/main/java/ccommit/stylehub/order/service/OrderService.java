@@ -5,7 +5,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
-import ccommit.stylehub.order.dto.response.OrderCursorResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
@@ -131,13 +131,13 @@ public class OrderService {
      * 내 주문 내역을 커서 기반으로 조회한다. (무한 스크롤)
      */
     @Transactional(readOnly = true)
-    public OrderCursorResponse getMyOrders(Long userId, Long cursor, Integer size) {
+    public CursorResponse<OrderListResponse> getMyOrders(Long userId, Long cursor, Integer size) {
         int pageSize = resolvePageSize(size);
 
         List<Order> orders = orderQueryRepository.findMyOrdersWithCursor(userId, cursor, pageSize + 1);
         List<OrderListResponse> orderList = toOrderListResponses(orders);
 
-        return OrderCursorResponse.of(orderList, pageSize);
+        return CursorResponse.of(orderList, pageSize, OrderListResponse::orderId);
     }
 
     private int resolvePageSize(Integer size) {
