@@ -2,7 +2,17 @@ package ccommit.stylehub.payment.entity;
 
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.payment.enums.PaymentStatus;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -91,5 +101,38 @@ public class Payment {
                 .requestedAt(now)
                 .updatedAt(now)
                 .build();
+    }
+
+    // 결제 실패 처리
+    public void abort() {
+        this.status = PaymentStatus.ABORTED;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // 결제 승인 완료 처리
+    public void approve(Integer approvedAmount) {
+        this.status = PaymentStatus.DONE;
+        this.approvedAmount = approvedAmount;
+        this.approvedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // 취소 처리 — cancelAmount가 null이면 전액 취소, 값이 있으면 부분 취소
+    public void cancel(String reason, Integer cancelAmount) {
+        if (cancelAmount == null) {
+            this.status = PaymentStatus.CANCELED;
+            this.cancelAmount = this.approvedAmount;
+            this.balanceAmount = 0;
+        } else {
+            this.cancelAmount = (this.cancelAmount != null ? this.cancelAmount : 0) + cancelAmount;
+            this.balanceAmount = this.balanceAmount - cancelAmount;
+            this.status = (this.balanceAmount == 0) ? PaymentStatus.CANCELED : PaymentStatus.PARTIAL_CANCELED;
+        }
+        this.cancelReason = reason;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public boolean isFullyCanceled() {
+        return this.status == PaymentStatus.CANCELED;
     }
 }
