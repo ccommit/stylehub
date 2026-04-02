@@ -63,6 +63,10 @@ public class OrderItem {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
+    public int getTotalPrice() {
+        return unitPrice * quantity;
+    }
+
     public static OrderItem create(ProductOption productOption, Order order,
                                    Integer quantity, Integer unitPrice,
                                    UserCoupon userCoupon) {

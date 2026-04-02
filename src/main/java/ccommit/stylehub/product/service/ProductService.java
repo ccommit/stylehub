@@ -30,6 +30,7 @@ import java.util.Objects;
  * @author WonJin Bae
  * @created 2026/03/25
  * @modified 2026/03/27 by WonJin - feat: 내 스토어 상품 목록 조회 추가
+ * @modified 2026/03/27 by WonJin - feat: 비관적 락 재고 차감/복구 메서드 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  *
  * <p>
@@ -50,9 +51,7 @@ public class ProductService {
     private final StoreService storeService;
     private final TransactionTemplate transactionTemplate;
 
-    /**
-     * 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
-     */
+    // 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
     public ProductResponse registerProduct(Long userId, Long storeId, ProductCreateRequest request) {
         validateCategoryCombination(request.mainCategory(), request.subCategory());
 
@@ -91,16 +90,14 @@ public class ProductService {
         return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
-    /**
-     * 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
-     */
+    // 스토어 소유권, 승인 상태를 검증하고 해당 상품의 옵션 재고를 변경한다.
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
                     storeService.validateApprovedStoreOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
-                            .findByProductOptionIdAndProductProductId(optionId, productId)
+                            .findByIdWithLock(optionId)
                             .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
 
                     target.updateStockQuantity(stockQuantity);
@@ -109,6 +106,22 @@ public class ProductService {
         );
 
         return ProductOptionResponse.from(option);
+    }
+
+    // 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
+    // TODO: 대용량 트래픽 대응 시 Redis DECR 원자적 연산으로 전환 예정
+    public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
+        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+        option.decreaseStock(quantity);
+        return option;
+    }
+
+    // 비관적 락으로 재고를 복구한다. 주문 취소 시 사용.
+    public void increaseStock(Long optionId, int quantity) {
+        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+        option.increaseStock(quantity);
     }
 
     /**

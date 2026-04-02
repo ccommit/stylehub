@@ -46,6 +46,13 @@ public enum ErrorCode {
     INVALID_CATEGORY_COMBINATION(HttpStatus.BAD_REQUEST, "P003", "메인카테고리와 서브 카테고리가 일치하지 않습니다"),
     PRODUCT_OPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "P004", "존재하지 않는 상품 옵션입니다"),
 
+    // Order
+    ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "OR001", "존재하지 않는 주문입니다"),
+    INVALID_ORDER_STATUS(HttpStatus.BAD_REQUEST, "OR002", "현재 상태에서는 처리할 수 없습니다"),
+    UNAUTHORIZED_ORDER_ACCESS(HttpStatus.FORBIDDEN, "OR003", "본인 주문만 접근할 수 있습니다"),
+    INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "OR004", "재고가 부족합니다"),
+    ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "OR005", "존재하지 않는 배송지입니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),
