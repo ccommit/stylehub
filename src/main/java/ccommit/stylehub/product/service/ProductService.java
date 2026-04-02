@@ -9,15 +9,20 @@ import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.entity.Product;
+import ccommit.stylehub.product.entity.ProductLike;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
+import ccommit.stylehub.product.repository.ProductLikeRepository;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
+import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.repository.UserRepository;
 import ccommit.stylehub.store.entity.Store;
 import ccommit.stylehub.store.service.StoreService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,6 +53,8 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
     private final ProductQueryRepository productQueryRepository;
+    private final ProductLikeRepository productLikeRepository;
+    private final UserRepository userRepository;
     private final StoreService storeService;
     private final TransactionTemplate transactionTemplate;
 
@@ -174,6 +181,45 @@ public class ProductService {
             ));
         }
         return productOptionRepository.saveAll(options);
+    }
+
+    // === 상품 찜 ===
+
+    @Transactional
+    public void likeProduct(Long userId, Long productId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
+
+        try {
+            productLikeRepository.save(ProductLike.create(user, product));
+            productLikeRepository.increaseLikeCount(productId);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.ALREADY_LIKED);
+        }
+    }
+
+    @Transactional
+    public void unlikeProduct(Long userId, Long productId) {
+        ProductLike like = productLikeRepository.findByUserUserIdAndProductProductId(userId, productId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LIKE_NOT_FOUND));
+
+        productLikeRepository.delete(like);
+        productLikeRepository.decreaseLikeCount(productId);
+    }
+
+    @Transactional(readOnly = true)
+    public CursorResponse<ProductListResponse> getMyLikedProducts(Long userId, Long cursor, Integer pageSize) {
+        int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
+
+        List<ProductLike> likes = productLikeRepository.findMyLikedProducts(userId, cursor, resolvedSize + 1);
+
+        List<ProductListResponse> productList = likes.stream()
+                .map(like -> ProductListResponse.from(like.getProduct()))
+                .toList();
+
+        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
     private void validateCategoryCombination(MainCategory mainCategory, SubCategory subCategory) {

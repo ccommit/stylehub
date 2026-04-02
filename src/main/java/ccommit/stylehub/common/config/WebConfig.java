@@ -14,6 +14,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/23 by WonJin - feat: 인증/역할 검증 인터셉터 등록
  * @modified 2026/03/27 by WonJin - feat: 상품 조회 공개 API 경로 인증 제외 추가
+ * @modified 2026/04/02 by WonJin - refactor: 상품 찜하기 API 인증 적용을 위해 제외 패턴 세분화
  *
  * <p>
  * Spring MVC 커스텀 Converter와 인터셉터를 등록한다.

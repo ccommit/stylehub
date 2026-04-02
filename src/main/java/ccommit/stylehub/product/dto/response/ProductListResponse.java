@@ -23,7 +23,8 @@ public record ProductListResponse(
         MainCategory mainCategory,
         SubCategory subCategory,
         Integer price,
-        String imageUrl
+        String imageUrl,
+        Integer likeCount
 ) {
     public static ProductListResponse from(Product product) {
         return ProductListResponse.builder()
@@ -35,6 +36,7 @@ public record ProductListResponse(
                 .subCategory(product.getSubCategory())
                 .price(product.getPrice())
                 .imageUrl(product.getImageUrl())
+                .likeCount(product.getLikeCount())
                 .build();
     }
 }

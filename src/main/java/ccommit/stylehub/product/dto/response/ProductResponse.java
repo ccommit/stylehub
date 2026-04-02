@@ -29,6 +29,7 @@ public record ProductResponse(
         String description,
         Integer price,
         String imageUrl,
+        Integer likeCount,
         LocalDateTime createdAt,
         List<ProductOptionResponse> options
 ) {
@@ -43,6 +44,7 @@ public record ProductResponse(
                 .description(product.getDescription())
                 .price(product.getPrice())
                 .imageUrl(product.getImageUrl())
+                .likeCount(product.getLikeCount())
                 .createdAt(product.getCreatedAt())
                 .options(options.stream()
                         .map(ProductOptionResponse::from)

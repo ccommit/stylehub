@@ -11,14 +11,20 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * @author WonJin Bae
  * @created 2026/03/25
  * @modified 2026/03/26 by WonJin - refactor: saveStore에 @Transactional 적용, 동시 요청 중복 생성 방어 추가
+ * @modified 2026/04/02 by WonJin - refactor: StoreAdminService를 StoreService로 통합
  *
  * <p>
- * STORE 역할 사용자의 스토어 생성, 조회, 소유권 검증 비즈니스 로직을 처리한다.
+ * 스토어 생성, 조회, 소유권 검증, 입점 관리(승인/거절/정지), 찜하기를 담당한다.
  * </p>
  */
 @Service
@@ -26,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StoreService {
 
     private final StoreRepository storeRepository;
+    private final TransactionTemplate transactionTemplate;
 
     @Transactional
     public Store saveStore(User user, String storeName, String storeDescription) {
@@ -72,4 +79,51 @@ public class StoreService {
 
         return StoreResponse.from(store);
     }
+
+    // === 입점 관리 (ADMIN) ===
+    @Transactional(readOnly = true)
+    public List<StoreResponse> getStoresByStatus(StoreStatus status) {
+        List<Store> stores = (status != null)
+                ? storeRepository.findByStatus(status)
+                : storeRepository.findAll();
+
+        return stores.stream()
+                .map(StoreResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public StoreResponse getStore(Long storeId) {
+        Store store = findStoreById(storeId);
+        return StoreResponse.from(store);
+    }
+
+    public StoreResponse approve(Long storeId) {
+        return changeStatus(storeId, Store::approve);
+    }
+
+    public StoreResponse reject(Long storeId) {
+        return changeStatus(storeId, Store::reject);
+    }
+
+    public StoreResponse suspend(Long storeId) {
+        return changeStatus(storeId, Store::suspend);
+    }
+
+    private StoreResponse changeStatus(Long storeId, Consumer<Store> action) {
+        Store store = Objects.requireNonNull(
+                transactionTemplate.execute(status -> {
+                    Store target = findStoreById(storeId);
+                    action.accept(target);
+                    return target;
+                })
+        );
+        return StoreResponse.from(store);
+    }
+
+    private Store findStoreById(Long storeId) {
+        return storeRepository.findById(storeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+    }
+
 }

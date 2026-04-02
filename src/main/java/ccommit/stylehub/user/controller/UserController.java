@@ -1,6 +1,10 @@
 package ccommit.stylehub.user.controller;
 
+import ccommit.stylehub.common.config.RequiredRole;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.util.SessionUtils;
+import ccommit.stylehub.product.dto.response.ProductListResponse;
+import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.store.dto.request.StoreSignUpRequest;
 import ccommit.stylehub.store.dto.response.StoreSignUpResponse;
 import ccommit.stylehub.store.service.StoreSignUpFacade;
@@ -36,9 +40,10 @@ import java.util.Map;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/23 by WonJin - feat: HTTP 세션 기반 인증 적용 (로그인/OAuth 세션 생성, 로그아웃)
  * @modified 2026/03/25 by WonJin - feat: 스토어 회원가입 + 입점 신청 API 추가
+ * @modified 2026/04/02 by WonJin - feat : 상품좋아요 api 추가
  *
  * <p>
- * 회원가입, 로그인, OAuth 소셜 로그인, 로그아웃 API 엔드포인트를 제공한다.
+ * 회원가입, 로그인, OAuth 소셜 로그인, 로그아웃, 내 찜 목록 조회 API를 제공한다.
  * </p>
  */
 @RestController
@@ -49,6 +54,7 @@ public class UserController {
     private final UserService userService;
     private final OAuthService oAuthService;
     private final StoreSignUpFacade storeSignUpFacade;
+    private final ProductService productService;
 
     @PostMapping("/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
@@ -91,5 +97,17 @@ public class UserController {
     public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
         SessionUtils.invalidateSession(httpRequest);
         return ResponseEntity.ok().build();
+    }
+
+    // === 내 찜 목록 ===
+
+    @GetMapping("/me/likes/products")
+    @RequiredRole(UserRole.USER)
+    public ResponseEntity<CursorResponse<ProductListResponse>> getMyLikedProducts(
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(required = false) Integer pageSize,
+            HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        return ResponseEntity.ok(productService.getMyLikedProducts(userId, cursor, pageSize));
     }
 }

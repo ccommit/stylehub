@@ -53,6 +53,10 @@ public enum ErrorCode {
     INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "OR004", "재고가 부족합니다"),
     ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "OR005", "존재하지 않는 배송지입니다"),
 
+    // Likes
+    ALREADY_LIKED(HttpStatus.CONFLICT, "L001", "이미 찜한 항목입니다"),
+    LIKE_NOT_FOUND(HttpStatus.NOT_FOUND, "L002", "찜한 내역이 없습니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),
