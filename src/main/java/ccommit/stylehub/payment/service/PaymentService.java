@@ -67,8 +67,7 @@ public class PaymentService {
                 .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount);
 
         payment.cancel(cancelReason, cancelAmount);
-
-        if (payment.isFullyCanceled()) payment.getOrder().cancelPaid();
+        cancelOrderIfFullyCanceled(payment);
 
         return PaymentResponse.from(payment);
     }
@@ -83,6 +82,12 @@ public class PaymentService {
         Order order = payment.getOrder();
         orderService.cancelOrder(order.getOrderId());
         orderPaymentTimeout.removeTimeout(order.getOrderId());
+    }
+
+    private void cancelOrderIfFullyCanceled(Payment payment) {
+        if (payment.isFullyCanceled()) {
+            orderService.cancelPaidOrder(payment.getOrder().getOrderId());
+        }
     }
 
     private Payment findPaymentByOrderId(String orderId) {
