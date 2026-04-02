@@ -46,7 +46,7 @@ public class PaymentService {
 
         paymentClientFactory.getClient("TOSS").confirmPayment(paymentKey, orderId, amount);
 
-        payment.approve(amount);
+        payment.approve(paymentKey, amount);
         payment.getOrder().markPaid();
         orderPaymentTimeout.removeTimeout(payment.getOrder().getOrderId());
 

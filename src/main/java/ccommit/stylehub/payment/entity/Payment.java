@@ -109,8 +109,9 @@ public class Payment {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // 결제 승인 완료 처리
-    public void approve(Integer approvedAmount) {
+    // 결제 승인 완료 처리 — paymentKey는 토스 인증 완료 후 전달받는다
+    public void approve(String paymentKey, Integer approvedAmount) {
+        this.paymentKey = paymentKey;
         this.status = PaymentStatus.DONE;
         this.approvedAmount = approvedAmount;
         this.approvedAt = LocalDateTime.now();

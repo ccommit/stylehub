@@ -17,8 +17,6 @@ import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.event.OrderCreatedEvent;
-import ccommit.stylehub.payment.entity.Payment;
-import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.user.entity.Address;
@@ -54,7 +52,6 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final OrderQueryRepository orderQueryRepository;
-    private final PaymentRepository paymentRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final UserService userService;
     private final ProductService productService;
@@ -80,22 +77,14 @@ public class OrderService {
         // TODO: 쿠폰 사용 처리 (UserCoupon 상태 변경)
         // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
 
-        createPaymentReady(savedOrder, savedItems);
-        eventPublisher.publishEvent(new OrderCreatedEvent(savedOrder.getOrderId()));
-
-        return buildOrderResponse(savedOrder, savedItems);
-    }
-
-    private void createPaymentReady(Order order, List<OrderItem> items) {
-        int totalAmount = items.stream()
+        int totalAmount = savedItems.stream()
                 .mapToInt(OrderItem::getTotalPrice)
                 .sum();
-        int finalAmount = order.calculateFinalAmount(totalAmount);
+        int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
-        paymentRepository.save(Payment.create(
-                order, "", "주문 결제",
-                finalAmount, totalAmount, finalAmount
-        ));
+        eventPublisher.publishEvent(new OrderCreatedEvent(savedOrder, totalAmount, finalAmount));
+
+        return buildOrderResponse(savedOrder, savedItems);
     }
 
     /**
