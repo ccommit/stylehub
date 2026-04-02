@@ -12,13 +12,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.expression.EvaluationContext;
+import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.StandardEvaluationContext;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author WonJin Bae
@@ -41,6 +44,7 @@ public class DistributedLockAspect {
     private final StringRedisTemplate redisTemplate;
     private final ExpressionParser parser = new SpelExpressionParser();
     private final DefaultParameterNameDiscoverer nameDiscoverer = new DefaultParameterNameDiscoverer();
+    private final Map<String, Expression> expressionCache = new ConcurrentHashMap<>();
 
     @Around("@annotation(distributedLock)")
     public Object around(ProceedingJoinPoint pjp, DistributedLock distributedLock) throws Throwable {
@@ -101,6 +105,7 @@ public class DistributedLockAspect {
             }
         }
 
-        return parser.parseExpression(keyExpression).getValue(context, String.class);
+        Expression expression = expressionCache.computeIfAbsent(keyExpression, parser::parseExpression);
+        return expression.getValue(context, String.class);
     }
 }
