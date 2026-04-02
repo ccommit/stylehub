@@ -100,6 +100,15 @@ public class OrderService {
         restoreStock(orderId);
     }
 
+    // 결제 취소에 의한 주문 취소 + 재고 복구 — PAID 상태에서만 호출
+    public void cancelPaidOrder(Long orderId) {
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+
+        order.cancelPaid();
+        restoreStock(orderId);
+    }
+
     private void restoreStock(Long orderId) {
         List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
 
