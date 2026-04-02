@@ -33,6 +33,7 @@ import java.util.UUID;
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/27 by WonJin - feat: 주문 상태 변경 메서드 추가, 와일드카드 import 수정
+ * @modified 2026/04/02 by WonJin - feat: 배송 상태 전이 메서드 추가
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -51,7 +52,6 @@ public class Order extends BaseEntity {
     @Column(name = "order_id")
     private Long orderId;
 
-    // TODO: 토스페이먼츠 결제 연동 시 PG사 주문번호로 활용
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
 
@@ -107,5 +107,18 @@ public class Order extends BaseEntity {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.CANCELLED;
+    }
+
+    // 결제 완료 시 배송 준비 상태로 전환
+    public void startDelivery() {
+        this.deliveryStatus = DeliveryStatus.PREPARING;
+    }
+
+    // 배송 상태를 변경한다. 검증은 DeliveryPolicy에서 처리.
+    public void updateDeliveryStatus(DeliveryStatus newStatus) {
+        this.deliveryStatus = newStatus;
+        if (newStatus == DeliveryStatus.DELIVERED) {
+            this.orderStatus = OrderStatus.DELIVERED;
+        }
     }
 }
