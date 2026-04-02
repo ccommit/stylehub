@@ -2,10 +2,12 @@ package ccommit.stylehub.order.controller;
 
 import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
+import ccommit.stylehub.order.dto.request.DeliveryStatusRequest;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
+import ccommit.stylehub.store.service.StoreService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -13,32 +15,33 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
  * @author WonJin Bae
  * @created 2026/03/27
- * @modified 2026/03/29 by WonJin - refactor: OrderViewService를 OrderService로 통합
+ * @modified 2026/04/02 by WonJin - refactor: 배송상태 API 추가
  *
  * <p>
- * 사용자의 주문 생성 및 주문 내역 조회 API를 제공한다.
+ * 주문 관련 API를 제공한다.
+ * USER API(주문 생성/조회)와 STORE API(배송 상태 변경)를 메서드별 역할로 구분한다.
  * </p>
  */
-// TODO: 토스페이먼츠 결제 연동 시 결제 확인/취소 API 추가 예정
 @RestController
-@RequestMapping("/api/v1/orders")
 @RequiredArgsConstructor
-@RequiredRole(UserRole.USER)
 public class OrderController {
 
     private final OrderService orderService;
+    private final StoreService storeService;
 
-    @PostMapping
+    //USER API
+    @PostMapping("/api/v1/orders")
+    @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody OrderCreateRequest request,
             HttpServletRequest httpRequest) {
@@ -47,7 +50,8 @@ public class OrderController {
                 .body(orderService.placeOrder(userId, request));
     }
 
-    @GetMapping
+    @GetMapping("/api/v1/orders")
+    @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderCursorResponse> getMyOrders(
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer size,
@@ -56,11 +60,26 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getMyOrders(userId, cursor, size));
     }
 
-    @GetMapping("/{orderId}")
+    @GetMapping("/api/v1/orders/{orderId}")
+    @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> getOrder(
             @PathVariable Long orderId,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.ok(orderService.getOrder(userId, orderId));
+    }
+
+    // STORE API (배송 상태 관리)
+    @PatchMapping("/api/v1/stores/{storeId}/orders/{orderId}/delivery")
+    @RequiredRole(UserRole.STORE)
+    public ResponseEntity<Void> updateDeliveryStatus(
+            @PathVariable Long storeId,
+            @PathVariable Long orderId,
+            @Valid @RequestBody DeliveryStatusRequest request,
+            HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        storeService.validateApprovedStoreOwner(userId, storeId);
+        orderService.updateDeliveryStatus(storeId, orderId, request.deliveryStatus());
+        return ResponseEntity.ok().build();
     }
 }
