@@ -52,6 +52,8 @@ public enum ErrorCode {
     UNAUTHORIZED_ORDER_ACCESS(HttpStatus.FORBIDDEN, "OR003", "본인 주문만 접근할 수 있습니다"),
     INSUFFICIENT_STOCK(HttpStatus.CONFLICT, "OR004", "재고가 부족합니다"),
     ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "OR005", "존재하지 않는 배송지입니다"),
+    INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "OR006", "잘못된 배송 상태 전이입니다"),
+    UNAUTHORIZED_DELIVERY_ACCESS(HttpStatus.FORBIDDEN, "OR007", "본인 스토어 주문의 배송 상태만 변경할 수 있습니다"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),

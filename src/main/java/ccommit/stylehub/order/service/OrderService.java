@@ -5,6 +5,8 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
+import ccommit.stylehub.order.enums.DeliveryStatus;
+import ccommit.stylehub.order.policy.DeliveryPolicy;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
@@ -36,9 +38,10 @@ import java.util.TreeMap;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService, OrderViewService를 OrderService로 통합
+ * @modified 2026/04/02 by WonJin - feat: 배송 상태 변경 메서드 추가
  *
  * <p>
- * 주문 생성, 취소, 조회를 담당한다.
+ * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
  * 주문/결제 API는 ApiLoggingAspect에 의해 요청/응답이 자동 로깅된다.
  * </p>
  */
@@ -53,6 +56,7 @@ public class OrderService {
     private final OrderItemRepository orderItemRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final DeliveryPolicy deliveryPolicy;
     private final UserService userService;
     private final ProductService productService;
 
@@ -106,6 +110,27 @@ public class OrderService {
                     item.getProductOption().getProductOptionId(),
                     item.getQuantity()
             );
+        }
+    }
+
+    // 배송 상태를 변경한다. 본인 스토어 주문만 변경 가능.
+    @Transactional
+    public void updateDeliveryStatus(Long storeId, Long orderId, DeliveryStatus newStatus) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+
+        validateStoreOrder(storeId, orderId);
+        deliveryPolicy.validateTransition(order, newStatus);
+        order.updateDeliveryStatus(newStatus);
+    }
+
+    private void validateStoreOrder(Long storeId, Long orderId) {
+        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
+        boolean isStoreOrder = items.stream()
+                .anyMatch(item -> item.getProductOption().getProduct().getStore().getStoreId().equals(storeId));
+
+        if (!isStoreOrder) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_DELIVERY_ACCESS);
         }
     }
 
