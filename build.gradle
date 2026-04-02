@@ -14,6 +14,10 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs.add('-parameters')
+}
+
 configurations {
     compileOnly {
         extendsFrom annotationProcessor
@@ -32,6 +36,9 @@ dependencies {
     implementation 'at.favre.lib:bcrypt:0.10.2'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
+
+    // Redis
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
     // QueryDSL
     implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
