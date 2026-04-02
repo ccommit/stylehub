@@ -26,6 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/04/02 by WonJin - refactor: SpEL Expression 캐싱 적용, paramNames null fallback 처리 추가
  *
  * <p>
  * @DistributedLock 어노테이션이 붙은 메서드에 Redis 분산 락을 적용하는 AOP이다.
@@ -98,11 +99,16 @@ public class DistributedLockAspect {
         String[] paramNames = nameDiscoverer.getParameterNames(signature.getMethod());
         Object[] args = pjp.getArgs();
 
+        // -parameters 컴파일 옵션이 없거나 디버그 정보가 없으면 paramNames가 null
+        // 이 경우 SpEL에서 #변수명을 찾을 수 없으므로 명확한 에러를 던진다
+        if (paramNames == null) {
+            log.error("파라미터 이름을 확인할 수 없습니다. 컴파일 옵션(-parameters)을 확인하세요: {}", signature.toShortString());
+            throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
+        }
+
         EvaluationContext context = new StandardEvaluationContext();
-        if (paramNames != null) {
-            for (int i = 0; i < paramNames.length; i++) {
-                context.setVariable(paramNames[i], args[i]);
-            }
+        for (int i = 0; i < paramNames.length; i++) {
+            context.setVariable(paramNames[i], args[i]);
         }
 
         Expression expression = expressionCache.computeIfAbsent(keyExpression, parser::parseExpression);
