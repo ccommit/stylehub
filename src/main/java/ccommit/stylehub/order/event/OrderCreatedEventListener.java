@@ -23,6 +23,6 @@ public class OrderCreatedEventListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleOrderCreated(OrderCreatedEvent event) {
-        orderPaymentTimeout.registerTimeout(event.orderId());
+        orderPaymentTimeout.registerTimeout(event.order().getOrderId());
     }
 }
