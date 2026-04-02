@@ -109,12 +109,13 @@ public class Order extends BaseEntity {
         this.orderStatus = OrderStatus.CANCELLED;
     }
 
-    // 결제 완료 처리 — PENDING 상태에서만 전환 가능
+    // 결제 완료 처리 — PENDING → PAID + 배송 준비(PREPARING) 자동 설정
     public void markPaid() {
         if (this.orderStatus != OrderStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.PAID;
+        this.deliveryStatus = DeliveryStatus.PREPARING;
     }
 
     // 결제 완료된 주문 취소 — PAID 상태에서만 전환 가능
