@@ -22,4 +22,5 @@ public class TossPaymentProperties {
 
     private String secretKey;
     private String confirmUrl;
+    private String cancelUrl;
 }

@@ -78,7 +78,7 @@ public class TossPaymentClient implements PaymentClient {
             body.put("cancelAmount", cancelAmount);
         }
 
-        String cancelUrl = "https://api.tosspayments.com/v1/payments/" + paymentKey + "/cancel";
+        String cancelUrl = tossProperties.getCancelUrl() + "/" + paymentKey + "/cancel";
 
         try {
             restTemplate.postForEntity(cancelUrl, new HttpEntity<>(body, headers), String.class);
