@@ -17,6 +17,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @created 2026/03/25
  * @modified 2026/03/27 by WonJin - feat: 커서 기반 전체 상품 목록 조회 API 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewController를 ProductController로 통합
+ * @modified 2026/04/03 by WonJin - feat: 상품 찜하기/취소 API 추가
  *
  * <p>
  * 상품 관련 API를 제공한다.
@@ -91,5 +93,26 @@ public class ProductController {
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.ok(productService.updateStock(userId, storeId, productId, optionId, request.stockQuantity()));
+    }
+
+    // USER API (상품 찜하기)
+    @PostMapping("/api/v1/products/{productId}/likes")
+    @RequiredRole(UserRole.USER)
+    public ResponseEntity<Void> likeProduct(
+            @PathVariable Long productId,
+            HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        productService.likeProduct(userId, productId);
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    @DeleteMapping("/api/v1/products/{productId}/likes")
+    @RequiredRole(UserRole.USER)
+    public ResponseEntity<Void> unlikeProduct(
+            @PathVariable Long productId,
+            HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        productService.unlikeProduct(userId, productId);
+        return ResponseEntity.ok().build();
     }
 }
