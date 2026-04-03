@@ -38,15 +38,15 @@ public class PaymentService {
 
     //결제를 승인한다.
     @Transactional
-    public PaymentResponse approvePayment(String paymentKey, String orderId, Integer amount) {
-        Payment payment = findPaymentByOrderId(orderId);
+    public PaymentResponse approvePayment(String paymentKey, String pgOrderId, Integer tossAmount) {
+        Payment payment = findPaymentByOrderId(pgOrderId);
 
         paymentValidator.validateApprovable(payment);
-        paymentValidator.validateAmount(payment, amount);
+        paymentValidator.validateAmount(payment, tossAmount);
 
-        paymentClientFactory.getClient("TOSS").confirmPayment(paymentKey, orderId, amount);
+        paymentClientFactory.getClient("TOSS").confirmPayment(paymentKey, pgOrderId, tossAmount);
 
-        payment.approve(paymentKey, amount);
+        payment.approve(paymentKey, tossAmount);
         payment.getOrder().markPaid();
         orderPaymentTimeout.removeTimeout(payment.getOrder().getOrderId());
 
@@ -74,8 +74,8 @@ public class PaymentService {
 
     //결제 실패 시 주문 취소 + 재고 복구 + 타임아웃 타이머 제거를 처리한다.
     @Transactional
-    public void handlePaymentFailure(String orderId) {
-        Payment payment = findPaymentByOrderId(orderId);
+    public void handlePaymentFailure(String pgOrderId) {
+        Payment payment = findPaymentByOrderId(pgOrderId);
 
         payment.abort();
 
@@ -90,8 +90,8 @@ public class PaymentService {
         }
     }
 
-    private Payment findPaymentByOrderId(String orderId) {
-        return paymentRepository.findByOrderPgOrderId(orderId)
+    private Payment findPaymentByOrderId(String pgOrderId) {
+        return paymentRepository.findByOrderPgOrderId(pgOrderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 }
