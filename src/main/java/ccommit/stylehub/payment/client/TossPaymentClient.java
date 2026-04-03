@@ -39,9 +39,7 @@ public class TossPaymentClient implements PaymentClient {
 
     @Override
     public void confirmPayment(String paymentKey, String orderId, Integer amount) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Basic " + encodeSecretKey());
+        HttpHeaders headers = createAuthHeaders();
 
         Map<String, Object> body = Map.of(
                 "paymentKey", paymentKey,
@@ -72,9 +70,7 @@ public class TossPaymentClient implements PaymentClient {
      */
     @Override
     public void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Basic " + encodeSecretKey());
+        HttpHeaders headers = createAuthHeaders();
 
         Map<String, Object> body = new HashMap<>();
         body.put("cancelReason", cancelReason);
@@ -99,6 +95,13 @@ public class TossPaymentClient implements PaymentClient {
     @Override
     public String getType() {
         return "TOSS";
+    }
+
+    private HttpHeaders createAuthHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("Authorization", "Basic " + encodeSecretKey());
+        return headers;
     }
 
     private String encodeSecretKey() {
