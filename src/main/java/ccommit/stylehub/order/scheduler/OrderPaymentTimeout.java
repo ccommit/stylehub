@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
 public class OrderPaymentTimeout {
 
     private static final Logger log = LoggerFactory.getLogger(OrderPaymentTimeout.class);
-    private static final long TIMEOUT_MILLIS = 30 * 60 * 1000; // 30분
+    private static final long TIMEOUT_MILLIS = 10 * 60 * 1000; // 10분
 
     private final StringRedisTemplate redisTemplate;
 

@@ -35,7 +35,7 @@ public class OrderTimeoutScheduler {
     private static final Logger log = LoggerFactory.getLogger(OrderTimeoutScheduler.class);
     public static final String ORDER_TIMEOUT_KEY = "order:timeout";
 
-    private static final int TIMEOUT_MINUTES = 30;
+    private static final int TIMEOUT_MINUTES = 10;
     private static final int BATCH_SIZE = 100;
 
     // Lua 스크립트: ZRANGEBYSCORE + ZREM을 원자적으로 실행하여 다중 서버 중복 처리를 방지한다.
