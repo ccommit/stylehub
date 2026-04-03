@@ -37,9 +37,9 @@ public class PaymentController {
     @GetMapping("/success")
     public ResponseEntity<PaymentResponse> paymentSuccess(
             @RequestParam String paymentKey,
-            @RequestParam String orderId,
-            @RequestParam Integer amount) {
-        return ResponseEntity.ok(paymentService.approvePayment(paymentKey, orderId, amount));
+            @RequestParam("orderId") String pgOrderId,
+            @RequestParam("amount") Integer tossAmount) {
+        return ResponseEntity.ok(paymentService.approvePayment(paymentKey, pgOrderId, tossAmount));
     }
 
     /**
@@ -50,10 +50,10 @@ public class PaymentController {
     public ResponseEntity<String> paymentFail(
             @RequestParam String code,
             @RequestParam String message,
-            @RequestParam String orderId) {
-        paymentService.handlePaymentFailure(orderId);
+            @RequestParam("orderId") String pgOrderId) {
+        paymentService.handlePaymentFailure(pgOrderId);
         return ResponseEntity.badRequest()
-                .body("결제 실패: " + message + " (code=" + code + ", orderId=" + orderId + ")");
+                .body("결제 실패: " + message + " (code=" + code + ", orderId=" + pgOrderId + ")");
     }
 
     /**
