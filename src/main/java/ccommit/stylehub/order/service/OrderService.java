@@ -124,7 +124,7 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         validateStoreOrder(storeId, orderId);
-        deliveryPolicy.validateTransition(order, newStatus);
+        deliveryPolicy.validateUpdateDeliveryStatus(order, newStatus);
         order.updateDeliveryStatus(newStatus);
     }
 
