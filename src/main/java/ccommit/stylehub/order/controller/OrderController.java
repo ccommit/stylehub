@@ -7,7 +7,6 @@ import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
-import ccommit.stylehub.store.service.StoreService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -39,7 +38,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
-    private final StoreService storeService;
 
     //USER API
     @PostMapping("/orders")
@@ -80,8 +78,7 @@ public class OrderController {
             @Valid @RequestBody DeliveryStatusRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        storeService.validateApprovedStoreOwner(userId, storeId);
-        orderService.updateDeliveryStatus(storeId, orderId, request.deliveryStatus());
+        orderService.updateDeliveryStatus(userId, storeId, orderId, request.deliveryStatus());
         return ResponseEntity.ok().build();
     }
 }
