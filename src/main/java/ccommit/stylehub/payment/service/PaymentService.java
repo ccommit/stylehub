@@ -78,7 +78,8 @@ public class PaymentService {
         return PaymentResponse.from(payment);
     }
 
-    //결제 실패 시 주문 취소 + 재고 복구 + 타임아웃 타이머 제거를 처리한다.
+    // 토스 결제창에서 사용자가 취소/실패 시 failUrl(/fail)로 리다이렉트되어 호출된다.
+    // confirmPayment()와 별도 요청이므로 독립 메서드로 존재한다.
     @Transactional
     public void handlePaymentFailure(String pgOrderId) {
         Payment payment = findPaymentByOrderId(pgOrderId);
