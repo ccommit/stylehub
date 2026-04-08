@@ -2,7 +2,18 @@ package ccommit.stylehub.coupon.entity;
 
 import ccommit.stylehub.coupon.enums.CouponStatus;
 import ccommit.stylehub.user.entity.User;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,6 +27,7 @@ import java.time.LocalDateTime;
  * @created 2026/03/21 08:17
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/04/09 by WonJin - feat: 와일드카드 import 수정, UniqueConstraint 추가
  *
  * <p>
  * 사용자에게 발급된 개별 쿠폰 인스턴스를 관리한다.
@@ -24,7 +36,9 @@ import java.time.LocalDateTime;
  */
 
 @Entity
-@Table(name = "user_coupons")
+@Table(name = "user_coupons", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"user_id", "coupon_event_id"})
+})
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
