@@ -4,15 +4,15 @@ import ccommit.stylehub.common.aop.ExecutionTimeCheck;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
-import ccommit.stylehub.order.dto.request.OrderItemRequest;
+import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.common.dto.CursorResponse;
-import ccommit.stylehub.order.dto.response.OrderItemResponse;
+import ccommit.stylehub.order.dto.response.OrderDetailResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.dto.response.OrderTotalAmountDto;
 import ccommit.stylehub.order.entity.Order;
-import ccommit.stylehub.order.entity.OrderItem;
-import ccommit.stylehub.order.repository.OrderItemRepository;
+import ccommit.stylehub.order.entity.OrderDetail;
+import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.coupon.entity.UserCoupon;
@@ -36,6 +36,7 @@ import java.util.TreeMap;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService, OrderViewService를 OrderService로 통합
+ * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
  *
  * <p>
  * 주문 생성, 취소, 조회를 담당한다.
@@ -50,7 +51,7 @@ public class OrderService {
     private static final int MAX_PAGE_SIZE = 100;
 
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
+    private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final UserService userService;
@@ -72,19 +73,19 @@ public class OrderService {
         // TODO: 포인트 잔액 확인 + 차감
 
         Order savedOrder = orderRepository.save(Order.create(address.getUser(), address));
-        List<OrderItem> savedItems = decreaseStockAndCreateItems(savedOrder, request.items());
+        List<OrderDetail> savedDetails = decreaseStockAndCreateDetails(savedOrder, request.details());
 
         // TODO: 쿠폰 사용 처리 (UserCoupon 상태 변경)
         // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
 
-        int totalAmount = savedItems.stream()
-                .mapToInt(OrderItem::getTotalPrice)
+        int totalAmount = savedDetails.stream()
+                .mapToInt(OrderDetail::getTotalPrice)
                 .sum();
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
         eventPublisher.publishEvent(new OrderCreatedEvent(savedOrder, totalAmount, finalAmount));
 
-        return buildOrderResponse(savedOrder, savedItems);
+        return buildOrderResponse(savedOrder, savedDetails);
     }
 
     /**
@@ -110,17 +111,17 @@ public class OrderService {
     }
 
     private void restoreStock(Long orderId) {
-        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
+        List<OrderDetail> details = orderDetailRepository.findByOrderIdWithDetails(orderId);
 
         // deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
-        items.sort((a, b) -> Long.compare(
+        details.sort((a, b) -> Long.compare(
                 a.getProductOption().getProductOptionId(),
                 b.getProductOption().getProductOptionId()));
 
-        for (OrderItem item : items) {
+        for (OrderDetail detail : details) {
             productService.increaseStock(
-                    item.getProductOption().getProductOptionId(),
-                    item.getQuantity()
+                    detail.getProductOption().getProductOptionId(),
+                    detail.getQuantity()
             );
         }
     }
@@ -160,8 +161,8 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse getOrder(Long userId, Long orderId) {
         Order order = findOrderByOwner(userId, orderId);
-        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
-        return buildOrderResponse(order, items);
+        List<OrderDetail> details = orderDetailRepository.findByOrderIdWithDetails(orderId);
+        return buildOrderResponse(order, details);
     }
 
     private Order findOrderByOwner(Long userId, Long orderId) {
@@ -178,49 +179,49 @@ public class OrderService {
      * 같은 옵션 ID의 수량을 합산한 뒤, 재고를 차감하고 주문 항목을 생성한다.
      * deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
      */
-    private List<OrderItem> decreaseStockAndCreateItems(Order order, List<OrderItemRequest> itemRequests) {
-        List<OrderItemRequest> merged = mergeAndSort(itemRequests);
+    private List<OrderDetail> decreaseStockAndCreateDetails(Order order, List<OrderDetailRequest> detailRequests) {
+        List<OrderDetailRequest> merged = mergeAndSort(detailRequests);
 
-        List<OrderItem> items = new ArrayList<>(merged.size());
-        for (OrderItemRequest request : merged) {
+        List<OrderDetail> details = new ArrayList<>(merged.size());
+        for (OrderDetailRequest request : merged) {
             ProductOption option = productService.decreaseStockWithLock(
                     request.productOptionId(), request.quantity()
             );
 
             // TODO: 쿠폰 기능 구현 시 UserCoupon 전달
             UserCoupon noCoupon = null;
-            items.add(OrderItem.create(
+            details.add(OrderDetail.create(
                     option, order, request.quantity(),
                     option.getProductPrice(), noCoupon
             ));
         }
 
-        return orderItemRepository.saveAll(items);
+        return orderDetailRepository.saveAll(details);
     }
 
-    private List<OrderItemRequest> mergeAndSort(List<OrderItemRequest> itemRequests) {
+    private List<OrderDetailRequest> mergeAndSort(List<OrderDetailRequest> detailRequests) {
         Map<Long, Integer> merged = new TreeMap<>();
-        for (OrderItemRequest request : itemRequests) {
+        for (OrderDetailRequest request : detailRequests) {
             merged.merge(request.productOptionId(), request.quantity(), Integer::sum);
         }
 
-        List<OrderItemRequest> result = new ArrayList<>(merged.size());
+        List<OrderDetailRequest> result = new ArrayList<>(merged.size());
         for (Map.Entry<Long, Integer> entry : merged.entrySet()) {
-            result.add(new OrderItemRequest(entry.getKey(), entry.getValue()));
+            result.add(new OrderDetailRequest(entry.getKey(), entry.getValue()));
         }
         return result;
     }
 
-    private OrderResponse buildOrderResponse(Order order, List<OrderItem> items) {
-        List<OrderItemResponse> itemResponses = items.stream()
-                .map(OrderItemResponse::from)
+    private OrderResponse buildOrderResponse(Order order, List<OrderDetail> details) {
+        List<OrderDetailResponse> detailResponses = details.stream()
+                .map(OrderDetailResponse::from)
                 .toList();
 
-        int totalAmount = items.stream()
-                .mapToInt(OrderItem::getTotalPrice)
+        int totalAmount = details.stream()
+                .mapToInt(OrderDetail::getTotalPrice)
                 .sum();
 
-        return OrderResponse.from(order, itemResponses, totalAmount, order.calculateFinalAmount(totalAmount));
+        return OrderResponse.from(order, detailResponses, totalAmount, order.calculateFinalAmount(totalAmount));
     }
 
     private Map<Long, Integer> getTotalAmountMap(List<Long> orderIds) {
@@ -228,7 +229,7 @@ public class OrderService {
             return Map.of();
         }
         Map<Long, Integer> map = new HashMap<>(orderIds.size());
-        for (OrderTotalAmountDto dto : orderItemRepository.calculateTotalAmounts(orderIds)) {
+        for (OrderTotalAmountDto dto : orderDetailRepository.calculateTotalAmounts(orderIds)) {
             map.put(dto.orderId(), dto.totalAmount().intValue());
         }
         return map;
