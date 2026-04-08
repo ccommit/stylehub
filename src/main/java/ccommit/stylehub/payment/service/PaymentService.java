@@ -6,7 +6,6 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
-import ccommit.stylehub.payment.policy.CancelPolicy;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.entity.Payment;
@@ -32,11 +31,10 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
     private final PaymentValidator paymentValidator;
-    private final CancelPolicy cancelPolicy;
     private final OrderPaymentTimeout orderPaymentTimeout;
     private final OrderService orderService;
 
-    //결제를 승인한다.
+    // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
     @Transactional
     public PaymentResponse confirmPayment(String paymentKey, String pgOrderId, Integer tossAmount) {
         Payment payment = findPaymentByOrderId(pgOrderId);
@@ -46,7 +44,12 @@ public class PaymentService {
 
         paymentClientFactory.getClient("TOSS").confirmPayment(paymentKey, pgOrderId, tossAmount);
 
-        payment.approve(paymentKey, tossAmount);
+        return approvePayment(payment, paymentKey, tossAmount);
+    }
+
+    // 토스 confirm 성공 후 우리 DB에 결제 승인을 반영한다.
+    private PaymentResponse approvePayment(Payment payment, String paymentKey, Integer amount) {
+        payment.approve(paymentKey, amount);
         payment.getOrder().markPaid();
         orderPaymentTimeout.removeTimeout(payment.getOrder().getOrderId());
 
@@ -59,9 +62,7 @@ public class PaymentService {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 
-        cancelPolicy.validate(payment.getOrder());
-        paymentValidator.validateCancelable(payment);
-        paymentValidator.validateCancelAmount(payment, cancelAmount);
+        paymentValidator.validateCancel(payment, cancelAmount);
 
         paymentClientFactory.getClient("TOSS")
                 .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount);
