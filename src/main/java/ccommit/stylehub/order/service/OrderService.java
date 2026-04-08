@@ -21,6 +21,7 @@ import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.event.OrderCreatedEvent;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.service.ProductService;
+import ccommit.stylehub.store.service.StoreService;
 import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -59,6 +60,7 @@ public class OrderService {
     private final DeliveryPolicy deliveryPolicy;
     private final UserService userService;
     private final ProductService productService;
+    private final StoreService storeService;
 
     /**
      * 주문을 접수한다.
@@ -113,9 +115,11 @@ public class OrderService {
         }
     }
 
-    // 배송 상태를 변경한다. 본인 스토어 주문만 변경 가능.
+    // 배송 상태를 변경한다. 스토어 소유권 + 주문 내 스토어 상품 확인 + 상태 전이 검증.
     @Transactional
-    public void updateDeliveryStatus(Long storeId, Long orderId, DeliveryStatus newStatus) {
+    public void updateDeliveryStatus(Long userId, Long storeId, Long orderId, DeliveryStatus newStatus) {
+        storeService.validateApprovedStoreOwner(userId, storeId);
+
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
