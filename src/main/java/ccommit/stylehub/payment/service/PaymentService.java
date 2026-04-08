@@ -38,7 +38,7 @@ public class PaymentService {
 
     //결제를 승인한다.
     @Transactional
-    public PaymentResponse approvePayment(String paymentKey, String pgOrderId, Integer tossAmount) {
+    public PaymentResponse confirmPayment(String paymentKey, String pgOrderId, Integer tossAmount) {
         Payment payment = findPaymentByOrderId(pgOrderId);
 
         paymentValidator.validateApprovable(payment);

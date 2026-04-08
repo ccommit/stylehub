@@ -39,7 +39,7 @@ public class PaymentController {
             @RequestParam String paymentKey,
             @RequestParam("orderId") String pgOrderId,
             @RequestParam("amount") Integer tossAmount) {
-        return ResponseEntity.ok(paymentService.approvePayment(paymentKey, pgOrderId, tossAmount));
+        return ResponseEntity.ok(paymentService.confirmPayment(paymentKey, pgOrderId, tossAmount));
     }
 
     /**
