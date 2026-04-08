@@ -21,7 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
- * 검증은 PaymentValidator/CancelPolicy, PG사 호출은 PaymentClientFactory에 위임한다.
+ * 검증은 PaymentValidator, PG사 호출은 PaymentClientFactory에 위임한다.
  * </p>
  */
 @Service
