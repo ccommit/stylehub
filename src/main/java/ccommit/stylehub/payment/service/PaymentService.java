@@ -56,7 +56,7 @@ public class PaymentService {
         return PaymentResponse.from(payment);
     }
 
-    // 결제를 취소한다
+    // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, String cancelReason, Integer cancelAmount) {
         Payment payment = paymentRepository.findById(paymentId)
@@ -67,6 +67,11 @@ public class PaymentService {
         paymentClientFactory.getClient("TOSS")
                 .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount);
 
+        return applyCancellation(payment, cancelReason, cancelAmount);
+    }
+
+    // 토스 취소 성공 후 우리 DB에 취소를 반영한다.
+    private PaymentResponse applyCancellation(Payment payment, String cancelReason, Integer cancelAmount) {
         payment.cancel(cancelReason, cancelAmount);
         cancelOrderIfFullyCanceled(payment);
 
