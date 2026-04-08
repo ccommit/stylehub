@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DistributedLock {
 
-    //락 키. SpEL 표현식 지원. (예: "'stock:' + #productOptionId")
+    //락 키. SpEL 표현식 지원. (예: "'stock:' + #productOptionstock:' + #productOptionId")Id")
     String key();
 
     // 락 대기 시간(1초) 이 시간 내에 락을 획득하지 못하면 실패
