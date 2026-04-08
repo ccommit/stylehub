@@ -15,16 +15,19 @@ import ccommit.stylehub.order.entity.OrderDetail;
 import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
+import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
 import ccommit.stylehub.coupon.entity.UserCoupon;
-import ccommit.stylehub.order.event.OrderCreatedEvent;
+import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -37,6 +40,7 @@ import java.util.TreeMap;
  * @created 2026/03/27
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService, OrderViewService를 OrderService로 통합
  * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
+ * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
  *
  * <p>
  * 주문 생성, 취소, 조회를 담당한다.
@@ -53,7 +57,8 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final PaymentRepository paymentRepository;
+    private final OrderPaymentTimeout orderPaymentTimeout;
     private final UserService userService;
     private final ProductService productService;
 
@@ -61,7 +66,7 @@ public class OrderService {
      * 주문을 접수한다.
      * Order.create()는 엔티티 객체 생성, placeOrder()는 주문 접수 비즈니스 흐름을 담당한다.
      * 1. 주문 생성 + 재고 차감 + Payment READY 상태로 저장
-     * 2. 트랜잭션 커밋 후: OrderCreatedEvent → Redis 타임아웃 등록 (30분)
+     * 2. 트랜잭션 커밋 후: Redis 타임아웃 등록 (10분)
      * 3. 프론트(샌드박스)에서 pgOrderId + totalAmount로 토스 결제창 진입
      */
     @ExecutionTimeCheck(threshold = 3000)
@@ -83,9 +88,23 @@ public class OrderService {
                 .sum();
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
-        eventPublisher.publishEvent(new OrderCreatedEvent(savedOrder, totalAmount, finalAmount));
+        paymentRepository.save(Payment.create(
+                savedOrder, "", "주문 결제",
+                finalAmount, totalAmount, finalAmount
+        ));
+
+        registerTimeoutAfterCommit(savedOrder.getOrderId());
 
         return buildOrderResponse(savedOrder, savedDetails);
+    }
+
+    private void registerTimeoutAfterCommit(Long orderId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                orderPaymentTimeout.registerTimeout(orderId);
+            }
+        });
     }
 
     /**
