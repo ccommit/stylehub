@@ -4,11 +4,13 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
  * @author WonJin Bae
  * @created 2026/04/01
+ * @modified 2026/04/08 by WonJin - refactor: validateCancel()로 취소 검증 일원화
  *
  * <p>
  * 결제 승인/취소 전 검증 로직을 담당한다.
@@ -16,7 +18,10 @@ import org.springframework.stereotype.Component;
  * </p>
  */
 @Component
+@RequiredArgsConstructor
 public class PaymentValidator {
+
+    private final CancelPolicy cancelPolicy;
 
     // 결제 승인 가능 여부를 검증한다. (READY 또는 IN_PROGRESS만 승인 가능)
     public void validateApprovable(Payment payment) {
@@ -32,15 +37,22 @@ public class PaymentValidator {
         }
     }
 
+    // 결제 취소 검증 — 배송 상태, 결제 상태, 취소 금액을 일괄 검증한다.
+    public void validateCancel(Payment payment, Integer cancelAmount) {
+        cancelPolicy.validate(payment.getOrder());
+        validateCancelable(payment);
+        validateCancelAmount(payment, cancelAmount);
+    }
+
     // 결제 취소 가능 여부를 검증한다. (DONE 또는 PARTIAL_CANCELED만 취소 가능)
-    public void validateCancelable(Payment payment) {
+    private void validateCancelable(Payment payment) {
         if (payment.getStatus() != PaymentStatus.DONE && payment.getStatus() != PaymentStatus.PARTIAL_CANCELED) {
             throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED);
         }
     }
 
     // 부분 취소 시 잔액 초과 검증
-    public void validateCancelAmount(Payment payment, Integer cancelAmount) {
+    private void validateCancelAmount(Payment payment, Integer cancelAmount) {
         if (cancelAmount != null && cancelAmount > payment.getBalanceAmount()) {
             throw new BusinessException(ErrorCode.INVALID_CANCEL_AMOUNT);
         }
