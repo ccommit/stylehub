@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
+@RequestMapping("/api/v1")
 @RequiredArgsConstructor
 public class OrderController {
 
@@ -40,7 +42,7 @@ public class OrderController {
     private final StoreService storeService;
 
     //USER API
-    @PostMapping("/api/v1/orders")
+    @PostMapping("/orders")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> createOrder(
             @Valid @RequestBody OrderCreateRequest request,
@@ -50,7 +52,7 @@ public class OrderController {
                 .body(orderService.placeOrder(userId, request));
     }
 
-    @GetMapping("/api/v1/orders")
+    @GetMapping("/orders")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderCursorResponse> getMyOrders(
             @RequestParam(required = false) Long cursor,
@@ -60,7 +62,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getMyOrders(userId, cursor, size));
     }
 
-    @GetMapping("/api/v1/orders/{orderId}")
+    @GetMapping("/orders/{orderId}")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> getOrder(
             @PathVariable Long orderId,
@@ -70,7 +72,7 @@ public class OrderController {
     }
 
     // STORE API (배송 상태 관리)
-    @PatchMapping("/api/v1/stores/{storeId}/orders/{orderId}/delivery")
+    @PatchMapping("/stores/{storeId}/orders/{orderId}/delivery")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<Void> updateDeliveryStatus(
             @PathVariable Long storeId,
