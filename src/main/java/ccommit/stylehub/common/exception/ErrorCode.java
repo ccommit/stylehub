@@ -61,7 +61,7 @@ public enum ErrorCode {
     PAYMENT_CANCEL_FAILED(HttpStatus.BAD_GATEWAY, "PM005", "토스페이먼츠 결제 취소에 실패했습니다"),
     INVALID_CANCEL_AMOUNT(HttpStatus.BAD_REQUEST, "PM006", "취소 금액이 잔액을 초과합니다"),
     CANCEL_NOT_ALLOWED_SHIPPING(HttpStatus.BAD_REQUEST, "PM007", "배송 중에는 취소할 수 없습니다"),
-    REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간(배송 완료 후 7일)이 지났습니다"),
+    REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간이 지났습니다"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
