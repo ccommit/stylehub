@@ -25,7 +25,7 @@ public class DeliveryPolicy {
      * - 결제 완료(PAID) 상태에서만 변경 가능
      * - PREPARING → SHIPPING → DELIVERED 순서만 허용
      */
-    public void validateTransition(Order order, DeliveryStatus newStatus) {
+    public void validateUpdateDeliveryStatus(Order order, DeliveryStatus newStatus) {
         if (order.getOrderStatus() != OrderStatus.PAID) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
