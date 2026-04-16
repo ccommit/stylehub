@@ -5,7 +5,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
-import ccommit.stylehub.order.enums.DeliveryStatus;
+import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.policy.DeliveryPolicy;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderItemResponse;
@@ -40,6 +40,7 @@ import java.util.TreeMap;
  * @created 2026/03/27
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService, OrderViewService를 OrderService로 통합
  * @modified 2026/04/02 by WonJin - feat: 배송 상태 변경 메서드 추가
+ * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -117,7 +118,7 @@ public class OrderService {
 
     // 배송 상태를 변경한다. 스토어 소유권 + 주문 내 스토어 상품 확인 + 상태 전이 검증.
     @Transactional
-    public void updateDeliveryStatus(Long userId, Long storeId, Long orderId, DeliveryStatus newStatus) {
+    public void updateDeliveryStatus(Long userId, Long storeId, Long orderId, OrderStatus newStatus) {
         storeService.validateApprovedStoreOwner(userId, storeId);
 
         Order order = orderRepository.findById(orderId)
@@ -125,7 +126,7 @@ public class OrderService {
 
         validateStoreOrder(storeId, orderId);
         deliveryPolicy.validateUpdateDeliveryStatus(order, newStatus);
-        order.updateDeliveryStatus(newStatus);
+        order.updateOrderStatus(newStatus);
     }
 
     private void validateStoreOrder(Long storeId, Long orderId) {
