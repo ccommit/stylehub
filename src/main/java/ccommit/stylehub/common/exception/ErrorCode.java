@@ -72,6 +72,7 @@ public enum ErrorCode {
     COUPON_ALREADY_ISSUED(HttpStatus.CONFLICT, "CP006", "이미 발급받은 쿠폰입니다"),
     INVALID_DISCOUNT_VALUE(HttpStatus.BAD_REQUEST, "CP007", "할인 값이 유효하지 않습니다"),
     INVALID_COUPON_PERIOD(HttpStatus.BAD_REQUEST, "CP008", "쿠폰 유효기간이 올바르지 않습니다"),
+    INVALID_COUPON_TYPE(HttpStatus.BAD_REQUEST, "CP009", "쿠폰 타입과 스토어 설정이 일치하지 않습니다"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
