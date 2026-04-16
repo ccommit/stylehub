@@ -14,6 +14,7 @@ import java.util.Optional;
 /**
  * @author WonJin Bae
  * @created 2026/04/09
+ * @modified 2026/04/16 by WonJin - refactor: 활성 쿠폰 조회를 @Query로 전환, 파라미터 단일화 (now1/now2 → now)
  *
  * <p>
  * CouponEvent 엔티티의 데이터 접근을 담당한다.
@@ -28,6 +29,10 @@ public interface CouponEventRepository extends JpaRepository<CouponEvent, Long> 
 
     List<CouponEvent> findByStoreStoreId(Long storeId);
 
-    List<CouponEvent> findByActiveTrueAndStartedAtBeforeAndExpiredAtAfter(
-            LocalDateTime now1, LocalDateTime now2);
+    // 현재 시점 기준으로 활성 상태이며 진행 중인 쿠폰 이벤트를 조회한다.
+    @Query("SELECT ce FROM CouponEvent ce " +
+            "WHERE ce.active = true " +
+            "AND ce.startedAt < :now " +
+            "AND ce.expiredAt > :now")
+    List<CouponEvent> findActiveCouponEvents(@Param("now") LocalDateTime now);
 }

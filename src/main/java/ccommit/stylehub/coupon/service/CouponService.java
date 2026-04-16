@@ -145,9 +145,8 @@ public class CouponService {
      */
     @Transactional(readOnly = true)
     public List<CouponEventResponse> getActiveCouponEvents() {
-        LocalDateTime now = LocalDateTime.now();
         return couponEventRepository
-                .findByActiveTrueAndStartedAtBeforeAndExpiredAtAfter(now, now)
+                .findActiveCouponEvents(LocalDateTime.now())
                 .stream()
                 .map(CouponEventResponse::from)
                 .toList();
