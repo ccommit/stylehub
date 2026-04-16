@@ -110,7 +110,7 @@ public class Order extends BaseEntity {
         this.orderStatus = OrderStatus.PREPARING;
     }
 
-    // 주문 상태를 변경한다. 검증은 DeliveryPolicy에서 처리.
+    // 주문 상태를 변경한다. 검증은 DeliveryValidator에서 처리.
     public void updateOrderStatus(OrderStatus newStatus) {
         this.orderStatus = newStatus;
     }

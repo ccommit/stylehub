@@ -6,7 +6,7 @@ import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
 import ccommit.stylehub.order.enums.OrderStatus;
-import ccommit.stylehub.order.policy.DeliveryPolicy;
+import ccommit.stylehub.order.validator.DeliveryValidator;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
@@ -58,7 +58,7 @@ public class OrderService {
     private final OrderItemRepository orderItemRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final ApplicationEventPublisher eventPublisher;
-    private final DeliveryPolicy deliveryPolicy;
+    private final DeliveryValidator deliveryValidator;
     private final UserService userService;
     private final ProductService productService;
     private final StoreService storeService;
@@ -125,7 +125,7 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         validateStoreOrder(storeId, orderId);
-        deliveryPolicy.validateUpdateDeliveryStatus(order, newStatus);
+        deliveryValidator.validateUpdateDeliveryStatus(order, newStatus);
         order.updateOrderStatus(newStatus);
     }
 
