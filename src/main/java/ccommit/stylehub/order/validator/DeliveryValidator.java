@@ -2,33 +2,60 @@ package ccommit.stylehub.order.validator;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.entity.Order;
+import ccommit.stylehub.order.entity.OrderItem;
 import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.order.repository.OrderItemRepository;
+import ccommit.stylehub.store.service.StoreService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
 
 /**
  * @author WonJin Bae
  * @created 2026/04/02
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/16 by WonJin - refactor: DeliveryPolicy를 DeliveryValidator로 변경 (검증 역할만 수행하므로)
+ * @modified 2026/04/16 by WonJin - refactor: 배송 상태 변경 관련 검증을 모두 validator로 통합 (스토어 소유권, 주문-스토어 매칭, 상태 전이)
  *
  * <p>
- * 배송 상태 전이 규칙을 검증한다.
- * PREPARING → SHIPPING → DELIVERED 순서만 허용, 역방향 불가.
- * 규칙 변경 시 이 클래스만 수정하면 된다.
+ * 배송 상태 변경에 필요한 모든 검증을 담당한다.
+ * 1. 스토어 소유권 검증
+ * 2. 주문 내 스토어 상품 포함 여부
+ * 3. 상태 전이 규칙 (PREPARING → SHIPPING → DELIVERED)
  * </p>
  */
 @Component
+@RequiredArgsConstructor
 public class DeliveryValidator {
 
-    /**
-     * 배송 상태 변경이 가능한지 검증한다.
-     * - PREPARING → SHIPPING → DELIVERED 순서만 허용
-     */
-    public void validateUpdateDeliveryStatus(Order order, OrderStatus newStatus) {
-        OrderStatus current = order.getOrderStatus();
+    private final StoreService storeService;
+    private final OrderItemRepository orderItemRepository;
 
-        if (!isValidTransition(current, newStatus)) {
+    /**
+     * 배송 상태 변경 요청을 검증한다.
+     * 검증 순서: 스토어 소유권 → 주문-스토어 매칭 → 상태 전이 규칙
+     */
+    public void validate(UpdateDeliveryStatusRequest request, Order order) {
+        storeService.validateApprovedStoreOwner(request.userId(), request.storeId());
+        validateStoreOrder(request.storeId(), request.orderId());
+        validateTransition(order.getOrderStatus(), request.newStatus());
+    }
+
+    private void validateStoreOrder(Long storeId, Long orderId) {
+        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
+        boolean isStoreOrder = items.stream()
+                .anyMatch(item -> item.getProductOption().getProduct().getStore().getStoreId().equals(storeId));
+
+        if (!isStoreOrder) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_DELIVERY_ACCESS);
+        }
+    }
+
+    private void validateTransition(OrderStatus current, OrderStatus next) {
+        if (!isValidTransition(current, next)) {
             throw new BusinessException(ErrorCode.INVALID_DELIVERY_STATUS);
         }
     }
