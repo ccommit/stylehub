@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/04/02 by WonJin - refactor: 배송상태 API 추가
+ * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  *
  * <p>
  * 주문 관련 API를 제공한다.
@@ -78,7 +79,7 @@ public class OrderController {
             @Valid @RequestBody DeliveryStatusRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        orderService.updateDeliveryStatus(userId, storeId, orderId, request.deliveryStatus());
+        orderService.updateDeliveryStatus(userId, storeId, orderId, request.orderStatus());
         return ResponseEntity.ok().build();
     }
 }
