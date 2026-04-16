@@ -8,9 +8,9 @@ import ccommit.stylehub.coupon.dto.response.CouponEventResponse;
 import ccommit.stylehub.coupon.dto.response.UserCouponResponse;
 import ccommit.stylehub.coupon.entity.CouponEvent;
 import ccommit.stylehub.coupon.entity.UserCoupon;
-import ccommit.stylehub.coupon.enums.DiscountType;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.UserCouponRepository;
+import ccommit.stylehub.coupon.validator.CouponValidator;
 import ccommit.stylehub.store.entity.Store;
 import ccommit.stylehub.store.service.StoreService;
 import ccommit.stylehub.user.entity.User;
@@ -25,10 +25,12 @@ import java.util.List;
 /**
  * @author WonJin Bae
  * @created 2026/04/09
+ * @modified 2026/04/16 by WonJin - refactor: 검증 로직을 CouponValidator로 분리
  *
  * <p>
  * 쿠폰 이벤트 생성과 선착순 쿠폰 발급을 담당한다.
  * 선착순 발급은 비관적 락(SELECT FOR UPDATE)으로 수량 정합성을 보장한다.
+ * 검증은 CouponValidator, PG/스토어 조회는 StoreService에 위임한다.
  * </p>
  */
 // TODO: 성능 테스트 후 분산락 적용예정
@@ -40,6 +42,7 @@ public class CouponService {
     private final UserCouponRepository userCouponRepository;
     private final UserRepository userRepository;
     private final StoreService storeService;
+    private final CouponValidator couponValidator;
 
     /**
      * 스토어 쿠폰 이벤트를 생성한다.
@@ -49,7 +52,7 @@ public class CouponService {
     public CouponEventResponse createStoreCouponEvent(Long userId, Long storeId,
                                                       CouponEventCreateRequest request) {
         Store store = storeService.findApprovedStoreByOwner(userId, storeId);
-        validateCouponEventRequest(request);
+        couponValidator.validateCreate(request);
 
         CouponEvent event = couponEventRepository.save(CouponEvent.create(
                 store, request.name(), request.discountType(), request.discountValue(),
@@ -64,7 +67,7 @@ public class CouponService {
      */
     @Transactional
     public CouponEventResponse createPlatformCouponEvent(CouponEventCreateRequest request) {
-        validateCouponEventRequest(request);
+        couponValidator.validateCreate(request);
 
         CouponEvent event = couponEventRepository.save(CouponEvent.createPlatform(
                 request.name(), request.discountType(), request.discountValue(),
@@ -84,7 +87,7 @@ public class CouponService {
         CouponEvent event = couponEventRepository.findByIdWithLock(couponEventId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COUPON_NOT_FOUND));
 
-        validateCouponEvent(event);
+        couponValidator.validateIssuable(event);
         checkDuplicateIssue(userId, couponEventId);
 
         event.increaseIssuedCount();
@@ -103,12 +106,7 @@ public class CouponService {
         CouponEvent event = couponEventRepository.findById(couponEventId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COUPON_NOT_FOUND));
 
-        if (request.startedAt().isAfter(request.expiredAt())) {
-            throw new BusinessException(ErrorCode.INVALID_COUPON_PERIOD);
-        }
-        if (request.issueCount() < event.getIssuedCount()) {
-            throw new BusinessException(ErrorCode.INVALID_DISCOUNT_VALUE);
-        }
+        couponValidator.validateUpdate(event, request);
 
         event.update(request.issueCount(), request.minOrderAmount(),
                 request.startedAt(), request.expiredAt());
@@ -152,24 +150,4 @@ public class CouponService {
                 .toList();
     }
 
-    private void validateCouponEvent(CouponEvent event) {
-        if (!event.getActive()) {
-            throw new BusinessException(ErrorCode.COUPON_NOT_ACTIVE);
-        }
-        if (event.isNotStarted()) {
-            throw new BusinessException(ErrorCode.COUPON_NOT_STARTED);
-        }
-        if (event.isExpired()) {
-            throw new BusinessException(ErrorCode.COUPON_EXPIRED);
-        }
-    }
-
-    private void validateCouponEventRequest(CouponEventCreateRequest request) {
-        if (request.startedAt().isAfter(request.expiredAt())) {
-            throw new BusinessException(ErrorCode.INVALID_COUPON_PERIOD);
-        }
-        if (request.discountType() == DiscountType.RATE && request.discountValue() > 100) {
-            throw new BusinessException(ErrorCode.INVALID_DISCOUNT_VALUE);
-        }
-    }
 }
