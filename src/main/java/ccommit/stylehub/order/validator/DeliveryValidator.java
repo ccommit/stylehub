@@ -1,4 +1,4 @@
-package ccommit.stylehub.order.policy;
+package ccommit.stylehub.order.validator;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
@@ -10,15 +10,16 @@ import org.springframework.stereotype.Component;
  * @author WonJin Bae
  * @created 2026/04/02
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
+ * @modified 2026/04/16 by WonJin - refactor: DeliveryPolicy를 DeliveryValidator로 변경 (검증 역할만 수행하므로)
  *
  * <p>
- * 배송 상태 전이 규칙을 담당한다.
+ * 배송 상태 전이 규칙을 검증한다.
  * PREPARING → SHIPPING → DELIVERED 순서만 허용, 역방향 불가.
- * 정책 변경 시 이 클래스만 수정하면 된다.
+ * 규칙 변경 시 이 클래스만 수정하면 된다.
  * </p>
  */
 @Component
-public class DeliveryPolicy {
+public class DeliveryValidator {
 
     /**
      * 배송 상태 변경이 가능한지 검증한다.
