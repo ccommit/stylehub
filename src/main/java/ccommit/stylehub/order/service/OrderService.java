@@ -5,7 +5,7 @@ import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderItemRequest;
-import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.validator.DeliveryValidator;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderItemResponse;
@@ -21,7 +21,6 @@ import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.event.OrderCreatedEvent;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.service.ProductService;
-import ccommit.stylehub.store.service.StoreService;
 import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -61,7 +60,6 @@ public class OrderService {
     private final DeliveryValidator deliveryValidator;
     private final UserService userService;
     private final ProductService productService;
-    private final StoreService storeService;
 
     /**
      * 주문을 접수한다.
@@ -116,27 +114,14 @@ public class OrderService {
         }
     }
 
-    // 배송 상태를 변경한다. 스토어 소유권 + 주문 내 스토어 상품 확인 + 상태 전이 검증.
+    // 배송 상태를 변경한다. 모든 검증은 DeliveryValidator에 위임한다.
     @Transactional
-    public void updateDeliveryStatus(Long userId, Long storeId, Long orderId, OrderStatus newStatus) {
-        storeService.validateApprovedStoreOwner(userId, storeId);
-
-        Order order = orderRepository.findById(orderId)
+    public void updateDeliveryStatus(UpdateDeliveryStatusRequest request) {
+        Order order = orderRepository.findById(request.orderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
-        validateStoreOrder(storeId, orderId);
-        deliveryValidator.validateUpdateDeliveryStatus(order, newStatus);
-        order.updateOrderStatus(newStatus);
-    }
-
-    private void validateStoreOrder(Long storeId, Long orderId) {
-        List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
-        boolean isStoreOrder = items.stream()
-                .anyMatch(item -> item.getProductOption().getProduct().getStore().getStoreId().equals(storeId));
-
-        if (!isStoreOrder) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED_DELIVERY_ACCESS);
-        }
+        deliveryValidator.validate(request, order);
+        order.updateOrderStatus(request.newStatus());
     }
 
     /**

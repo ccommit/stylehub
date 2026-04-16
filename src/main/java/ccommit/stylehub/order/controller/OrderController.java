@@ -4,6 +4,7 @@ import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.order.dto.request.DeliveryStatusRequest;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.dto.response.OrderCursorResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
@@ -79,7 +80,8 @@ public class OrderController {
             @Valid @RequestBody DeliveryStatusRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        orderService.updateDeliveryStatus(userId, storeId, orderId, request.orderStatus());
+        orderService.updateDeliveryStatus(
+                new UpdateDeliveryStatusRequest(userId, storeId, orderId, request.orderStatus()));
         return ResponseEntity.ok().build();
     }
 }
