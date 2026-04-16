@@ -3,7 +3,8 @@ package ccommit.stylehub.order.controller;
 import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
-import ccommit.stylehub.order.dto.response.OrderCursorResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
+import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.user.enums.UserRole;
@@ -48,7 +49,7 @@ public class OrderController {
     }
 
     @GetMapping
-    public ResponseEntity<OrderCursorResponse> getMyOrders(
+    public ResponseEntity<CursorResponse<OrderListResponse>> getMyOrders(
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer size,
             HttpServletRequest httpRequest) {

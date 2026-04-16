@@ -42,6 +42,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
                         "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
                         "/api/v1/products/**",     // 상품 조회 — 비인증 공개 API
+                        "/api/v1/payments/**",     // 토스 결제 콜백 — 토스 서버에서 리다이렉트
                         "/v3/api-docs/**",         // Swagger API 문서
                         "/swagger-ui/**",          // Swagger UI 웹 화면
                         "/actuator/**"             // Spring Boot Actuator 모니터링

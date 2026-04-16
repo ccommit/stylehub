@@ -9,6 +9,7 @@ import java.util.List;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/04/08 by WonJin - refactor: OrderItemRequest → OrderDetailRequest 변경
  *
  * <p>
  * 주문 생성 요청 DTO이다.
@@ -22,5 +23,5 @@ public record OrderCreateRequest(
 
         @NotEmpty(message = "주문 항목은 최소 1개 이상이어야 합니다")
         @Valid
-        List<OrderItemRequest> items
+        List<OrderDetailRequest> details
 ) {}
