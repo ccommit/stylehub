@@ -5,7 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.format.FormatterRegistry;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.support.HandlerTypePredicate;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -14,10 +17,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/23 by WonJin - feat: 인증/역할 검증 인터셉터 등록
  * @modified 2026/03/27 by WonJin - feat: 상품 조회 공개 API 경로 인증 제외 추가
+ * @modified 2026/04/16 by WonJin - refactor: @RestController 공통 프리픽스 /api/v1 자동 부여
  *
  * <p>
- * Spring MVC 커스텀 Converter와 인터셉터를 등록한다.
+ * Spring MVC 커스텀 Converter, 인터셉터, 공통 경로 프리픽스를 등록한다.
  * provider 문자열을 OAuthProvider enum으로 자동 변환한다.
+ * 모든 @RestController에는 /api/v1 프리픽스가 자동 부여되어, 각 컨트롤러의 @RequestMapping에서 중복 작성이 불필요하다.
  * </p>
  */
 @Configuration
@@ -30,6 +35,17 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addFormatters(FormatterRegistry registry) {
         registry.addConverter(new StringToOAuthProviderConverter());
+    }
+
+    /**
+     * 모든 @RestController 클래스의 요청 매핑 앞에 "/api/v1" 프리픽스를 자동으로 붙인다.
+     * 각 컨트롤러의 @RequestMapping에서 /api/v1을 중복 작성할 필요가 없어진다.
+     * API 버전 변경 시 이 설정 한 곳만 수정하면 된다.
+     */
+    @Override
+    public void configurePathMatch(PathMatchConfigurer configurer) {
+        configurer.addPathPrefix("/api/v1",
+                HandlerTypePredicate.forAnnotation(RestController.class));
     }
 
     @Override

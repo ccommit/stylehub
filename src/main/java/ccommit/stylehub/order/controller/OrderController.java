@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  */
 // TODO: 토스페이먼츠 결제 연동 시 결제 확인/취소 API 추가 예정
 @RestController
-@RequestMapping("/api/v1/orders")
+@RequestMapping("/orders")
 @RequiredArgsConstructor
 @RequiredRole(UserRole.USER)
 public class OrderController {
