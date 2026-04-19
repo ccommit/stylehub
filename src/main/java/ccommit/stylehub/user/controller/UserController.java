@@ -42,7 +42,7 @@ import java.util.Map;
  * </p>
  */
 @RestController
-@RequestMapping("/api/v1/users")
+@RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {
 

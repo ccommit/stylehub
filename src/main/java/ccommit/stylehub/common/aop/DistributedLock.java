@@ -20,14 +20,14 @@ import java.util.concurrent.TimeUnit;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface DistributedLock {
 
-    //락 키. SpEL 표현식 지원. (예: "'stock:' + #productOptionId")
+    //락 키. SpEL 표현식 지원. (예: "'stock:' + #productOptionstock:' + #productOptionId")Id")
     String key();
 
-    // 락 대기 시간(1초) 이 시간 내에 락을 획득하지 못하면 실패
-    long waitTime() default 1000;
+    // 락 대기 시간(3초) 이 시간 내에 락을 획득하지 못하면 실패
+    long waitTime() default 3000;
 
-    // 락 점유 시간(1초) 이 시간이 지나면 자동 해제. 성능테스트 후 조정 필요.
-    long leaseTime() default 1000;
+    // 락 점유 시간(5초) 이 시간이 지나면 자동 해제. DB 지연/GC 고려하여 작업 시간의 3~5배로 설정.
+    long leaseTime() default 5000;
 
     // 시간 단위
     TimeUnit timeUnit() default TimeUnit.MILLISECONDS;

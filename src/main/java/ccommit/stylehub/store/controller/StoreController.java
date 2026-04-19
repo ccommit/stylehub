@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
-@RequestMapping("/api/v1/stores")
+@RequestMapping("/stores")
 @RequiredArgsConstructor
 @RequiredRole(UserRole.STORE)
 public class StoreController {

@@ -25,7 +25,7 @@ import java.util.List;
  * </p>
  */
 @RestController
-@RequestMapping("/api/v1/admin/stores")
+@RequestMapping("/admin/stores")
 @RequiredArgsConstructor
 @RequiredRole(UserRole.ADMIN)
 public class StoreAdminController {

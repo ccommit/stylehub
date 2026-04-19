@@ -27,7 +27,7 @@ import lombok.experimental.SuperBuilder;
  *
  * <p>
  * 상품의 색상/사이즈별 옵션과 재고를 관리한다.
- * OrderItem이 이 옵션을 직접 참조하여 옵션 단위 주문을 지원한다.
+ * OrderDetail이 이 옵션을 직접 참조하여 옵션 단위 주문을 지원한다.
  * </p>
  */
 

@@ -1,7 +1,7 @@
 package ccommit.stylehub.order.service;
 
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
-import ccommit.stylehub.order.dto.request.OrderItemRequest;
+import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -65,7 +65,7 @@ class OrderConcurrencyTest {
                 try {
                     OrderCreateRequest request = new OrderCreateRequest(
                             addressId,
-                            List.of(new OrderItemRequest(optionId, 1))
+                            List.of(new OrderDetailRequest(optionId, 1))
                     );
                     orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
@@ -117,7 +117,7 @@ class OrderConcurrencyTest {
                 try {
                     OrderCreateRequest request = new OrderCreateRequest(
                             addressId,
-                            List.of(new OrderItemRequest(optionId, 1))
+                            List.of(new OrderDetailRequest(optionId, 1))
                     );
                     orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();

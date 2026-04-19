@@ -43,7 +43,7 @@ public class ProductController {
     private final ProductService productService;
 
     //공개 API (비인증)
-    @GetMapping("/api/v1/products")
+    @GetMapping("/products")
     public ResponseEntity<CursorResponse<ProductListResponse>> getProducts(
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Long storeId,
@@ -53,13 +53,13 @@ public class ProductController {
         return ResponseEntity.ok(productService.getProducts(cursor, storeId, mainCategory, subCategory, pageSize));
     }
 
-    @GetMapping("/api/v1/products/{productId}")
+    @GetMapping("/products/{productId}")
     public ResponseEntity<ProductResponse> getProduct(@PathVariable Long productId) {
         return ResponseEntity.ok(productService.getProduct(productId));
     }
 
     //  스토어 API (STORE 권한 필요)
-    @GetMapping("/api/v1/stores/{storeId}/products")
+    @GetMapping("/stores/{storeId}/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<CursorResponse<ProductListResponse>> getMyStoreProducts(
             @PathVariable Long storeId,
@@ -70,7 +70,7 @@ public class ProductController {
         return ResponseEntity.ok(productService.getMyStoreProducts(userId, storeId, cursor, pageSize));
     }
 
-    @PostMapping("/api/v1/stores/{storeId}/products")
+    @PostMapping("/stores/{storeId}/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductResponse> registerProduct(
             @PathVariable Long storeId,
@@ -81,7 +81,7 @@ public class ProductController {
                 .body(productService.registerProduct(userId, storeId, request));
     }
 
-    @PatchMapping("/api/v1/stores/{storeId}/products/{productId}/options/{optionId}/stock")
+    @PatchMapping("/stores/{storeId}/products/{productId}/options/{optionId}/stock")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductOptionResponse> updateStock(
             @PathVariable Long storeId,
