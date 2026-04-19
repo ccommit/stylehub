@@ -4,7 +4,7 @@ import ccommit.stylehub.product.entity.Product;
 import ccommit.stylehub.product.entity.QProduct;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
-import ccommit.stylehub.store.entity.QStore;
+import ccommit.stylehub.user.entity.QUser;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.jpa.impl.JPAQueryFactory;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,7 @@ public class ProductQueryRepository {
                                                  MainCategory mainCategory,
                                                  SubCategory subCategory, int size) {
         QProduct product = QProduct.product;
-        QStore store = QStore.store;
+        QUser user = QUser.user;
 
         BooleanBuilder builder = new BooleanBuilder();
 
@@ -44,7 +44,7 @@ public class ProductQueryRepository {
             builder.and(product.productId.lt(cursor));
         }
         if (storeId != null) {
-            builder.and(product.store.storeId.eq(storeId));
+            builder.and(product.user.userId.eq(storeId));
         }
         if (mainCategory != null) {
             builder.and(product.mainCategory.eq(mainCategory));
@@ -55,7 +55,7 @@ public class ProductQueryRepository {
 
         return queryFactory
                 .selectFrom(product)
-                .join(product.store, store).fetchJoin()
+                .join(product.user, user).fetchJoin()
                 .where(builder)
                 .orderBy(product.productId.desc())
                 .limit(size)

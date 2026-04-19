@@ -15,8 +15,8 @@ import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
-import ccommit.stylehub.store.entity.Store;
-import ccommit.stylehub.store.service.StoreService;
+import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,7 +48,7 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
     private final ProductQueryRepository productQueryRepository;
-    private final StoreService storeService;
+    private final UserService userService;
     private final TransactionTemplate transactionTemplate;
 
     // 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
@@ -59,8 +59,8 @@ public class ProductService {
 
         RegisterResult result = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    Store store = storeService.findApprovedStoreByOwner(userId, storeId);
-                    Product savedProduct = saveProduct(store, request.name(), request.mainCategory(),
+                    User storeOwner = userService.findApprovedStoreByOwner(userId, storeId);
+                    Product savedProduct = saveProduct(storeOwner, request.name(), request.mainCategory(),
                             request.subCategory(), request.description(), request.price(), request.imageUrl());
                     List<ProductOption> savedOptions = saveOptions(savedProduct, request.options());
                     return new RegisterResult(savedProduct, savedOptions);
@@ -75,7 +75,7 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
-        storeService.validateApprovedStoreOwner(userId, storeId);
+        userService.validateApprovedStoreOwner(userId, storeId);
 
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
@@ -94,7 +94,7 @@ public class ProductService {
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    storeService.validateApprovedStoreOwner(userId, storeId);
+                    userService.validateApprovedStoreOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
                             .findByIdWithLock(optionId)
@@ -150,15 +150,15 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
-        Product product = productRepository.findByIdWithStoreAndOptions(productId)
+        Product product = productRepository.findByIdWithUserAndOptions(productId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
 
         return ProductResponse.from(product, product.getOptions());
     }
 
-    private Product saveProduct(Store store, String name, MainCategory mainCategory,
+    private Product saveProduct(User user, String name, MainCategory mainCategory,
                                 SubCategory subCategory, String description, Integer price, String imageUrl) {
-        Product product = Product.create(store, name, mainCategory, subCategory, description, price, imageUrl);
+        Product product = Product.create(user, name, mainCategory, subCategory, description, price, imageUrl);
         return productRepository.save(product);
     }
 

@@ -3,7 +3,7 @@ package ccommit.stylehub.product.entity;
 import ccommit.stylehub.common.entity.BaseEntity;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
-import ccommit.stylehub.store.entity.Store;
+import ccommit.stylehub.user.entity.User;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -51,8 +51,8 @@ public class Product extends BaseEntity {
     private Long productId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    private Store store;
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Column(nullable = false, length = 20)
     private String name;
@@ -82,10 +82,10 @@ public class Product extends BaseEntity {
     @Builder.Default
     private Integer likeCount = 0;
 
-    public static Product create(Store store, String name, MainCategory mainCategory, SubCategory subCategory,
+    public static Product create(User user, String name, MainCategory mainCategory, SubCategory subCategory,
                                  String description, Integer price, String imageUrl) {
         return Product.builder()
-                .store(store)
+                .user(user)
                 .name(name)
                 .mainCategory(mainCategory)
                 .subCategory(subCategory)

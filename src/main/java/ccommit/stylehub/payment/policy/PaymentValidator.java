@@ -3,7 +3,7 @@ package ccommit.stylehub.payment.policy;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
-import ccommit.stylehub.order.enums.DeliveryStatus;
+import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import org.springframework.stereotype.Component;
@@ -53,13 +53,13 @@ public class PaymentValidator {
      * - 배송 완료(DELIVERED): 7일 이내만 환불 가능
      */
     private void validateDeliveryStatus(Order order) {
-        DeliveryStatus deliveryStatus = order.getDeliveryStatus();
+        OrderStatus orderStatus = order.getOrderStatus();
 
-        if (deliveryStatus == DeliveryStatus.SHIPPING) {
+        if (orderStatus == OrderStatus.SHIPPING) {
             throw new BusinessException(ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING);
         }
 
-        if (deliveryStatus == DeliveryStatus.DELIVERED) {
+        if (orderStatus == OrderStatus.DELIVERED) {
             LocalDateTime refundDeadline = order.getUpdatedAt().plusDays(REFUND_DAYS);
             if (LocalDateTime.now().isAfter(refundDeadline)) {
                 throw new BusinessException(ErrorCode.REFUND_PERIOD_EXPIRED);

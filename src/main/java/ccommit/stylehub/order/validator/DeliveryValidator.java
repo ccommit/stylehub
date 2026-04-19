@@ -7,7 +7,7 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderItem;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderItemRepository;
-import ccommit.stylehub.store.service.StoreService;
+import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +31,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DeliveryValidator {
 
-    private final StoreService storeService;
+    private final UserService userService;
     private final OrderItemRepository orderItemRepository;
 
     /**
@@ -39,7 +39,7 @@ public class DeliveryValidator {
      * 검증 순서: 스토어 소유권 → 주문-스토어 매칭 → 상태 전이 규칙
      */
     public void validate(UpdateDeliveryStatusRequest request, Order order) {
-        storeService.validateApprovedStoreOwner(request.userId(), request.storeId());
+        userService.validateApprovedStoreOwner(request.userId(), request.storeId());
         validateStoreOrder(request.storeId(), request.orderId());
         validateTransition(order.getOrderStatus(), request.newStatus());
     }
@@ -47,7 +47,7 @@ public class DeliveryValidator {
     private void validateStoreOrder(Long storeId, Long orderId) {
         List<OrderItem> items = orderItemRepository.findByOrderIdWithDetails(orderId);
         boolean isStoreOrder = items.stream()
-                .anyMatch(item -> item.getProductOption().getProduct().getStore().getStoreId().equals(storeId));
+                .anyMatch(item -> item.getProductOption().getProduct().getUser().getUserId().equals(storeId));
 
         if (!isStoreOrder) {
             throw new BusinessException(ErrorCode.UNAUTHORIZED_DELIVERY_ACCESS);
