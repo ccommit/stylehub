@@ -4,6 +4,11 @@ import ccommit.stylehub.common.aop.ExecutionTimeCheck;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
+import ccommit.stylehub.order.dto.request.OrderItemRequest;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
+import ccommit.stylehub.order.validator.DeliveryValidator;
+import ccommit.stylehub.order.dto.response.OrderCursorResponse;
+import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.order.dto.response.OrderDetailResponse;
@@ -39,11 +44,14 @@ import java.util.TreeMap;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService, OrderViewService를 OrderService로 통합
+
+ * @modified 2026/04/02 by WonJin - feat: 배송 상태 변경 메서드 추가
+ * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
  * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
  *
  * <p>
- * 주문 생성, 취소, 조회를 담당한다.
+ * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
  * 주문/결제 API는 ApiLoggingAspect에 의해 요청/응답이 자동 로깅된다.
  * </p>
  */
@@ -57,6 +65,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
+    private final DeliveryValidator deliveryValidator;
     private final PaymentRepository paymentRepository;
     private final OrderPaymentTimeout orderPaymentTimeout;
     private final UserService userService;
@@ -143,6 +152,16 @@ public class OrderService {
                     detail.getQuantity()
             );
         }
+    }
+
+    // 배송 상태를 변경한다. 모든 검증은 DeliveryValidator에 위임한다.
+    @Transactional
+    public void updateDeliveryStatus(UpdateDeliveryStatusRequest request) {
+        Order order = orderRepository.findById(request.orderId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+
+        deliveryValidator.validate(request, order);
+        order.updateOrderStatus(request.newStatus());
     }
 
     /**

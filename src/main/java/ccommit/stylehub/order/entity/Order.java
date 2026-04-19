@@ -3,7 +3,6 @@ package ccommit.stylehub.order.entity;
 import ccommit.stylehub.common.entity.BaseEntity;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
-import ccommit.stylehub.order.enums.DeliveryStatus;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.entity.User;
@@ -33,10 +32,12 @@ import java.util.UUID;
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/27 by WonJin - feat: 주문 상태 변경 메서드 추가, 와일드카드 import 수정
+ * @modified 2026/04/02 by WonJin - feat: 배송 상태 전이 메서드 추가
+ * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
- * 주문 상태와 배송 상태를 독립적으로 추적한다.
+ * OrderStatus 하나로 주문 및 배송 상태를 통합 추적한다.
  * </p>
  */
 @Entity
@@ -51,7 +52,6 @@ public class Order extends BaseEntity {
     @Column(name = "order_id")
     private Long orderId;
 
-    // TODO: 토스페이먼츠 결제 연동 시 PG사 주문번호로 활용
     @Column(name = "pg_order_id", nullable = false, unique = true, length = 64)
     private String pgOrderId;
 
@@ -66,10 +66,6 @@ public class Order extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "order_status", nullable = false)
     private OrderStatus orderStatus;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "delivery_status")
-    private DeliveryStatus deliveryStatus;
 
     @Column(name = "discount_amount", nullable = false)
     @Builder.Default
@@ -109,6 +105,16 @@ public class Order extends BaseEntity {
         this.orderStatus = OrderStatus.CANCELLED;
     }
 
+    // 결제 완료 시 배송 준비 상태로 전환
+    public void startDelivery() {
+        this.orderStatus = OrderStatus.PREPARING;
+    }
+
+    // 주문 상태를 변경한다. 검증은 DeliveryValidator에서 처리.
+    public void updateOrderStatus(OrderStatus newStatus) {
+        this.orderStatus = newStatus;
+    }
+  
     // 결제 완료 처리 — PENDING → PAID + 배송 준비(PREPARING) 자동 설정
     public void markPaid() {
         if (this.orderStatus != OrderStatus.PENDING) {
@@ -125,5 +131,4 @@ public class Order extends BaseEntity {
         }
         this.orderStatus = OrderStatus.CANCELLED;
     }
-
 }
