@@ -1,6 +1,9 @@
 package ccommit.stylehub.coupon.entity;
 
 import ccommit.stylehub.common.entity.BaseEntity;
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.enums.CouponType;
 import ccommit.stylehub.coupon.enums.DiscountType;
 import ccommit.stylehub.store.entity.Store;
 import jakarta.persistence.Column;
@@ -27,10 +30,13 @@ import java.time.LocalDateTime;
  * @created 2026/03/21 08:17
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/04/09 by WonJin - feat: issuedCount 필드 추가, 선착순 발급 검증 메서드 추가
+ * @modified 2026/04/16 by WonJin - refactor: couponType 필드 추가, PLATFORM/STORE 명시적 구분
  *
  * <p>
  * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
- * store 필드의 null 여부로 관리자/스토어 쿠폰을 구분한다.
+ * couponType으로 PLATFORM/STORE를 명시적으로 구분하며,
+ * 생성 시 타입-스토어 관계의 불변식을 강제한다.
  * </p>
  */
 
@@ -47,8 +53,12 @@ public class CouponEvent extends BaseEntity {
     private Long couponEventId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = true)
+    @JoinColumn(name = "store_id")
     private Store store;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coupon_type", nullable = false)
+    private CouponType couponType;
 
     @Column(nullable = false, length = 20)
     private String name;
@@ -67,6 +77,10 @@ public class CouponEvent extends BaseEntity {
     @Column(name = "issue_count", nullable = false)
     private Integer issueCount;
 
+    @Column(name = "issued_count", nullable = false)
+    @Builder.Default
+    private Integer issuedCount = 0;
+
     @Column(name = "started_at", nullable = false)
     private LocalDateTime startedAt;
 
@@ -74,17 +88,20 @@ public class CouponEvent extends BaseEntity {
     private LocalDateTime expiredAt;
 
     @Column(name = "is_active", nullable = false)
-    @Builder.Default  // 빌더로 객체 생성 시 이 필드를 명시하지 않으면 선언된 기본값을 사용한다
-
+    @Builder.Default
     private Boolean active = true;
 
-    // store가 null이면 플랫폼 쿠폰, 값이 있으면 스토어 쿠폰
+    // 스토어 쿠폰 생성 — couponType = STORE, store != null 불변식
     public static CouponEvent create(Store store, String name, DiscountType discountType,
                                      Integer discountValue, Integer minOrderAmount,
                                      Integer issueCount, LocalDateTime startedAt,
                                      LocalDateTime expiredAt) {
+        if (store == null) {
+            throw new BusinessException(ErrorCode.INVALID_COUPON_TYPE);
+        }
         return CouponEvent.builder()
                 .store(store)
+                .couponType(CouponType.STORE)
                 .name(name)
                 .discountType(discountType)
                 .discountValue(discountValue)
@@ -93,5 +110,53 @@ public class CouponEvent extends BaseEntity {
                 .startedAt(startedAt)
                 .expiredAt(expiredAt)
                 .build();
+    }
+
+    // 플랫폼(관리자) 쿠폰 생성 — couponType = PLATFORM, store = null 불변식
+    public static CouponEvent createPlatform(String name, DiscountType discountType,
+                                             Integer discountValue, Integer minOrderAmount,
+                                             Integer issueCount, LocalDateTime startedAt,
+                                             LocalDateTime expiredAt) {
+        return CouponEvent.builder()
+                .couponType(CouponType.PLATFORM)
+                .name(name)
+                .discountType(discountType)
+                .discountValue(discountValue)
+                .minOrderAmount(minOrderAmount)
+                .issueCount(issueCount)
+                .startedAt(startedAt)
+                .expiredAt(expiredAt)
+                .build();
+    }
+
+    public void increaseIssuedCount() {
+        if (this.issuedCount >= this.issueCount) {
+            throw new BusinessException(ErrorCode.COUPON_SOLD_OUT);
+        }
+        this.issuedCount++;
+    }
+
+    public void update(Integer issueCount, Integer minOrderAmount,
+                       LocalDateTime startedAt, LocalDateTime expiredAt) {
+        this.issueCount = issueCount;
+        this.minOrderAmount = minOrderAmount;
+        this.startedAt = startedAt;
+        this.expiredAt = expiredAt;
+    }
+
+    public int calculateDiscount(int orderAmount) {
+        return discountType.calculate(orderAmount, discountValue);
+    }
+
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public boolean isExpired() {
+        return LocalDateTime.now().isAfter(this.expiredAt);
+    }
+
+    public boolean isNotStarted() {
+        return LocalDateTime.now().isBefore(this.startedAt);
     }
 }

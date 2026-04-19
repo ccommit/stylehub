@@ -63,6 +63,17 @@ public enum ErrorCode {
     CANCEL_NOT_ALLOWED_SHIPPING(HttpStatus.BAD_REQUEST, "PM007", "배송 중에는 취소할 수 없습니다"),
     REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간이 지났습니다"),
 
+    // Coupon
+    COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "CP001", "존재하지 않는 쿠폰 이벤트입니다"),
+    COUPON_NOT_ACTIVE(HttpStatus.BAD_REQUEST, "CP002", "비활성화된 쿠폰 이벤트입니다"),
+    COUPON_NOT_STARTED(HttpStatus.BAD_REQUEST, "CP003", "아직 시작되지 않은 쿠폰 이벤트입니다"),
+    COUPON_EXPIRED(HttpStatus.BAD_REQUEST, "CP004", "만료된 쿠폰 이벤트입니다"),
+    COUPON_SOLD_OUT(HttpStatus.CONFLICT, "CP005", "쿠폰이 모두 소진되었습니다"),
+    COUPON_ALREADY_ISSUED(HttpStatus.CONFLICT, "CP006", "이미 발급받은 쿠폰입니다"),
+    INVALID_DISCOUNT_VALUE(HttpStatus.BAD_REQUEST, "CP007", "할인 값이 유효하지 않습니다"),
+    INVALID_COUPON_PERIOD(HttpStatus.BAD_REQUEST, "CP008", "쿠폰 유효기간이 올바르지 않습니다"),
+    INVALID_COUPON_TYPE(HttpStatus.BAD_REQUEST, "CP009", "쿠폰 타입과 스토어 설정이 일치하지 않습니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),
