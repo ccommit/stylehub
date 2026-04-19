@@ -1,10 +1,9 @@
 package ccommit.stylehub.user.service;
 
 import ccommit.stylehub.common.config.GoogleOAuthProperties;
-import ccommit.stylehub.user.dto.response.GoogleTokenResponse;
-import ccommit.stylehub.user.dto.response.GoogleUserInfoResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.enums.OAuthProvider;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -20,6 +19,18 @@ public class GoogleOAuthClient implements OAuthClient {
 
     private final GoogleOAuthProperties properties;
     private final RestClient restClient = RestClient.create();
+
+    private record GoogleTokenResponse(
+            @JsonProperty("access_token") String accessToken,
+            @JsonProperty("token_type") String tokenType,
+            @JsonProperty("expires_in") Integer expiresIn
+    ) {}
+
+    private record GoogleUserInfoResponse(
+            String sub,
+            String name,
+            String email
+    ) {}
 
     @Override
     public OAuthProvider provider() {

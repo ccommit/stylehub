@@ -3,22 +3,26 @@ package ccommit.stylehub.user.service;
 import ccommit.stylehub.common.config.PasswordHasher;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
-import ccommit.stylehub.user.entity.Address;
+import ccommit.stylehub.user.dto.request.StoreSignUpRequest;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
-import ccommit.stylehub.user.repository.AddressRepository;
+import ccommit.stylehub.user.dto.response.StoreResponse;
+import ccommit.stylehub.user.dto.response.StoreSignUpResponse;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
+import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.StoreStatus;
 import ccommit.stylehub.user.enums.UserRole;
-import ccommit.stylehub.user.event.LoginEvent;
 import ccommit.stylehub.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * @author WonJin Bae
@@ -27,24 +31,27 @@ import java.util.Objects;
  * @modified 2026/03/25 by WonJin - feat: STORE 역할 회원 생성 메서드 추가
  * @modified 2026/03/26 by WonJin - refactor: 해싱과 저장 분리로 외부 트랜잭션 참여 지원
  * @modified 2026/03/27 by WonJin - feat: findUserById, findAddressByOwner 추가
+ * @modified 2026/04/19 by WonJin - refactor: StoreService, StoreAdminService, PointRewardService를 UserService로 통합
  *
  * <p>
- * 일반 회원가입과 로그인의 비즈니스 로직을 처리한다.
+ * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다.
  * BCrypt 해싱을 트랜잭션 밖에서 실행하여 커넥션 점유를 최소화한다.
  * </p>
  */
-
 @Service
 @RequiredArgsConstructor
 public class UserService {
 
+    private static final int FIRST_LOGIN_POINT = 1000;
+    private static final int DAILY_LOGIN_POINT = 10;
+
     private final UserRepository userRepository;
-    private final AddressRepository addressRepository;
     private final PasswordHasher passwordHasher;
-    private final UserValidator userValidator;
-    private final ApplicationEventPublisher eventPublisher;
     private final TransactionTemplate transactionTemplate;
 
+    // ========================
+    // 회원가입 / 로그인
+    // ========================
 
     public User signUp(String name, String email, String password, LocalDate birthDate, UserRole role) {
         String hashedPassword = hashPassword(password);
@@ -60,41 +67,47 @@ public class UserService {
         }
     }
 
-    // BCrypt 해싱. 트랜잭션 밖에서 호출하여 DB 커넥션 점유를 방지한다.
     public String hashPassword(String rawPassword) {
         return passwordHasher.hash(rawPassword);
     }
 
-    // 검증 + User 저장. 트랜잭션 내에서 호출되어야 한다.
     public User saveUser(String name, String email, String hashedPassword, LocalDate birthDate, UserRole role) {
-        userValidator.validateSignUp(email, name);
+        validateSignUp(email, name);
         User user = User.create(name, email, hashedPassword, birthDate, role);
         return userRepository.save(user);
     }
 
-    public User findUserById(Long userId) {
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    private void validateSignUp(String email, String name) {
+        if (userRepository.existsByEmail(email)) {
+            throw new IllegalArgumentException("이미 사용 중인 이메일입니다");
+        }
+        if (userRepository.existsByName(name)) {
+            throw new IllegalArgumentException("이미 사용 중인 닉네임입니다");
+        }
     }
 
-    /**
-     * @throws BusinessException ADDRESS_NOT_FOUND, UNAUTHORIZED_ORDER_ACCESS
-     */
-    public Address findAddressByOwner(Long userId, Long addressId) {
-        Address address = addressRepository.findByIdWithUser(addressId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ADDRESS_NOT_FOUND));
+    public StoreSignUpResponse signUpWithStore(StoreSignUpRequest request) {
+        String hashedPassword = hashPassword(request.password());
 
-        if (!address.getUser().getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED_ORDER_ACCESS);
+        User user;
+        try {
+            user = Objects.requireNonNull(
+                    transactionTemplate.execute(status -> {
+                        User savedUser = saveUser(
+                                request.name(), request.email(), hashedPassword, null, UserRole.STORE
+                        );
+                        registerStore(savedUser, request.storeName(), request.storeDescription());
+                        return savedUser;
+                    })
+            );
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL_OR_NAME);
         }
 
-        return address;
+        return StoreSignUpResponse.from(user);
     }
 
     public UserLoginResponse login(UserLoginRequest request) {
-
-        // DB 커넥션을 최소한으로 점유하기 위해 트랜잭션을 의도적으로 분리
-        // BCrypt 검증(~100ms)은 트랜잭션 밖에서 처리하여 커넥션 풀 고갈 방지
         User user = Objects.requireNonNull(
                 transactionTemplate.execute(status ->
                         userRepository.findByEmail(request.email())
@@ -106,10 +119,149 @@ public class UserService {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다");
         }
 
-        transactionTemplate.executeWithoutResult(status ->
-            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now(), user.getRole()))
-        );
+        if (user.getRole() == UserRole.USER) {
+            rewardLoginPoint(user.getUserId(), LocalDate.now());
+        }
 
         return UserLoginResponse.from(user);
+    }
+
+    // ========================
+    // 조회
+    // ========================
+
+    public User findUserById(Long userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    public Address findAddressByOwner(Long userId, Long addressId) {
+        Address address = userRepository.findAddressByIdWithUser(addressId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ADDRESS_NOT_FOUND));
+
+        if (!address.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_ORDER_ACCESS);
+        }
+
+        return address;
+    }
+
+    // ========================
+    // 스토어 (STORE 역할)
+    // ========================
+
+    @Transactional
+    public void registerStore(User user, String storeName, String storeDescription) {
+        if (user.getStoreName() != null) {
+            throw new BusinessException(ErrorCode.STORE_ALREADY_EXISTS);
+        }
+        user.registerStore(storeName, storeDescription);
+    }
+
+    public void validateApprovedStoreOwner(Long userId, Long storeId) {
+        findApprovedStoreByOwner(userId, storeId);
+    }
+
+    public User findApprovedStoreByOwner(Long userId, Long storeId) {
+        User user = userRepository.findById(storeId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+
+        if (!user.getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_STORE_ACCESS);
+        }
+
+        if (user.getStoreStatus() != StoreStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.STORE_NOT_APPROVED);
+        }
+
+        return user;
+    }
+
+    @Transactional(readOnly = true)
+    public StoreResponse getMyStore(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+
+        if (user.getStoreName() == null) {
+            throw new BusinessException(ErrorCode.STORE_NOT_FOUND);
+        }
+
+        return StoreResponse.from(user);
+    }
+
+    // ========================
+    // 스토어 관리 (ADMIN 역할)
+    // ========================
+
+    @Transactional(readOnly = true)
+    public List<StoreResponse> getStoresByStatus(StoreStatus status) {
+        List<User> users = (status != null)
+                ? userRepository.findByStoreStatus(status)
+                : userRepository.findByStoreStatusNotNull();
+
+        return users.stream()
+                .map(StoreResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public StoreResponse getStoreByUserId(Long userId) {
+        User user = findStoreUser(userId);
+        return StoreResponse.from(user);
+    }
+
+    public StoreResponse approveStore(Long userId) {
+        return changeStoreStatus(userId, User::approveStore);
+    }
+
+    public StoreResponse rejectStore(Long userId) {
+        return changeStoreStatus(userId, User::rejectStore);
+    }
+
+    public StoreResponse suspendStore(Long userId) {
+        return changeStoreStatus(userId, User::suspendStore);
+    }
+
+    private StoreResponse changeStoreStatus(Long userId, Consumer<User> action) {
+        User user = Objects.requireNonNull(
+                transactionTemplate.execute(status -> {
+                    User target = findStoreUser(userId);
+                    action.accept(target);
+                    return target;
+                })
+        );
+        return StoreResponse.from(user);
+    }
+
+    private User findStoreUser(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
+
+        if (user.getStoreName() == null) {
+            throw new BusinessException(ErrorCode.STORE_NOT_FOUND);
+        }
+
+        return user;
+    }
+
+    // ========================
+    // 포인트
+    // ========================
+
+    @Transactional
+    public void rewardLoginPoint(Long userId, LocalDate today) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다"));
+
+        if (user.getRole() == UserRole.ADMIN) {
+            return;
+        }
+
+        if (user.getLastLoginDate() == null) {
+            user.addPoint(FIRST_LOGIN_POINT);
+        } else if (!user.getLastLoginDate().equals(today)) {
+            user.addPoint(DAILY_LOGIN_POINT);
+        }
+        user.updateLastLoginDate(today);
     }
 }

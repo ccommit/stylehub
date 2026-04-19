@@ -35,8 +35,8 @@ public record ProductResponse(
     public static ProductResponse from(Product product, List<ProductOption> options) {
         return ProductResponse.builder()
                 .productId(product.getProductId())
-                .storeId(product.getStore().getStoreId())
-                .storeName(product.getStore().getName())
+                .storeId(product.getUser().getUserId())
+                .storeName(product.getUser().getStoreName())
                 .name(product.getName())
                 .mainCategory(product.getMainCategory())
                 .subCategory(product.getSubCategory())

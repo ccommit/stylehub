@@ -21,8 +21,8 @@ import java.util.Optional;
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
     @Query("SELECT DISTINCT p FROM Product p " +
-            "JOIN FETCH p.store " +
+            "JOIN FETCH p.user " +
             "LEFT JOIN FETCH p.options " +
             "WHERE p.productId = :productId")
-    Optional<Product> findByIdWithStoreAndOptions(@Param("productId") Long productId);
+    Optional<Product> findByIdWithUserAndOptions(@Param("productId") Long productId);
 }
