@@ -3,32 +3,25 @@
 -- ========================
 
 CREATE TABLE `users` (
-	`user_id`          BIGINT       NOT NULL COMMENT '사용자 고유 ID',
-	`name`             VARCHAR(20)  NOT NULL,
-	`email`            VARCHAR(100) NOT NULL COMMENT '로그인 이메일(중복 불가)',
-	`password`         VARCHAR(400) NOT NULL COMMENT 'Bycript해시(소셜 로그인유저는 NULL)',
-	`role`             ENUM('USER','STORE','ADMIN') NOT NULL DEFAULT 'USER' COMMENT 'USER | STORE | ADMIN',
-	`grade`            ENUM('BRONZE','SILVER','GOLD') NOT NULL DEFAULT 'BRONZE' COMMENT 'BRONZE | SILVER | GOLD',
-	`total_spent`      BIGINT       NOT NULL DEFAULT 0 COMMENT '누적구매금액(등급 산정용)',
-	`point_balance`    INT          NOT NULL DEFAULT 0 COMMENT '현재 포인트 잔액',
-	`login_point_date` DATE         NULL COMMENT '마지막 로그인 포인트 적립일(일 1회 10P)',
-	`is_active`        BOOLEAN      NOT NULL DEFAULT TRUE COMMENT '계정 활성화(sot_delete)용',
-	`birth_date`       DATETIME     NULL COMMENT '생년월일(생일 쿠폰 발급용)',
-	`created_at`       DATETIME     NOT NULL DEFAULT NOW() COMMENT '가입일시',
-	`updated_at`       DATETIME     NULL COMMENT '수정일시'
-);
-
-CREATE TABLE `stores` (
-	`store_id`    BIGINT       NOT NULL COMMENT '스토어(브랜드)고유 ID',
-	`user_id`     BIGINT       NOT NULL COMMENT '사용자 고유 ID',
-	`name`        VARCHAR(20)  NOT NULL COMMENT '스토어명',
-	`description` VARCHAR(400) NOT NULL COMMENT '스토어 소개',
-	`like`        INT          NOT NULL DEFAULT 0,
-	`status`      ENUM('PENDING','APPROVED','SUSPENDED','REJECTED') NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING(심사중) → APPROVED(승인) → SUSPENDED(정지) → REJECTED(거절)',
-	`created_at`  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '입점 신청일시',
-	`approved_at` DATETIME     NULL COMMENT '승인일시(PENDING이면 NULL)',
-	`updated_at`  DATETIME     NULL DEFAULT CURRENT_TIMESTAMP,
-	`deleted_at`  DATETIME     NULL COMMENT '논리 삭제용 (Null이면 미삭제, 값이 있으면 삭제 시점)'
+	`user_id`           BIGINT       NOT NULL COMMENT '사용자 고유 ID',
+	`name`              VARCHAR(20)  NOT NULL,
+	`email`             VARCHAR(100) NOT NULL COMMENT '로그인 이메일(중복 불가)',
+	`password`          VARCHAR(400) NOT NULL COMMENT 'Bycript해시(소셜 로그인유저는 NULL)',
+	`role`              ENUM('USER','STORE','ADMIN') NOT NULL DEFAULT 'USER' COMMENT 'USER | STORE | ADMIN',
+	`grade`             ENUM('BRONZE','SILVER','GOLD') NOT NULL DEFAULT 'BRONZE' COMMENT 'BRONZE | SILVER | GOLD',
+	`total_spent`       BIGINT       NOT NULL DEFAULT 0 COMMENT '누적구매금액(등급 산정용)',
+	`point_balance`     INT          NOT NULL DEFAULT 0 COMMENT '현재 포인트 잔액',
+	`login_point_date`  DATE         NULL COMMENT '마지막 로그인 포인트 적립일(일 1회 10P)',
+	`is_active`         BOOLEAN      NOT NULL DEFAULT TRUE COMMENT '계정 활성화(soft_delete)용',
+	`birth_date`        DATETIME     NULL COMMENT '생년월일(생일 쿠폰 발급용)',
+	`store_name`        VARCHAR(20)  NULL COMMENT '스토어명 (STORE 역할만 사용)',
+	`store_description` VARCHAR(400) NULL COMMENT '스토어 소개',
+	`store_like_count`  INT          NOT NULL DEFAULT 0 COMMENT '스토어 찜 수',
+	`store_status`      ENUM('PENDING','APPROVED','SUSPENDED','REJECTED') NULL COMMENT '입점 상태 (STORE 역할만 사용)',
+	`approved_at`       DATETIME     NULL COMMENT '입점 승인일시',
+	`store_deleted_at`  DATETIME     NULL COMMENT '스토어 논리 삭제일시',
+	`created_at`        DATETIME     NOT NULL DEFAULT NOW() COMMENT '가입일시',
+	`updated_at`        DATETIME     NULL COMMENT '수정일시'
 );
 
 CREATE TABLE `addresses` (
@@ -48,7 +41,7 @@ CREATE TABLE `addresses` (
 
 CREATE TABLE `products` (
 	`product_id`    BIGINT       NOT NULL COMMENT '상품고유ID',
-	`store_id`      BIGINT       NOT NULL COMMENT '스토어(브랜드)고유 ID',
+	`user_id`       BIGINT       NOT NULL COMMENT '스토어 소유자 ID',
 	`name`          VARCHAR(20)  NOT NULL COMMENT '상품명',
 	`main_category` ENUM         NOT NULL,
 	`sub_category`  ENUM         NOT NULL,
@@ -72,7 +65,7 @@ CREATE TABLE `products_options` (
 
 CREATE TABLE `coupons` (
 	`coupon_id`        BIGINT      NOT NULL COMMENT '쿠폰고유ID',
-	`store_id`         BIGINT      NOT NULL COMMENT '스토어(브랜드)고유 ID',
+	`store_user_id`    BIGINT      NULL COMMENT '스토어 소유자 ID (NULL이면 플랫폼 쿠폰)',
 	`issued_by`        BIGINT      NOT NULL COMMENT '사용자 고유 ID',
 	`name`             VARCHAR(20) NOT NULL COMMENT '쿠폰명',
 	`discount_type`    ENUM('FIXED','RATE') NOT NULL COMMENT '할인 유형 (FIXED / RATE)',
@@ -100,9 +93,8 @@ CREATE TABLE `orders` (
 	`order_id`             BIGINT       NOT NULL COMMENT '주문고유ID',
 	`user_id`              BIGINT       NOT NULL COMMENT '사용자 고유 ID',
 	`address_id`           BIGINT       NOT NULL COMMENT '배송지_고유_번호',
-	`toss_order_id`        VARCHAR(100) NOT NULL,
+	`pg_order_id`          VARCHAR(64)  NOT NULL COMMENT 'PG사 주문번호',
 	`order_status`         ENUM('PENDING','PAID','PREPARING','SHIPPING','DELIVERED','CANCELLED') NOT NULL COMMENT '주문 상태',
-	`delivery_status`      ENUM('PREPARING','SHIPPING','DELIVERED') NULL COMMENT '배송 상태',
 	`total_product_amount` INT          NOT NULL,
 	`discount_amount`      INT          NOT NULL DEFAULT 0,
 	`final_amount`         INT          NOT NULL DEFAULT 0,
@@ -157,7 +149,6 @@ CREATE TABLE `point_histories` (
 -- ========================
 
 ALTER TABLE `users`            ADD CONSTRAINT `PK_USERS`            PRIMARY KEY (`user_id`);
-ALTER TABLE `stores`           ADD CONSTRAINT `PK_STORES`           PRIMARY KEY (`store_id`);
 ALTER TABLE `addresses`        ADD CONSTRAINT `PK_ADDRESSES`        PRIMARY KEY (`address_id`);
 ALTER TABLE `products`         ADD CONSTRAINT `PK_PRODUCTS`         PRIMARY KEY (`product_id`);
 ALTER TABLE `products_options`  ADD CONSTRAINT `PK_PRODUCTS_OPTIONS` PRIMARY KEY (`product_option_id`);
@@ -172,27 +163,22 @@ ALTER TABLE `point_histories`  ADD CONSTRAINT `PK_POINT_HISTORIES`  PRIMARY KEY 
 -- FK 및 UNIQUE KEY
 -- ========================
 
--- stores → users (1:1)
-ALTER TABLE `stores`
-	ADD CONSTRAINT `fk_stores_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`),
-	ADD UNIQUE KEY `uq_stores_user` (`user_id`);
-
 -- addresses → users (1:N)
 ALTER TABLE `addresses`
 	ADD CONSTRAINT `fk_addresses_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`);
 
--- products → stores (1:N)
+-- products → users (1:N, 스토어 소유자)
 ALTER TABLE `products`
-	ADD CONSTRAINT `fk_products_store` FOREIGN KEY (`store_id`) REFERENCES `stores` (`store_id`);
+	ADD CONSTRAINT `fk_products_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`);
 
 -- products_options → products (1:N)
 ALTER TABLE `products_options`
 	ADD CONSTRAINT `fk_products_options_product` FOREIGN KEY (`product_id`) REFERENCES `products` (`product_id`);
 
--- coupons → stores, users (1:N)
+-- coupons → users (스토어 소유자, nullable), users (발행자)
 ALTER TABLE `coupons`
-	ADD CONSTRAINT `fk_coupons_store`     FOREIGN KEY (`store_id`)  REFERENCES `stores` (`store_id`),
-	ADD CONSTRAINT `fk_coupons_issued_by` FOREIGN KEY (`issued_by`) REFERENCES `users`  (`user_id`);
+	ADD CONSTRAINT `fk_coupons_store_user` FOREIGN KEY (`store_user_id`) REFERENCES `users` (`user_id`),
+	ADD CONSTRAINT `fk_coupons_issued_by`  FOREIGN KEY (`issued_by`)     REFERENCES `users` (`user_id`);
 
 -- user_coupons → users, coupons (M:N 해소)
 ALTER TABLE `user_coupons`
@@ -203,7 +189,8 @@ ALTER TABLE `user_coupons`
 -- orders → users, addresses (1:N)
 ALTER TABLE `orders`
 	ADD CONSTRAINT `fk_orders_user`    FOREIGN KEY (`user_id`)    REFERENCES `users`     (`user_id`),
-	ADD CONSTRAINT `fk_orders_address` FOREIGN KEY (`address_id`) REFERENCES `addresses` (`address_id`);
+	ADD CONSTRAINT `fk_orders_address` FOREIGN KEY (`address_id`) REFERENCES `addresses` (`address_id`),
+	ADD UNIQUE KEY `uq_orders_pg_order_id` (`pg_order_id`);
 
 -- order_items → orders, products, products_options, user_coupons
 ALTER TABLE `order_items`
@@ -222,7 +209,3 @@ ALTER TABLE `payments`
 ALTER TABLE `point_histories`
 	ADD CONSTRAINT `fk_point_histories_user`  FOREIGN KEY (`user_id`)  REFERENCES `users`  (`user_id`),
 	ADD CONSTRAINT `fk_point_histories_order` FOREIGN KEY (`order_id`) REFERENCES `orders` (`order_id`);
-
-
-
-ALTER TABLE orders ADD COLUMN pg_order_id VARCHAR(64) NOT NULL UNIQUE;

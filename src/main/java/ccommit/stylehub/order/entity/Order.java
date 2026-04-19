@@ -121,7 +121,6 @@ public class Order extends BaseEntity {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.PAID;
-        this.deliveryStatus = DeliveryStatus.PREPARING;
     }
 
     // 결제 완료된 주문 취소 — PAID 상태에서만 전환 가능

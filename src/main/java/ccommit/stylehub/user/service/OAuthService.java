@@ -4,9 +4,8 @@ import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.OAuthProvider;
-import ccommit.stylehub.user.event.LoginEvent;
+import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.repository.UserRepository;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -22,29 +21,29 @@ import java.util.stream.Collectors;
  * @created 2026/03/21 08:17
  * @modified 2026/03/20 11:40 by WonJin - refactor: OAuthService.login() 메서드 추출로 가독성 개선
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/04/19 by WonJin - refactor: LoginEvent 제거, UserService.rewardLoginPoint() 직접 호출
  *
  * <p>
  * OAuth 소셜 로그인의 비즈니스 로직을 처리한다.
  * 동시 가입 요청에 대한 동시성 대응 로직을 포함한다.
  * </p>
  */
-
 @Service
 public class OAuthService {
 
     private final Map<OAuthProvider, OAuthClient> clients;
     private final UserRepository userRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final UserService userService;
     private final TransactionTemplate transactionTemplate;
 
     public OAuthService(List<OAuthClient> clientList,
                         UserRepository userRepository,
-                        ApplicationEventPublisher eventPublisher,
+                        UserService userService,
                         TransactionTemplate transactionTemplate) {
         this.clients = clientList.stream()
                 .collect(Collectors.toMap(OAuthClient::provider, Function.identity()));
         this.userRepository = userRepository;
-        this.eventPublisher = eventPublisher;
+        this.userService = userService;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -71,7 +70,7 @@ public class OAuthService {
         if (user.getProvider() == null) {
             throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
         }
-        eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now(), user.getRole()));
+        rewardIfUser(user);
         return OAuthLoginResponse.from(user, false);
     }
 
@@ -80,7 +79,7 @@ public class OAuthService {
                 userInfo.name(), userInfo.email(), provider, userInfo.providerId()
         );
         User savedUser = userRepository.save(newUser);
-        eventPublisher.publishEvent(new LoginEvent(savedUser.getUserId(), LocalDate.now(), savedUser.getRole()));
+        rewardIfUser(savedUser);
         return OAuthLoginResponse.from(savedUser, true);
     }
 
@@ -88,9 +87,15 @@ public class OAuthService {
     private OAuthLoginResponse handleConcurrentSignUp(OAuthUserInfo userInfo) {
         return transactionTemplate.execute(status -> {
             User user = userRepository.findByEmail(userInfo.email()).orElseThrow();
-            eventPublisher.publishEvent(new LoginEvent(user.getUserId(), LocalDate.now(), user.getRole()));
+            rewardIfUser(user);
             return OAuthLoginResponse.from(user, false);
         });
+    }
+
+    private void rewardIfUser(User user) {
+        if (user.getRole() == UserRole.USER) {
+            userService.rewardLoginPoint(user.getUserId(), LocalDate.now());
+        }
     }
 
     private OAuthClient getClient(OAuthProvider provider) {

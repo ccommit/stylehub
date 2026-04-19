@@ -27,7 +27,7 @@ public interface ProductOptionRepository extends JpaRepository<ProductOption, Lo
 
     // 비관적 락(SELECT FOR UPDATE)으로 옵션, 상품, 스토어를 함께 조회한다. (재고 수정 시 사용)
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT po FROM ProductOption po JOIN FETCH po.product p JOIN FETCH p.store WHERE po.productOptionId = :optionId")
+    @Query("SELECT po FROM ProductOption po JOIN FETCH po.product p JOIN FETCH p.user WHERE po.productOptionId = :optionId")
     Optional<ProductOption> findByIdWithLock(@Param("optionId") Long optionId);
 
 }

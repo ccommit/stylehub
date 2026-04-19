@@ -5,10 +5,9 @@ import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.order.dto.request.DeliveryStatusRequest;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
-import ccommit.stylehub.order.dto.response.OrderCursorResponse;
-import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
@@ -56,8 +55,6 @@ public class OrderController {
 
     @GetMapping("/orders")
     @RequiredRole(UserRole.USER)
-    public ResponseEntity<OrderCursorResponse> getMyOrders(
-    @GetMapping
     public ResponseEntity<CursorResponse<OrderListResponse>> getMyOrders(
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer size,
