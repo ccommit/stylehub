@@ -84,11 +84,11 @@ public class ProductOption {
     }
 
     public Long getStoreId() {
-        return product.getStore().getStoreId();
+        return product.getUser().getUserId();
     }
 
     public String getStoreName() {
-        return product.getStore().getName();
+        return product.getUser().getStoreName();
     }
 
     public static ProductOption create(Product product, String color, String size,

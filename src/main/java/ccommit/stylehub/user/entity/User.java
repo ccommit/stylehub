@@ -1,9 +1,12 @@
 package ccommit.stylehub.user.entity;
 
-import ccommit.stylehub.user.enums.UserGrade;
-import ccommit.stylehub.user.enums.OAuthProvider;
-import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.common.entity.BaseEntity;
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.user.enums.OAuthProvider;
+import ccommit.stylehub.user.enums.StoreStatus;
+import ccommit.stylehub.user.enums.UserGrade;
+import ccommit.stylehub.user.enums.UserRole;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * @author WonJin Bae
@@ -89,12 +93,61 @@ public class User extends BaseEntity {
     @Column(name = "birth_date")
     private LocalDate birthDate;
 
+    // Store 필드 (STORE 역할 사용자만 사용, 나머지는 null)
+    @Column(name = "store_name", length = 20)
+    private String storeName;
+
+    @Column(name = "store_description", length = 400)
+    private String storeDescription;
+
+    @Column(name = "store_like_count")
+    @Builder.Default
+    private Integer storeLikeCount = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "store_status")
+    private StoreStatus storeStatus;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    @Column(name = "store_deleted_at")
+    private LocalDateTime storeDeletedAt;
+
     public void addPoint(int amount) {
         this.pointBalance += amount;
     }
 
     public void updateLastLoginDate(LocalDate today) {
         this.lastLoginDate = today;
+    }
+
+    public void registerStore(String storeName, String storeDescription) {
+        this.storeName = storeName;
+        this.storeDescription = storeDescription;
+        this.storeStatus = StoreStatus.PENDING;
+    }
+
+    public void approveStore() {
+        validateStoreStatus(StoreStatus.PENDING);
+        this.storeStatus = StoreStatus.APPROVED;
+        this.approvedAt = LocalDateTime.now();
+    }
+
+    public void rejectStore() {
+        validateStoreStatus(StoreStatus.PENDING);
+        this.storeStatus = StoreStatus.REJECTED;
+    }
+
+    public void suspendStore() {
+        validateStoreStatus(StoreStatus.APPROVED);
+        this.storeStatus = StoreStatus.SUSPENDED;
+    }
+
+    private void validateStoreStatus(StoreStatus expected) {
+        if (this.storeStatus != expected) {
+            throw new BusinessException(ErrorCode.INVALID_STORE_STATUS);
+        }
     }
 
     public static User create(String name, String email, String hashedPassword, LocalDate birthDate, UserRole role) {

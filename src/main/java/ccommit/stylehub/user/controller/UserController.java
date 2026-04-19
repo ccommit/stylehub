@@ -1,18 +1,19 @@
 package ccommit.stylehub.user.controller;
 
+import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.SessionUtils;
-import ccommit.stylehub.store.dto.request.StoreSignUpRequest;
-import ccommit.stylehub.store.dto.response.StoreSignUpResponse;
-import ccommit.stylehub.store.service.StoreSignUpFacade;
+import ccommit.stylehub.user.dto.request.StoreSignUpRequest;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
+import ccommit.stylehub.user.dto.response.StoreResponse;
+import ccommit.stylehub.user.dto.response.StoreSignUpResponse;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.dto.response.UserSignUpResponse;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.OAuthProvider;
+import ccommit.stylehub.user.enums.StoreStatus;
 import ccommit.stylehub.user.enums.UserRole;
-
 import ccommit.stylehub.user.service.OAuthService;
 import ccommit.stylehub.user.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -21,47 +22,48 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
  * @author WonJin Bae
  * @created 2026/03/21 08:17
- * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
- * @modified 2026/03/23 by WonJin - feat: HTTP 세션 기반 인증 적용 (로그인/OAuth 세션 생성, 로그아웃)
- * @modified 2026/03/25 by WonJin - feat: 스토어 회원가입 + 입점 신청 API 추가
+ * @modified 2026/04/19 by WonJin - refactor: StoreController, StoreAdminController를 UserController로 통합
  *
  * <p>
- * 회원가입, 로그인, OAuth 소셜 로그인, 로그아웃 API 엔드포인트를 제공한다.
+ * 회원, 스토어, 관리자 API를 제공한다.
  * </p>
  */
 @RestController
-@RequestMapping("/users")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
     private final OAuthService oAuthService;
-    private final StoreSignUpFacade storeSignUpFacade;
 
-    @PostMapping("/sign-up")
+    // ========================
+    // 회원 API (인증 불필요)
+    // ========================
+
+    @PostMapping("/users/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
         User user = userService.signUp(request.name(), request.email(), request.password(), request.birthDate(), UserRole.USER);
         return ResponseEntity.status(HttpStatus.CREATED).body(UserSignUpResponse.from(user));
     }
 
-    @PostMapping("/sign-up/store")
+    @PostMapping("/users/sign-up/store")
     public ResponseEntity<StoreSignUpResponse> signUpWithStore(@Valid @RequestBody StoreSignUpRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(storeSignUpFacade.signUpWithStore(request));
+        return ResponseEntity.status(HttpStatus.CREATED).body(userService.signUpWithStore(request));
     }
 
-    @PostMapping("/login")
+    @PostMapping("/users/login")
     public ResponseEntity<UserLoginResponse> login(
             @Valid @RequestBody UserLoginRequest request,
             HttpServletRequest httpRequest) {
@@ -70,14 +72,14 @@ public class UserController {
         return ResponseEntity.ok(loginResult);
     }
 
-    @GetMapping("/oauth/{provider}")
+    @GetMapping("/users/oauth/{provider}")
     public ResponseEntity<Map<String, String>> authorizationUrl(
             @PathVariable OAuthProvider provider) {
         String url = oAuthService.getAuthorizationUrl(provider);
         return ResponseEntity.ok(Map.of("authorizationUrl", url));
     }
 
-    @GetMapping("/oauth/{provider}/callback")
+    @GetMapping("/users/oauth/{provider}/callback")
     public ResponseEntity<OAuthLoginResponse> callback(
             @PathVariable OAuthProvider provider,
             @RequestParam String code,
@@ -87,9 +89,49 @@ public class UserController {
         return ResponseEntity.ok(loginResult);
     }
 
-    @PostMapping("/logout")
+    @PostMapping("/users/logout")
     public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
         SessionUtils.invalidateSession(httpRequest);
         return ResponseEntity.ok().build();
+    }
+
+    // 스토어 API (STORE 역할)
+    @GetMapping("/stores/my")
+    @RequiredRole(UserRole.STORE)
+    public ResponseEntity<StoreResponse> getMyStore(HttpServletRequest httpRequest) {
+        Long userId = SessionUtils.getUserId(httpRequest);
+        return ResponseEntity.ok(userService.getMyStore(userId));
+    }
+
+    // 스토어 관리 API (ADMIN 역할)
+    @GetMapping("/admin/stores")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<List<StoreResponse>> getStores(
+            @RequestParam(required = false) StoreStatus status) {
+        return ResponseEntity.ok(userService.getStoresByStatus(status));
+    }
+
+    @GetMapping("/admin/stores/{storeId}")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<StoreResponse> getStore(@PathVariable Long storeId) {
+        return ResponseEntity.ok(userService.getStoreByUserId(storeId));
+    }
+
+    @PatchMapping("/admin/stores/{storeId}/approve")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<StoreResponse> approve(@PathVariable Long storeId) {
+        return ResponseEntity.ok(userService.approveStore(storeId));
+    }
+
+    @PatchMapping("/admin/stores/{storeId}/reject")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<StoreResponse> reject(@PathVariable Long storeId) {
+        return ResponseEntity.ok(userService.rejectStore(storeId));
+    }
+
+    @PatchMapping("/admin/stores/{storeId}/suspend")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<StoreResponse> suspend(@PathVariable Long storeId) {
+        return ResponseEntity.ok(userService.suspendStore(storeId));
     }
 }

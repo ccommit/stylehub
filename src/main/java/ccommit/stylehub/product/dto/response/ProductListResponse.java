@@ -28,8 +28,8 @@ public record ProductListResponse(
     public static ProductListResponse from(Product product) {
         return ProductListResponse.builder()
                 .productId(product.getProductId())
-                .storeId(product.getStore().getStoreId())
-                .storeName(product.getStore().getName())
+                .storeId(product.getUser().getUserId())
+                .storeName(product.getUser().getStoreName())
                 .name(product.getName())
                 .mainCategory(product.getMainCategory())
                 .subCategory(product.getSubCategory())
