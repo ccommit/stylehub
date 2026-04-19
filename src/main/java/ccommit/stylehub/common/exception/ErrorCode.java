@@ -55,6 +55,16 @@ public enum ErrorCode {
     INVALID_DELIVERY_STATUS(HttpStatus.BAD_REQUEST, "OR006", "잘못된 배송 상태 전이입니다"),
     UNAUTHORIZED_DELIVERY_ACCESS(HttpStatus.FORBIDDEN, "OR007", "본인 스토어 주문의 배송 상태만 변경할 수 있습니다"),
 
+    // Payment
+    PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "PM001", "존재하지 않는 결제입니다"),
+    PAYMENT_AMOUNT_MISMATCH(HttpStatus.BAD_REQUEST, "PM002", "결제 금액이 일치하지 않습니다"),
+    PAYMENT_ALREADY_PROCESSED(HttpStatus.CONFLICT, "PM003", "이미 처리된 결제입니다"),
+    PAYMENT_APPROVAL_FAILED(HttpStatus.BAD_GATEWAY, "PM004", "토스페이먼츠 결제 승인에 실패했습니다"),
+    PAYMENT_CANCEL_FAILED(HttpStatus.BAD_GATEWAY, "PM005", "토스페이먼츠 결제 취소에 실패했습니다"),
+    INVALID_CANCEL_AMOUNT(HttpStatus.BAD_REQUEST, "PM006", "취소 금액이 잔액을 초과합니다"),
+    CANCEL_NOT_ALLOWED_SHIPPING(HttpStatus.BAD_REQUEST, "PM007", "배송 중에는 취소할 수 없습니다"),
+    REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간이 지났습니다"),
+
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
     FORBIDDEN(HttpStatus.FORBIDDEN, "A002", "접근 권한이 없습니다"),

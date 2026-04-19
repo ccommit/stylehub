@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
  * @created 2026/03/21 08:17
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 클래스명 변경, 테이블명 order_details로 변경
  *
  * <p>
  * 주문에 포함된 개별 상품 항목을 관리한다.
@@ -31,16 +32,16 @@ import java.time.LocalDateTime;
  */
 
 @Entity
-@Table(name = "order_items")
+@Table(name = "order_details")
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class OrderItem {
+public class OrderDetail {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "order_item_id")
-    private Long orderItemId;
+    @Column(name = "order_detail_id")
+    private Long orderDetailId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_option_id", nullable = false)
@@ -67,10 +68,10 @@ public class OrderItem {
         return unitPrice * quantity;
     }
 
-    public static OrderItem create(ProductOption productOption, Order order,
-                                   Integer quantity, Integer unitPrice,
-                                   UserCoupon userCoupon) {
-        return OrderItem.builder()
+    public static OrderDetail create(ProductOption productOption, Order order,
+                                     Integer quantity, Integer unitPrice,
+                                     UserCoupon userCoupon) {
+        return OrderDetail.builder()
                 .productOption(productOption)
                 .order(order)
                 .quantity(quantity)
