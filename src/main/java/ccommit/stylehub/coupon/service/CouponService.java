@@ -11,8 +11,8 @@ import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.UserCouponRepository;
 import ccommit.stylehub.coupon.validator.CouponValidator;
+import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.user.entity.User;
-import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +38,7 @@ public class CouponService {
 
     private final CouponEventRepository couponEventRepository;
     private final UserCouponRepository userCouponRepository;
-    private final UserService userService;
+    private final UserPort userPort;
     private final CouponValidator couponValidator;
 
     /**
@@ -48,7 +48,7 @@ public class CouponService {
     @Transactional
     public CouponEventResponse createStoreCouponEvent(Long userId, Long storeId,
                                                       CouponEventCreateRequest request) {
-        User storeOwner = userService.findApprovedStoreByOwner(userId, storeId);
+        User storeOwner = userPort.findApprovedStoreByOwner(userId, storeId);
         couponValidator.validateCreate(request);
 
         CouponEvent event = couponEventRepository.save(CouponEvent.create(
@@ -89,7 +89,7 @@ public class CouponService {
 
         event.increaseIssuedCount();
 
-        User user = userService.findUserById(userId);
+        User user = userPort.findUserById(userId);
 
         userCouponRepository.save(UserCoupon.create(user, event));
     }

@@ -1,44 +1,37 @@
 package ccommit.stylehub.order.service;
 
 import ccommit.stylehub.common.aop.ExecutionTimeCheck;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
-import ccommit.stylehub.order.dto.request.OrderItemRequest;
-import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
-import ccommit.stylehub.order.validator.DeliveryValidator;
-import ccommit.stylehub.order.dto.response.OrderCursorResponse;
-import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
-import ccommit.stylehub.common.dto.CursorResponse;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.dto.response.OrderDetailResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.dto.response.OrderTotalAmountDto;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderDetail;
+import ccommit.stylehub.order.port.OrderPort;
+import ccommit.stylehub.payment.port.PaymentPort;
+import ccommit.stylehub.product.port.ProductPort;
+import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
-import ccommit.stylehub.coupon.entity.UserCoupon;
-import ccommit.stylehub.payment.entity.Payment;
-import ccommit.stylehub.payment.repository.PaymentRepository;
+import ccommit.stylehub.order.validator.DeliveryValidator;
 import ccommit.stylehub.product.entity.ProductOption;
-import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.user.entity.Address;
-import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * @author WonJin Bae
@@ -57,7 +50,7 @@ import java.util.TreeMap;
  */
 @Service
 @RequiredArgsConstructor
-public class OrderService {
+public class OrderService implements OrderPort {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -66,10 +59,10 @@ public class OrderService {
     private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final DeliveryValidator deliveryValidator;
-    private final PaymentRepository paymentRepository;
     private final OrderPaymentTimeout orderPaymentTimeout;
-    private final UserService userService;
-    private final ProductService productService;
+    private final UserPort userPort;
+    private final ProductPort productPort;
+    private final PaymentPort paymentPort;
 
     /**
      * 주문을 접수한다.
@@ -81,7 +74,7 @@ public class OrderService {
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
-        Address address = userService.findAddressByOwner(userId, request.addressId());
+        Address address = userPort.findAddressByOwner(userId, request.addressId());
 
         // TODO: 쿠폰 유효성 검증 + 할인 금액 계산
         // TODO: 포인트 잔액 확인 + 차감
@@ -97,10 +90,7 @@ public class OrderService {
                 .sum();
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
-        paymentRepository.save(Payment.create(
-                savedOrder, "", "주문 결제",
-                finalAmount, totalAmount, finalAmount
-        ));
+        paymentPort.createReady(savedOrder, totalAmount, finalAmount);
 
         registerTimeoutAfterCommit(savedOrder.getOrderId());
 
@@ -120,6 +110,7 @@ public class OrderService {
      * PENDING 상태인 주문을 취소하고 재고를 복구한다.
      * 상태 검증(cancel)을 먼저 수행하여 PENDING이 아닌 주문의 재고가 변경되는 것을 방지한다.
      */
+    @Override
     @Transactional
     public void cancelOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
@@ -129,13 +120,18 @@ public class OrderService {
         restoreStock(orderId);
     }
 
-    // 결제 취소에 의한 주문 취소 + 재고 복구 — PAID 상태에서만 호출
+    @Override
     public void cancelPaidOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancelPaid();
         restoreStock(orderId);
+    }
+
+    @Override
+    public void removeTimeout(Long orderId) {
+        orderPaymentTimeout.removeTimeout(orderId);
     }
 
     private void restoreStock(Long orderId) {
@@ -147,7 +143,7 @@ public class OrderService {
                 b.getProductOption().getProductOptionId()));
 
         for (OrderDetail detail : details) {
-            productService.increaseStock(
+            productPort.increaseStock(
                     detail.getProductOption().getProductOptionId(),
                     detail.getQuantity()
             );
@@ -222,7 +218,7 @@ public class OrderService {
 
         List<OrderDetail> details = new ArrayList<>(merged.size());
         for (OrderDetailRequest request : merged) {
-            ProductOption option = productService.decreaseStockWithLock(
+            ProductOption option = productPort.decreaseStockWithLock(
                     request.productOptionId(), request.quantity()
             );
 

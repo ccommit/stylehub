@@ -2,9 +2,9 @@ package ccommit.stylehub.payment.service;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.order.port.OrderPort;
+import ccommit.stylehub.payment.port.PaymentPort;
 import ccommit.stylehub.order.entity.Order;
-import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
-import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
@@ -26,13 +26,19 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @RequiredArgsConstructor
-public class PaymentService {
+public class PaymentService implements PaymentPort {
 
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
     private final PaymentValidator paymentValidator;
-    private final OrderPaymentTimeout orderPaymentTimeout;
-    private final OrderService orderService;
+    private final OrderPort orderPort;
+
+    @Override
+    public void createReady(Order order, int totalAmount, int finalAmount) {
+        paymentRepository.save(Payment.create(
+                order, "", "주문 결제", finalAmount, totalAmount, finalAmount
+        ));
+    }
 
     // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
     @Transactional
@@ -51,7 +57,7 @@ public class PaymentService {
     private PaymentResponse approvePayment(Payment payment, String paymentKey, Integer amount) {
         payment.approve(paymentKey, amount);
         payment.getOrder().markPaid();
-        orderPaymentTimeout.removeTimeout(payment.getOrder().getOrderId());
+        orderPort.removeTimeout(payment.getOrder().getOrderId());
 
         return PaymentResponse.from(payment);
     }
@@ -87,13 +93,13 @@ public class PaymentService {
         payment.abort();
 
         Order order = payment.getOrder();
-        orderService.cancelOrder(order.getOrderId());
-        orderPaymentTimeout.removeTimeout(order.getOrderId());
+        orderPort.cancelOrder(order.getOrderId());
+        orderPort.removeTimeout(order.getOrderId());
     }
 
     private void cancelOrderIfFullyCanceled(Payment payment) {
         if (payment.isFullyCanceled()) {
-            orderService.cancelPaidOrder(payment.getOrder().getOrderId());
+            orderPort.cancelPaidOrder(payment.getOrder().getOrderId());
         }
     }
 
