@@ -15,8 +15,9 @@ import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
+import ccommit.stylehub.product.port.ProductPort;
+import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.user.entity.User;
-import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,7 +41,7 @@ import java.util.Objects;
  */
 @Service
 @RequiredArgsConstructor
-public class ProductService {
+public class ProductService implements ProductPort {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -48,7 +49,7 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
     private final ProductQueryRepository productQueryRepository;
-    private final UserService userService;
+    private final UserPort userPort;
     private final TransactionTemplate transactionTemplate;
 
     // 스토어 소유권, 승인 상태, 카테고리 조합을 검증한 뒤 상품과 옵션을 등록한다.
@@ -59,7 +60,7 @@ public class ProductService {
 
         RegisterResult result = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    User storeOwner = userService.findApprovedStoreByOwner(userId, storeId);
+                    User storeOwner = userPort.findApprovedStoreByOwner(userId, storeId);
                     Product savedProduct = saveProduct(storeOwner, request.name(), request.mainCategory(),
                             request.subCategory(), request.description(), request.price(), request.imageUrl());
                     List<ProductOption> savedOptions = saveOptions(savedProduct, request.options());
@@ -75,7 +76,7 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId, Long cursor, Integer pageSize) {
-        userService.validateApprovedStoreOwner(userId, storeId);
+        userPort.findApprovedStoreByOwner(userId, storeId);
 
         int resolvedSize = (pageSize != null && pageSize > 0) ? Math.min(pageSize, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
 
@@ -94,7 +95,7 @@ public class ProductService {
     public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption option = Objects.requireNonNull(
                 transactionTemplate.execute(status -> {
-                    userService.validateApprovedStoreOwner(userId, storeId);
+                    userPort.findApprovedStoreByOwner(userId, storeId);
 
                     ProductOption target = productOptionRepository
                             .findByIdWithLock(optionId)
@@ -110,6 +111,7 @@ public class ProductService {
 
     // 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
     // TODO: 대용량 트래픽 대응 시 Redis DECR 원자적 연산으로 전환 예정
+    @Override
     public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
         ProductOption option = productOptionRepository.findByIdWithLock(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
@@ -118,6 +120,7 @@ public class ProductService {
     }
 
     // 비관적 락으로 재고를 복구한다. 주문 취소 시 사용.
+    @Override
     public void increaseStock(Long optionId, int quantity) {
         ProductOption option = productOptionRepository.findByIdWithLock(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));

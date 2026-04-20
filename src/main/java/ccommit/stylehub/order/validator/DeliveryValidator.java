@@ -7,7 +7,7 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderItem;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderItemRepository;
-import ccommit.stylehub.user.service.UserService;
+import ccommit.stylehub.user.port.UserPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +31,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class DeliveryValidator {
 
-    private final UserService userService;
+    private final UserPort userPort;
     private final OrderItemRepository orderItemRepository;
 
     /**
@@ -39,7 +39,7 @@ public class DeliveryValidator {
      * 검증 순서: 스토어 소유권 → 주문-스토어 매칭 → 상태 전이 규칙
      */
     public void validate(UpdateDeliveryStatusRequest request, Order order) {
-        userService.validateApprovedStoreOwner(request.userId(), request.storeId());
+        userPort.findApprovedStoreByOwner(request.userId(), request.storeId());
         validateStoreOrder(request.storeId(), request.orderId());
         validateTransition(order.getOrderStatus(), request.newStatus());
     }
