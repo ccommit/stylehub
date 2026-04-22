@@ -161,6 +161,7 @@ public class UserService implements UserPort {
         user.registerStore(storeName, storeDescription);
     }
 
+    @Override
     public void validateApprovedStoreOwner(Long userId, Long storeId) {
         findApprovedStoreByOwner(userId, storeId);
     }
