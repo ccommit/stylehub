@@ -39,7 +39,7 @@ public class DeliveryValidator {
      * 검증 순서: 스토어 소유권 → 주문-스토어 매칭 → 상태 전이 규칙
      */
     public void validate(UpdateDeliveryStatusRequest request, Order order) {
-        userPort.findApprovedStoreByOwner(request.userId(), request.storeId());
+        userPort.validateApprovedStoreOwner(request.userId(), request.storeId());
         validateStoreOrder(request.storeId(), request.orderId());
         validateTransition(order.getOrderStatus(), request.newStatus());
     }
