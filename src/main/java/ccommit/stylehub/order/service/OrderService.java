@@ -14,24 +14,25 @@ import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.dto.response.OrderTotalAmountDto;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderDetail;
-import ccommit.stylehub.order.port.OrderPort;
-import ccommit.stylehub.payment.port.PaymentPort;
+import ccommit.stylehub.order.event.OrderPlacedEvent;
 import ccommit.stylehub.product.port.ProductPort;
 import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
-import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
 import ccommit.stylehub.order.validator.DeliveryValidator;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.user.entity.Address;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * @author WonJin Bae
@@ -42,15 +43,17 @@ import java.util.*;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
  * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
+ * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
  * 주문/결제 API는 ApiLoggingAspect에 의해 요청/응답이 자동 로깅된다.
+ * Payment 도메인과는 ApplicationEventPublisher를 통해서만 통신해 순환 의존성을 제거했다.
  * </p>
  */
 @Service
 @RequiredArgsConstructor
-public class OrderService implements OrderPort {
+public class OrderService {
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -59,10 +62,9 @@ public class OrderService implements OrderPort {
     private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final DeliveryValidator deliveryValidator;
-    private final OrderPaymentTimeout orderPaymentTimeout;
     private final UserPort userPort;
     private final ProductPort productPort;
-    private final PaymentPort paymentPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 주문을 접수한다.
@@ -90,27 +92,15 @@ public class OrderService implements OrderPort {
                 .sum();
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
-        paymentPort.createReady(savedOrder, totalAmount, finalAmount);
-
-        registerTimeoutAfterCommit(savedOrder.getOrderId());
+        eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getOrderId(), totalAmount, finalAmount));
 
         return buildOrderResponse(savedOrder, savedDetails);
-    }
-
-    private void registerTimeoutAfterCommit(Long orderId) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                orderPaymentTimeout.registerTimeout(orderId);
-            }
-        });
     }
 
     /**
      * PENDING 상태인 주문을 취소하고 재고를 복구한다.
      * 상태 검증(cancel)을 먼저 수행하여 PENDING이 아닌 주문의 재고가 변경되는 것을 방지한다.
      */
-    @Override
     @Transactional
     public void cancelOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
@@ -120,18 +110,13 @@ public class OrderService implements OrderPort {
         restoreStock(orderId);
     }
 
-    @Override
+    @Transactional
     public void cancelPaidOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancelPaid();
         restoreStock(orderId);
-    }
-
-    @Override
-    public void removeTimeout(Long orderId) {
-        orderPaymentTimeout.removeTimeout(orderId);
     }
 
     private void restoreStock(Long orderId) {
