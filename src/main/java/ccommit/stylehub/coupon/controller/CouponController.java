@@ -6,7 +6,7 @@ import ccommit.stylehub.coupon.dto.request.CouponEventCreateRequest;
 import ccommit.stylehub.coupon.dto.request.CouponEventUpdateRequest;
 import ccommit.stylehub.coupon.dto.response.CouponEventResponse;
 import ccommit.stylehub.coupon.dto.response.UserCouponResponse;
-import ccommit.stylehub.coupon.service.CouponService;
+import ccommit.stylehub.coupon.service.CouponApplicationService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -34,7 +34,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CouponController {
 
-    private final CouponService couponService;
+    private final CouponApplicationService couponApplicationService;
 
     // STORE: 스토어 쿠폰 이벤트 생성
     @PostMapping("/stores/{storeId}/coupon-events")
@@ -45,7 +45,7 @@ public class CouponController {
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(couponService.createStoreCouponEvent(userId, storeId, request));
+                .body(couponApplicationService.createStoreCouponEvent(userId, storeId, request));
     }
 
     // ADMIN: 플랫폼 쿠폰 이벤트 생성
@@ -54,7 +54,7 @@ public class CouponController {
     public ResponseEntity<CouponEventResponse> createPlatformCouponEvent(
             @Valid @RequestBody CouponEventCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(couponService.createPlatformCouponEvent(request));
+                .body(couponApplicationService.createPlatformCouponEvent(request));
     }
 
     // ADMIN: 쿠폰 이벤트 수정
@@ -63,14 +63,14 @@ public class CouponController {
     public ResponseEntity<CouponEventResponse> updateCouponEvent(
             @PathVariable Long couponEventId,
             @Valid @RequestBody CouponEventUpdateRequest request) {
-        return ResponseEntity.ok(couponService.updateCouponEvent(couponEventId, request));
+        return ResponseEntity.ok(couponApplicationService.updateCouponEvent(couponEventId, request));
     }
 
     // ADMIN: 쿠폰 이벤트 비활성화
     @PatchMapping("/admin/coupon-events/{couponEventId}/deactivate")
     @RequiredRole(UserRole.ADMIN)
     public ResponseEntity<Void> deactivateCouponEvent(@PathVariable Long couponEventId) {
-        couponService.deactivateCouponEvent(couponEventId);
+        couponApplicationService.deactivateCouponEvent(couponEventId);
         return ResponseEntity.ok().build();
     }
 
@@ -79,7 +79,7 @@ public class CouponController {
     @RequiredRole(UserRole.USER)
     public ResponseEntity<List<UserCouponResponse>> getMyCoupons(HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(couponService.getMyCoupons(userId));
+        return ResponseEntity.ok(couponApplicationService.getMyCoupons(userId));
     }
 
     // USER: 선착순 쿠폰 발급
@@ -89,13 +89,13 @@ public class CouponController {
             @PathVariable Long couponEventId,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        couponService.issueCoupon(userId, couponEventId);
+        couponApplicationService.issueCoupon(userId, couponEventId);
         return ResponseEntity.ok().build();
     }
 
     // 활성 쿠폰 이벤트 목록 조회 (공개)
     @GetMapping("/coupon-events")
     public ResponseEntity<List<CouponEventResponse>> getActiveCouponEvents() {
-        return ResponseEntity.ok(couponService.getActiveCouponEvents());
+        return ResponseEntity.ok(couponApplicationService.getActiveCouponEvents());
     }
 }

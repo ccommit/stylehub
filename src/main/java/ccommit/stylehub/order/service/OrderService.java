@@ -44,6 +44,7 @@ import java.util.TreeMap;
  * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
  * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
  * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
+ * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -98,8 +99,9 @@ public class OrderService {
     }
 
     /**
-     * PENDING 상태인 주문을 취소하고 재고를 복구한다.
-     * 상태 검증(cancel)을 먼저 수행하여 PENDING이 아닌 주문의 재고가 변경되는 것을 방지한다.
+     * 주문을 취소하고 재고를 복구한다.
+     * PENDING/PAID 상태 모두 허용되며, 상태 검증은 Order.cancel() 내부에서 수행한다.
+     * 호출자는 주문 상태를 몰라도 되도록 단일 메서드로 통합됐다.
      */
     @Transactional
     public void cancelOrder(Long orderId) {
@@ -107,15 +109,6 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancel();
-        restoreStock(orderId);
-    }
-
-    @Transactional
-    public void cancelPaidOrder(Long orderId) {
-        Order order = orderRepository.findByIdWithLock(orderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-
-        order.cancelPaid();
         restoreStock(orderId);
     }
 

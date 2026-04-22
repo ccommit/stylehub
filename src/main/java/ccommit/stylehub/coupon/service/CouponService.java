@@ -11,7 +11,6 @@ import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.UserCouponRepository;
 import ccommit.stylehub.coupon.validator.CouponValidator;
-import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,11 +23,12 @@ import java.util.List;
  * @author WonJin Bae
  * @created 2026/04/09
  * @modified 2026/04/16 by WonJin - refactor: 검증 로직을 CouponValidator로 분리
+ * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증·User 조회는 CouponApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
  *
  * <p>
- * 쿠폰 이벤트 생성과 선착순 쿠폰 발급을 담당한다.
+ * 쿠폰 이벤트 생성과 선착순 쿠폰 발급을 담당하는 순수 도메인 서비스이다.
  * 선착순 발급은 비관적 락(SELECT FOR UPDATE)으로 수량 정합성을 보장한다.
- * 검증은 CouponValidator, PG/스토어 조회는 StoreService에 위임한다.
+ * 스토어 소유권 검증, User 조회 같은 Application 관심사는 CouponApplicationService에서 처리한다.
  * </p>
  */
 // TODO: 성능 테스트 후 분산락 적용예정
@@ -38,17 +38,13 @@ public class CouponService {
 
     private final CouponEventRepository couponEventRepository;
     private final UserCouponRepository userCouponRepository;
-    private final UserPort userPort;
     private final CouponValidator couponValidator;
 
     /**
-     * 스토어 쿠폰 이벤트를 생성한다.
-     * 소유권 검증 후 이벤트를 DB에 저장한다.
+     * 스토어 쿠폰 이벤트를 생성한다. 스토어 소유권 검증은 상위 계층에서 수행된 상태라고 가정한다.
      */
     @Transactional
-    public CouponEventResponse createStoreCouponEvent(Long userId, Long storeId,
-                                                      CouponEventCreateRequest request) {
-        User storeOwner = userPort.findApprovedStoreByOwner(userId, storeId);
+    public CouponEventResponse createStoreCouponEvent(User storeOwner, CouponEventCreateRequest request) {
         couponValidator.validateCreate(request);
 
         CouponEvent event = couponEventRepository.save(CouponEvent.create(
@@ -80,16 +76,14 @@ public class CouponService {
      * DB UNIQUE 제약으로 중복 발급을 방지한다.
      */
     @Transactional
-    public void issueCoupon(Long userId, Long couponEventId) {
+    public void issueCoupon(User user, Long couponEventId) {
         CouponEvent event = couponEventRepository.findByIdWithLock(couponEventId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COUPON_NOT_FOUND));
 
         couponValidator.validateIssuable(event);
-        checkDuplicateIssue(userId, couponEventId);
+        checkDuplicateIssue(user.getUserId(), couponEventId);
 
         event.increaseIssuedCount();
-
-        User user = userPort.findUserById(userId);
 
         userCouponRepository.save(UserCoupon.create(user, event));
     }
