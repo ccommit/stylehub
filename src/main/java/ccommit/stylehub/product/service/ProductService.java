@@ -18,6 +18,7 @@ import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
 import ccommit.stylehub.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -67,13 +68,9 @@ public class ProductService implements ProductPort {
     public CursorResponse<ProductListResponse> getMyStoreProducts(Long storeId, Long cursor, Integer pageSize) {
         int resolvedSize = resolvePageSize(pageSize);
 
-        List<Product> products = productQueryRepository.findProductsWithCursor(
+        List<ProductListResponse> productList = productQueryRepository.findProductsWithCursor(
                 cursor, storeId, resolvedSize + 1
         );
-
-        List<ProductListResponse> productList = products.stream()
-                .map(ProductListResponse::from)
-                .toList();
 
         return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
@@ -109,20 +106,27 @@ public class ProductService implements ProductPort {
 
     /**
      * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
+     *
+     * 캐시 전략:
+     *   필터가 없는 "첫 페이지" 요청(cursor / storeId / mainCategory / subCategory 모두 null)만 Redis 캐시 적용.
+     *   모든 사용자에게 동일 응답이 반환되고 호출 빈도가 매우 높은 구간이라 효과가 가장 크다.
+     *   TTL 30초 (RedisCacheManager 기본값) 로 신상품 반영 지연은 최대 30초.
+     *   다른 필터 조합은 개인별 편차가 크고 캐시 효율이 낮아 캐시하지 않는다.
      */
+    @Cacheable(
+            value = "products:firstPage",
+            key = "#pageSize ?: 20",
+            condition = "#cursor == null && #storeId == null && #mainCategory == null && #subCategory == null"
+    )
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getProducts(Long cursor, Long storeId,
                                                            MainCategory mainCategory,
                                                            SubCategory subCategory, Integer pageSize) {
         int resolvedSize = resolvePageSize(pageSize);
 
-        List<Product> products = productQueryRepository.findProductsWithCursor(
+        List<ProductListResponse> productList = productQueryRepository.findProductsWithCursor(
                 cursor, storeId, mainCategory, subCategory, resolvedSize + 1
         );
-
-        List<ProductListResponse> productList = products.stream()
-                .map(ProductListResponse::from)
-                .toList();
 
         return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
