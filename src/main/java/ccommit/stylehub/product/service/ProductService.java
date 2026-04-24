@@ -108,15 +108,21 @@ public class ProductService implements ProductPort {
      * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
      *
      * 캐시 전략:
-     *   필터가 없는 "첫 페이지" 요청(cursor / storeId / mainCategory / subCategory 모두 null)만 Redis 캐시 적용.
-     *   모든 사용자에게 동일 응답이 반환되고 호출 빈도가 매우 높은 구간이라 효과가 가장 크다.
-     *   TTL 30초 (RedisCacheManager 기본값) 로 신상품 반영 지연은 최대 30초.
-     *   다른 필터 조합은 개인별 편차가 크고 캐시 효율이 낮아 캐시하지 않는다.
+     *   커서가 없는 "첫 페이지" 요청을 필터 조합별로 캐시한다.
+     *   - 필터 없음(첫 페이지): 전 사용자 동일 응답, 호출 빈도 1위
+     *   - by category: 카테고리별 첫 페이지, 전 사용자 동일 응답
+     *   - by store: 스토어별 첫 페이지, 해당 스토어 방문자 간 공유
+     *   cursor 가 있는 "다음 페이지" 는 스크롤 분포가 분산돼 캐시 효율이 낮아 제외.
+     *
+     *   sync = true: TTL 만료 순간 cache miss 가 동시에 쏟아지는 thundering herd 를 차단한다.
+     *   같은 키로 동시 miss 가 발생하면 한 스레드만 DB 로 가고 나머지는 결과를 기다린다.
+     *   TTL 60 초 — 신상품 반영 지연 허용 범위. 1000 users 구간에서 miss 빈도를 절반으로 낮추기 위해 30 → 60 상향.
      */
     @Cacheable(
             value = "products:firstPage",
-            key = "#pageSize ?: 20",
-            condition = "#cursor == null && #storeId == null && #mainCategory == null && #subCategory == null"
+            key = "'size=' + (#pageSize ?: 20) + '|store=' + #storeId + '|main=' + #mainCategory + '|sub=' + #subCategory",
+            condition = "#cursor == null",
+            sync = true
     )
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getProducts(Long cursor, Long storeId,
@@ -134,7 +140,17 @@ public class ProductService implements ProductPort {
     /**
      * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
      * Store와 Options를 JOIN FETCH로 한번에 조회한다.
+     *
+     * 캐시 전략:
+     *   productId 별로 캐시 (모든 사용자에게 동일 응답). TTL 60초.
+     *   2,000 users 구간에서 이 경로가 전체 요청의 17 % 를 차지해 DB 부하의 주요 원인이라 캐시 대상으로 편입.
+     *   sync = true: 동시 cache miss 에서 한 스레드만 DB 로 가고 나머지는 대기 (thundering herd 차단).
      */
+    @Cacheable(
+            value = "products:detail",
+            key = "#productId",
+            sync = true
+    )
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
         Product product = productRepository.findByIdWithUserAndOptions(productId)

@@ -2,6 +2,7 @@ package ccommit.stylehub.common.config;
 
 import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
+import ccommit.stylehub.product.dto.response.ProductResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -17,12 +18,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/04/01 by WonJin - docs: Lettuce vs Jedis 비교 및 선택 이유 추가
  * @modified 2026/04/24 by WonJin - feat: Spring Cache 용 RedisCacheManager 추가 (first page 캐싱)
+ * @modified 2026/04/24 by WonJin - feat: 캐시 범위 확대 + 상세 조회 캐시 추가 (Step 5 — 1,000/2,000 users 대응)
  *
  * Redis 설정을 담당한다. 분산 락/타임아웃에는 StringRedisTemplate, 응답 캐싱에는 RedisCacheManager 를 사용한다.
  *
@@ -34,6 +37,9 @@ import java.time.Duration;
 @Configuration
 public class RedisConfig {
 
+    private static final String LIST_CACHE = "products:firstPage";
+    private static final String DETAIL_CACHE = "products:detail";
+
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
         return new StringRedisTemplate(connectionFactory);
@@ -41,32 +47,40 @@ public class RedisConfig {
 
     /**
      * Spring Cache 전용 CacheManager.
-     * - 키: String (사람이 읽기 쉬운 형태, 예: products:firstPage::20)
-     * - 값: CursorResponse&lt;ProductListResponse&gt; 타입드 JSON 직렬화
-     *   (Jackson 3 은 default typing EVERYTHING 모드가 제거되어 final record 에는 타입 정보를 남길 수 없다.
-     *   캐시 타입이 단일이므로 고정 JavaType 기반 직렬화기로 안전하게 역직렬화한다.)
-     * - 기본 TTL: 30초 (신상품 반영 지연 허용 범위)
+     * - 키: String (사람이 읽기 쉬운 형태, 예: products:firstPage::size=20|store=null|main=TOP|sub=T_SHIRT)
+     * - 값: 캐시별 고정 JavaType JSON 직렬화 (Jackson 3.x, default typing 미사용 — record 와 안전 호환)
+     * - 캐시별 설정:
+     *     products:firstPage (목록 조회)   → CursorResponse&lt;ProductListResponse&gt;, TTL 60초
+     *     products:detail    (단건 상세)   → ProductResponse, TTL 60초
      * - null 값은 캐시하지 않음
      */
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        ObjectMapper objectMapper = JsonMapper.builder().build();
-        JavaType cursorResponseType = objectMapper.getTypeFactory()
+        ObjectMapper mapper = JsonMapper.builder().build();
+
+        JavaType listType = mapper.getTypeFactory()
                 .constructParametricType(CursorResponse.class, ProductListResponse.class);
+        JavaType detailType = mapper.constructType(ProductResponse.class);
 
-        RedisSerializer<Object> valueSerializer = typedJsonSerializer(objectMapper, cursorResponseType);
+        RedisCacheConfiguration listConfig = cacheConfig(typedJsonSerializer(mapper, listType));
+        RedisCacheConfiguration detailConfig = cacheConfig(typedJsonSerializer(mapper, detailType));
 
-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofSeconds(30))
+        return RedisCacheManager.builder(connectionFactory)
+                .withInitialCacheConfigurations(Map.of(
+                        LIST_CACHE, listConfig,
+                        DETAIL_CACHE, detailConfig
+                ))
+                .build();
+    }
+
+    private static RedisCacheConfiguration cacheConfig(RedisSerializer<Object> valueSerializer) {
+        return RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofSeconds(60))
                 .disableCachingNullValues()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(valueSerializer));
-
-        return RedisCacheManager.builder(connectionFactory)
-                .cacheDefaults(config)
-                .build();
     }
 
     // 고정 JavaType 기반 RedisSerializer. default typing 없이 정확한 타입으로 역직렬화한다.
