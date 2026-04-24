@@ -8,6 +8,7 @@ import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.response.StoreResponse;
 import ccommit.stylehub.user.dto.response.StoreSignUpResponse;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
+import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.user.entity.Address;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.StoreStatus;
@@ -40,7 +41,7 @@ import java.util.function.Consumer;
  */
 @Service
 @RequiredArgsConstructor
-public class UserService {
+public class UserService implements UserPort {
 
     private static final int FIRST_LOGIN_POINT = 1000;
     private static final int DAILY_LOGIN_POINT = 10;
@@ -130,11 +131,13 @@ public class UserService {
     // 조회
     // ========================
 
+    @Override
     public User findUserById(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
     }
 
+    @Override
     public Address findAddressByOwner(Long userId, Long addressId) {
         Address address = userRepository.findAddressByIdWithUser(addressId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ADDRESS_NOT_FOUND));
@@ -158,10 +161,12 @@ public class UserService {
         user.registerStore(storeName, storeDescription);
     }
 
+    @Override
     public void validateApprovedStoreOwner(Long userId, Long storeId) {
         findApprovedStoreByOwner(userId, storeId);
     }
 
+    @Override
     public User findApprovedStoreByOwner(Long userId, Long storeId) {
         User user = userRepository.findById(storeId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));

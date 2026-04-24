@@ -3,14 +3,17 @@ package ccommit.stylehub.payment.service;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
-import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
-import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
-import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.event.PaymentApprovedEvent;
+import ccommit.stylehub.payment.event.PaymentFailedEvent;
+import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
+import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
+import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,10 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
  * @author WonJin Bae
  * @created 2026/04/01
  * @modified 2026/04/01 by WonJin - refactor: 검증 로직을 PaymentValidator로 분리
+ * @modified 2026/04/22 by WonJin - refactor: OrderPort 직접 의존 제거, Payment 이벤트 발행으로 전환 (순환 참조 해소)
+ * @modified 2026/04/22 by WonJin - refactor: createReady 시그니처 primitives로 변경, Order FK는 EntityManager.getReference 프록시로 처리 (도메인 경계 누수 해소)
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
  * 검증은 PaymentValidator, PG사 호출은 PaymentClientFactory에 위임한다.
+ * Order 도메인과는 ApplicationEventPublisher를 통해서만 통신해 순환 의존성을 제거했다.
+ * 외부 계약에서는 Order 엔티티를 받지 않고, 필요 시 EntityManager.getReference로 FK 프록시만 얻어 사용한다.
  * </p>
  */
 @Service
@@ -31,8 +38,15 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
     private final PaymentValidator paymentValidator;
-    private final OrderPaymentTimeout orderPaymentTimeout;
-    private final OrderService orderService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final EntityManager em;
+
+    public void createReady(Long orderId, int totalAmount, int finalAmount) {
+        Order orderRef = em.getReference(Order.class, orderId);
+        paymentRepository.save(Payment.create(
+                orderRef, "", "주문 결제", finalAmount, totalAmount, finalAmount
+        ));
+    }
 
     // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
     @Transactional
@@ -51,7 +65,7 @@ public class PaymentService {
     private PaymentResponse approvePayment(Payment payment, String paymentKey, Integer amount) {
         payment.approve(paymentKey, amount);
         payment.getOrder().markPaid();
-        orderPaymentTimeout.removeTimeout(payment.getOrder().getOrderId());
+        eventPublisher.publishEvent(new PaymentApprovedEvent(payment.getOrder().getOrderId()));
 
         return PaymentResponse.from(payment);
     }
@@ -73,7 +87,9 @@ public class PaymentService {
     // 토스 취소 성공 후 우리 DB에 취소를 반영한다.
     private PaymentResponse applyCancellation(Payment payment, String cancelReason, Integer cancelAmount) {
         payment.cancel(cancelReason, cancelAmount);
-        cancelOrderIfFullyCanceled(payment);
+        if (payment.isFullyCanceled()) {
+            eventPublisher.publishEvent(new PaymentFullyCanceledEvent(payment.getOrder().getOrderId()));
+        }
 
         return PaymentResponse.from(payment);
     }
@@ -85,16 +101,7 @@ public class PaymentService {
         Payment payment = findPaymentByOrderId(pgOrderId);
 
         payment.abort();
-
-        Order order = payment.getOrder();
-        orderService.cancelOrder(order.getOrderId());
-        orderPaymentTimeout.removeTimeout(order.getOrderId());
-    }
-
-    private void cancelOrderIfFullyCanceled(Payment payment) {
-        if (payment.isFullyCanceled()) {
-            orderService.cancelPaidOrder(payment.getOrder().getOrderId());
-        }
+        eventPublisher.publishEvent(new PaymentFailedEvent(payment.getOrder().getOrderId()));
     }
 
     private Payment findPaymentByOrderId(String pgOrderId) {

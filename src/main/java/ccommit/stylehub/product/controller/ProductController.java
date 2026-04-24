@@ -10,7 +10,7 @@ import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
-import ccommit.stylehub.product.service.ProductService;
+import ccommit.stylehub.product.service.ProductApplicationService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -40,7 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ProductController {
 
-    private final ProductService productService;
+    private final ProductApplicationService productApplicationService;
 
     //공개 API (비인증)
     @GetMapping("/products")
@@ -50,12 +50,12 @@ public class ProductController {
             @RequestParam(required = false) MainCategory mainCategory,
             @RequestParam(required = false) SubCategory subCategory,
             @RequestParam(required = false) Integer pageSize) {
-        return ResponseEntity.ok(productService.getProducts(cursor, storeId, mainCategory, subCategory, pageSize));
+        return ResponseEntity.ok(productApplicationService.getProducts(cursor, storeId, mainCategory, subCategory, pageSize));
     }
 
     @GetMapping("/products/{productId}")
     public ResponseEntity<ProductResponse> getProduct(@PathVariable Long productId) {
-        return ResponseEntity.ok(productService.getProduct(productId));
+        return ResponseEntity.ok(productApplicationService.getProduct(productId));
     }
 
     //  스토어 API (STORE 권한 필요)
@@ -67,7 +67,7 @@ public class ProductController {
             @RequestParam(required = false) Integer pageSize,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(productService.getMyStoreProducts(userId, storeId, cursor, pageSize));
+        return ResponseEntity.ok(productApplicationService.getMyStoreProducts(userId, storeId, cursor, pageSize));
     }
 
     @PostMapping("/stores/{storeId}/products")
@@ -78,18 +78,17 @@ public class ProductController {
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(productService.registerProduct(userId, storeId, request));
+                .body(productApplicationService.registerProduct(userId, storeId, request));
     }
 
     @PatchMapping("/stores/{storeId}/products/{productId}/options/{optionId}/stock")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductOptionResponse> updateStock(
             @PathVariable Long storeId,
-            @PathVariable Long productId,
             @PathVariable Long optionId,
             @Valid @RequestBody StockUpdateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(productService.updateStock(userId, storeId, productId, optionId, request.stockQuantity()));
+        return ResponseEntity.ok(productApplicationService.updateStock(userId, storeId, optionId, request.stockQuantity()));
     }
 }

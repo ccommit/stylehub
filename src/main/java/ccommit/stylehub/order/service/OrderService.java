@@ -1,38 +1,32 @@
 package ccommit.stylehub.order.service;
 
 import ccommit.stylehub.common.aop.ExecutionTimeCheck;
+import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
-import ccommit.stylehub.order.dto.request.OrderItemRequest;
-import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
-import ccommit.stylehub.order.validator.DeliveryValidator;
-import ccommit.stylehub.order.dto.response.OrderCursorResponse;
-import ccommit.stylehub.order.dto.response.OrderItemResponse;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
-import ccommit.stylehub.common.dto.CursorResponse;
+import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.dto.response.OrderDetailResponse;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.dto.response.OrderTotalAmountDto;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.entity.OrderDetail;
+import ccommit.stylehub.order.event.OrderPlacedEvent;
+import ccommit.stylehub.product.port.ProductPort;
+import ccommit.stylehub.user.port.UserPort;
 import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderQueryRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
-import ccommit.stylehub.order.scheduler.OrderPaymentTimeout;
-import ccommit.stylehub.coupon.entity.UserCoupon;
-import ccommit.stylehub.payment.entity.Payment;
-import ccommit.stylehub.payment.repository.PaymentRepository;
+import ccommit.stylehub.order.validator.DeliveryValidator;
 import ccommit.stylehub.product.entity.ProductOption;
-import ccommit.stylehub.product.service.ProductService;
 import ccommit.stylehub.user.entity.Address;
-import ccommit.stylehub.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,10 +43,13 @@ import java.util.TreeMap;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/08 by WonJin - refactor: OrderItem → OrderDetail 변경
  * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
+ * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
+ * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
  * 주문/결제 API는 ApiLoggingAspect에 의해 요청/응답이 자동 로깅된다.
+ * Payment 도메인과는 ApplicationEventPublisher를 통해서만 통신해 순환 의존성을 제거했다.
  * </p>
  */
 @Service
@@ -66,10 +63,9 @@ public class OrderService {
     private final OrderDetailRepository orderDetailRepository;
     private final OrderQueryRepository orderQueryRepository;
     private final DeliveryValidator deliveryValidator;
-    private final PaymentRepository paymentRepository;
-    private final OrderPaymentTimeout orderPaymentTimeout;
-    private final UserService userService;
-    private final ProductService productService;
+    private final UserPort userPort;
+    private final ProductPort productPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 주문을 접수한다.
@@ -81,7 +77,7 @@ public class OrderService {
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
-        Address address = userService.findAddressByOwner(userId, request.addressId());
+        Address address = userPort.findAddressByOwner(userId, request.addressId());
 
         // TODO: 쿠폰 유효성 검증 + 할인 금액 계산
         // TODO: 포인트 잔액 확인 + 차감
@@ -97,28 +93,15 @@ public class OrderService {
                 .sum();
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
-        paymentRepository.save(Payment.create(
-                savedOrder, "", "주문 결제",
-                finalAmount, totalAmount, finalAmount
-        ));
-
-        registerTimeoutAfterCommit(savedOrder.getOrderId());
+        eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getOrderId(), totalAmount, finalAmount));
 
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    private void registerTimeoutAfterCommit(Long orderId) {
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                orderPaymentTimeout.registerTimeout(orderId);
-            }
-        });
-    }
-
     /**
-     * PENDING 상태인 주문을 취소하고 재고를 복구한다.
-     * 상태 검증(cancel)을 먼저 수행하여 PENDING이 아닌 주문의 재고가 변경되는 것을 방지한다.
+     * 주문을 취소하고 재고를 복구한다.
+     * PENDING/PAID 상태 모두 허용되며, 상태 검증은 Order.cancel() 내부에서 수행한다.
+     * 호출자는 주문 상태를 몰라도 되도록 단일 메서드로 통합됐다.
      */
     @Transactional
     public void cancelOrder(Long orderId) {
@@ -126,15 +109,6 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancel();
-        restoreStock(orderId);
-    }
-
-    // 결제 취소에 의한 주문 취소 + 재고 복구 — PAID 상태에서만 호출
-    public void cancelPaidOrder(Long orderId) {
-        Order order = orderRepository.findByIdWithLock(orderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-
-        order.cancelPaid();
         restoreStock(orderId);
     }
 
@@ -147,7 +121,7 @@ public class OrderService {
                 b.getProductOption().getProductOptionId()));
 
         for (OrderDetail detail : details) {
-            productService.increaseStock(
+            productPort.increaseStock(
                     detail.getProductOption().getProductOptionId(),
                     detail.getQuantity()
             );
@@ -222,7 +196,7 @@ public class OrderService {
 
         List<OrderDetail> details = new ArrayList<>(merged.size());
         for (OrderDetailRequest request : merged) {
-            ProductOption option = productService.decreaseStockWithLock(
+            ProductOption option = productPort.decreaseStockWithLock(
                     request.productOptionId(), request.quantity()
             );
 
