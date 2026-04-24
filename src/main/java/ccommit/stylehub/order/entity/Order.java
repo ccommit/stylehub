@@ -34,6 +34,7 @@ import java.util.UUID;
  * @modified 2026/03/27 by WonJin - feat: 주문 상태 변경 메서드 추가, 와일드카드 import 수정
  * @modified 2026/04/02 by WonJin - feat: 배송 상태 전이 메서드 추가
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
+ * @modified 2026/04/22 by WonJin - refactor: cancel/cancelPaid 통합 (내부 상태 PENDING/PAID 모두 허용) — 호출자가 상태를 알 필요 없게 함
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -98,8 +99,9 @@ public class Order extends BaseEntity {
         return totalAmount - this.discountAmount - this.usedPoint;
     }
 
+    // 주문 취소 — PENDING(결제 전) 또는 PAID(결제 완료) 상태에서만 전환 가능
     public void cancel() {
-        if (this.orderStatus != OrderStatus.PENDING) {
+        if (this.orderStatus != OrderStatus.PENDING && this.orderStatus != OrderStatus.PAID) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.CANCELLED;
@@ -114,20 +116,12 @@ public class Order extends BaseEntity {
     public void updateOrderStatus(OrderStatus newStatus) {
         this.orderStatus = newStatus;
     }
-  
+
     // 결제 완료 처리 — PENDING → PAID + 배송 준비(PREPARING) 자동 설정
     public void markPaid() {
         if (this.orderStatus != OrderStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.PAID;
-    }
-
-    // 결제 완료된 주문 취소 — PAID 상태에서만 전환 가능
-    public void cancelPaid() {
-        if (this.orderStatus != OrderStatus.PAID) {
-            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
-        }
-        this.orderStatus = OrderStatus.CANCELLED;
     }
 }
