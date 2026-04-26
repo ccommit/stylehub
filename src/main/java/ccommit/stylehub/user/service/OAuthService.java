@@ -1,5 +1,7 @@
 package ccommit.stylehub.user.service;
 
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.entity.User;
@@ -51,7 +53,6 @@ public class OAuthService {
         return getClient(provider).getAuthorizationUrl();
     }
 
-    // TODO: 글로벌 예외 처리 PR에서 커스텀 예외 도입 예정
     public OAuthLoginResponse login(OAuthProvider provider, String code) {
         OAuthUserInfo userInfo = getClient(provider).authenticate(code);
 
@@ -68,7 +69,7 @@ public class OAuthService {
 
     private OAuthLoginResponse handleExistingUser(User user, OAuthProvider provider) {
         if (user.getProvider() == null) {
-            throw new IllegalArgumentException("이미 일반 회원가입으로 등록된 이메일입니다");
+            throw new BusinessException(ErrorCode.ALREADY_REGISTERED_EMAIL);
         }
         rewardIfUser(user);
         return OAuthLoginResponse.from(user, false);
@@ -101,7 +102,7 @@ public class OAuthService {
     private OAuthClient getClient(OAuthProvider provider) {
         OAuthClient client = clients.get(provider);
         if (client == null) {
-            throw new IllegalArgumentException("지원하지 않는 OAuth OAuthProvider: " + provider);
+            throw new BusinessException(ErrorCode.UNSUPPORTED_OAUTH_PROVIDER);
         }
         return client;
     }

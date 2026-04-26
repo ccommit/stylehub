@@ -80,10 +80,10 @@ public class UserService implements UserPort {
 
     private void validateSignUp(String email, String name) {
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("이미 사용 중인 이메일입니다");
+            throw new BusinessException(ErrorCode.DUPLICATE_EMAIL);
         }
         if (userRepository.existsByName(name)) {
-            throw new IllegalArgumentException("이미 사용 중인 닉네임입니다");
+            throw new BusinessException(ErrorCode.DUPLICATE_NAME);
         }
     }
 
@@ -112,12 +112,12 @@ public class UserService implements UserPort {
         User user = Objects.requireNonNull(
                 transactionTemplate.execute(status ->
                         userRepository.findByEmail(request.email())
-                                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다"))
+                                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_PASSWORD))
                 )
         );
 
         if (!passwordHasher.matches(request.password(), user.getPassword())) {
-            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다");
+            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
         }
 
         if (user.getRole() == UserRole.USER) {
@@ -256,7 +256,7 @@ public class UserService implements UserPort {
     @Transactional
     public void rewardLoginPoint(Long userId, LocalDate today) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다"));
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
         if (user.getRole() == UserRole.ADMIN) {
             return;
