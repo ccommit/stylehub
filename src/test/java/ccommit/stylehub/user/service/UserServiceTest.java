@@ -1,6 +1,8 @@
 package ccommit.stylehub.user.service;
 
 import ccommit.stylehub.common.config.PasswordHasher;
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.entity.User;
@@ -113,7 +115,7 @@ class UserServiceTest {
         }
 
         @Test
-        @DisplayName("존재하지 않는 이메일이면 IllegalArgumentException 을 던진다")
+        @DisplayName("존재하지 않는 이메일이면 BusinessException(INVALID_PASSWORD) 을 던진다")
         void throws_whenEmailNotFound() {
             // given
             UserLoginRequest request = new UserLoginRequest("none@test.com", "raw-pw");
@@ -122,12 +124,13 @@ class UserServiceTest {
 
             // when / then
             assertThatThrownBy(() -> userService.login(request))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("존재하지 않는 이메일");
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_PASSWORD);
         }
 
         @Test
-        @DisplayName("비밀번호가 일치하지 않으면 IllegalArgumentException 을 던진다")
+        @DisplayName("비밀번호가 일치하지 않으면 BusinessException(INVALID_PASSWORD) 을 던진다")
         void throws_whenPasswordMismatch() {
             // given
             UserLoginRequest request = new UserLoginRequest("user@test.com", "wrong-pw");
@@ -140,8 +143,9 @@ class UserServiceTest {
 
             // when / then
             assertThatThrownBy(() -> userService.login(request))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("비밀번호가 일치하지 않습니다");
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_PASSWORD);
         }
     }
 
