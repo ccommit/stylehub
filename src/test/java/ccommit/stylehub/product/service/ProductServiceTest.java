@@ -71,9 +71,9 @@ class ProductServiceTest {
         @DisplayName("필터 없이 호출하면 기본 페이지 크기만큼 조회 쿼리가 실행된다")
         void callsQueryWithDefaultPageSize_whenNoFilter() {
             // given
-            ProductListResponse item = createListResponse(1L);
+            Product product = createMockProduct(1L);
             given(productQueryRepository.findProductsWithCursor(null, null, null, null, 21))
-                    .willReturn(List.of(item));
+                    .willReturn(List.of(product));
 
             // when
             CursorResponse<ProductListResponse> response =
@@ -109,9 +109,9 @@ class ProductServiceTest {
         void setsHasNextAndCursor_whenExtraItemExists() {
             // given
             int pageSize = 2;
-            ProductListResponse r1 = createListResponse(101L);
-            ProductListResponse r2 = createListResponse(102L);
-            ProductListResponse r3 = createListResponse(103L);   // +1 건 (hasNext 판정용)
+            Product r1 = createMockProduct(101L);
+            Product r2 = createMockProduct(102L);
+            Product r3 = createMockProduct(103L);   // +1 건 (hasNext 판정용)
             given(productQueryRepository.findProductsWithCursor(null, null, null, null, 3))
                     .willReturn(List.of(r1, r2, r3));
 
@@ -166,7 +166,7 @@ class ProductServiceTest {
 
     // ===== Helper =====
 
-    // getProduct (단건 상세) 테스트용 — ProductResponse.from 이 Product 엔티티를 요구함
+    // ProductListResponse.from / ProductResponse.from 둘 다 Product 엔티티를 입력으로 받으므로 mock 한 개로 통합한다.
     private Product createMockProduct(Long productId) {
         Product product = mock(Product.class);
         given(product.getProductId()).willReturn(productId);
@@ -177,19 +177,5 @@ class ProductServiceTest {
         given(product.getPrice()).willReturn(10000);
         given(product.getImageUrl()).willReturn("https://img/" + productId);
         return product;
-    }
-
-    // getProducts (목록 조회) 테스트용 — 레포지토리가 DTO 로 직접 투영 (Projections.constructor) 하므로 ProductListResponse 반환
-    private ProductListResponse createListResponse(Long productId) {
-        return ProductListResponse.builder()
-                .productId(productId)
-                .storeId(10L)
-                .storeName("테스트스토어")
-                .name("상품-" + productId)
-                .mainCategory(MainCategory.TOP)
-                .subCategory(SubCategory.T_SHIRT)
-                .price(10000)
-                .imageUrl("https://img/" + productId)
-                .build();
     }
 }
