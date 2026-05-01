@@ -32,6 +32,7 @@ import java.util.List;
  * @modified 2026/03/27 by WonJin - feat: 비관적 락 재고 차감/복구 메서드 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증은 ProductApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
+ * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지)
  *
  * <p>
  * 상품 등록, 재고 관리, 조회를 담당하는 순수 도메인 서비스이다.
@@ -117,10 +118,17 @@ public class ProductService implements ProductPort {
      *   sync = true: TTL 만료 순간 cache miss 가 동시에 쏟아지는 thundering herd 를 차단한다.
      *   같은 키로 동시 miss 가 발생하면 한 스레드만 DB 로 가고 나머지는 결과를 기다린다.
      *   TTL 60 초 — 신상품 반영 지연 허용 범위. 1000 users 구간에서 miss 빈도를 절반으로 낮추기 위해 30 → 60 상향.
+     *
+     *   key 의 null 자리는 '*' sentinel 로 치환한다. SpEL 의 String concatenation 은 null 을 문자열 "null" 로
+     *   변환하므로, "필터 없음" 의 의도가 키에서 모호해질 수 있고 디버깅·로그 가독성이 떨어진다.
+     *   '*' 는 Long·Enum 어느 타입에도 등장하지 않는 sentinel 이라 충돌 가능성이 없다.
      */
     @Cacheable(
             value = "products:firstPage",
-            key = "'size=' + (#pageSize ?: 20) + '|store=' + #storeId + '|main=' + #mainCategory + '|sub=' + #subCategory",
+            key = "'size=' + (#pageSize ?: 20) " +
+                  "+ '|store=' + (#storeId ?: '*') " +
+                  "+ '|main=' + (#mainCategory ?: '*') " +
+                  "+ '|sub=' + (#subCategory ?: '*')",
             condition = "#cursor == null",
             sync = true
     )
