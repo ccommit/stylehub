@@ -86,7 +86,7 @@ class PaymentServiceTest {
             Payment payment = mock(Payment.class);
             given(payment.getOrder()).willReturn(order);
 
-            given(paymentRepository.findByOrderPgOrderId(pgOrderId))
+            given(paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId))
                     .willReturn(Optional.of(payment));
             willDoNothing().given(paymentValidator).validateApprovable(payment);
             willDoNothing().given(paymentValidator).validateAmount(payment, tossAmount);
@@ -108,7 +108,7 @@ class PaymentServiceTest {
         @DisplayName("pgOrderId 에 해당하는 결제가 없으면 PAYMENT_NOT_FOUND 를 던진다")
         void throwsNotFound_whenPaymentMissing() {
             // given
-            given(paymentRepository.findByOrderPgOrderId("ORD-X")).willReturn(Optional.empty());
+            given(paymentRepository.findByOrderPgOrderIdWithLock("ORD-X")).willReturn(Optional.empty());
 
             // when / then
             assertThatThrownBy(() -> paymentService.confirmPayment("pk", "ORD-X", 10000))
@@ -122,7 +122,7 @@ class PaymentServiceTest {
         void doesNotCallPg_whenPaymentAlreadyProcessed() {
             // given
             Payment payment = mock(Payment.class);
-            given(paymentRepository.findByOrderPgOrderId("ORD-X")).willReturn(Optional.of(payment));
+            given(paymentRepository.findByOrderPgOrderIdWithLock("ORD-X")).willReturn(Optional.of(payment));
             willThrow(new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED))
                     .given(paymentValidator).validateApprovable(payment);
 
@@ -139,7 +139,7 @@ class PaymentServiceTest {
         void throwsAmountMismatch_whenAmountDiffers() {
             // given
             Payment payment = mock(Payment.class);
-            given(paymentRepository.findByOrderPgOrderId("ORD-X")).willReturn(Optional.of(payment));
+            given(paymentRepository.findByOrderPgOrderIdWithLock("ORD-X")).willReturn(Optional.of(payment));
             willDoNothing().given(paymentValidator).validateApprovable(payment);
             willThrow(new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH))
                     .given(paymentValidator).validateAmount(payment, 9999);
@@ -156,7 +156,7 @@ class PaymentServiceTest {
         void propagatesPgFailure() {
             // given
             Payment payment = mock(Payment.class);
-            given(paymentRepository.findByOrderPgOrderId("ORD-X")).willReturn(Optional.of(payment));
+            given(paymentRepository.findByOrderPgOrderIdWithLock("ORD-X")).willReturn(Optional.of(payment));
             willDoNothing().given(paymentValidator).validateApprovable(payment);
             willDoNothing().given(paymentValidator).validateAmount(payment, 10000);
             given(paymentClientFactory.getClient("TOSS")).willReturn(paymentClient);
