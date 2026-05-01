@@ -5,8 +5,10 @@ import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderService;
+import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -28,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author WonJin Bae
  * @created 2026/04/29
+ * @modified 2026/05/01 by WonJin - test: @AfterEach 에 DB 정리 로직 추가 (Order/OrderDetail/Payment) — 테스트 간 누적되던 행을 매 테스트 종료 시 제거해 isolation 강화
  *
  * <p>
  * 결제 타임아웃 스케줄러 통합 테스트.
@@ -40,6 +43,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * - @TransactionalEventListener(AFTER_COMMIT)으로 등록되는 ZSET 타임아웃은 트랜잭션 라이프사이클이 실제로 돌아야 실행됨
  * - 비관적 락(SELECT FOR UPDATE)을 통한 재고 복구 정합성은 실제 DB 트랜잭션과 동시성 제어가 필요
  * 단위 검증 대신 통합 검증을 택했으며, OrderConcurrencyTest와 동일한 컨벤션을 따른다.
+ * 테스트 격리는 @Transactional 자동 롤백 대신 @AfterEach 명시적 삭제로 처리한다 —
+ * 테스트 메서드를 트랜잭션으로 감싸면 placeOrder 가 commit 되지 않아 AFTER_COMMIT 이벤트가 발생하지 않기 때문이다.
  * </p>
  */
 @SpringBootTest
@@ -55,14 +60,30 @@ class OrderTimeoutSchedulerTest {
     private OrderRepository orderRepository;
 
     @Autowired
+    private OrderDetailRepository orderDetailRepository;
+
+    @Autowired
+    private PaymentRepository paymentRepository;
+
+    @Autowired
     private ProductOptionRepository productOptionRepository;
 
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    /**
+     * 테스트 간 isolation 보장:
+     * - Redis ZSET 타임아웃 키 정리
+     * - DB 의 Payment / OrderDetail / Order 행을 외래키 의존 순서대로 삭제
+     *   (Payment.order_id → OrderDetail.order_id → Order)
+     * 재고(ProductOption.stockQuantity) 는 각 테스트 첫 줄의 setStock() 이 명시적으로 덮어쓰므로 별도 정리 불필요.
+     */
     @AfterEach
-    void cleanRedis() {
+    void cleanUp() {
         redisTemplate.delete(OrderTimeoutScheduler.ORDER_TIMEOUT_KEY);
+        paymentRepository.deleteAll();
+        orderDetailRepository.deleteAll();
+        orderRepository.deleteAll();
     }
 
     @Test

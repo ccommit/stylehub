@@ -36,6 +36,7 @@ import static org.mockito.Mockito.times;
 /**
  * @author WonJin Bae
  * @created 2026/04/29
+ * @modified 2026/05/01 by WonJin - test: concurrentIdempotency 의 alreadyProcessed/otherFail 검증을 분리해 예상 못한 예외도 노출되도록 강화
  *
  * <p>
  * 결제 콜백 멱등성 통합 테스트
@@ -171,8 +172,12 @@ class PaymentIdempotencyTest {
         System.out.println("PAYMENT_ALREADY_PROCESSED: " + alreadyProcessedCount.get());
         System.out.println("기타 실패: " + otherFailCount.get());
 
+        // 정확히 1건만 성공, 나머지는 모두 PAYMENT_ALREADY_PROCESSED 로만 거절되어야 한다.
+        // OptimisticLockException·DataIntegrityViolationException 같은 예상 못한 예외가
+        // 섞여 들어와도 합격하지 않도록 alreadyProcessed 와 otherFail 을 분리해 검증한다.
         assertThat(successCount.get()).isEqualTo(1);
-        assertThat(alreadyProcessedCount.get() + otherFailCount.get()).isEqualTo(threadCount - 1);
+        assertThat(alreadyProcessedCount.get()).isEqualTo(threadCount - 1);
+        assertThat(otherFailCount.get()).isZero();
 
         // PG도 정확히 1번만 호출 — race로 떨어지면 N번 호출됨
         then(paymentClient).should(times(1)).confirmPayment(any(), any(), any());
