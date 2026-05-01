@@ -33,6 +33,7 @@ import static org.mockito.Mockito.never;
 /**
  * @author WonJin Bae
  * @created 2026/04/24
+ * @modified 2026/05/01 by WonJin - test: throws_whenEmailNotFound DisplayName 에 user enumeration 방지 의도 명시 — 코드 리뷰 시 INVALID_PASSWORD 반환이 버그처럼 보이지 않도록
  *
  * <p>
  * UserService.login 의 단위 테스트이다.
@@ -115,7 +116,7 @@ class UserServiceTest {
         }
 
         @Test
-        @DisplayName("존재하지 않는 이메일이면 BusinessException(INVALID_PASSWORD) 을 던진다")
+        @DisplayName("보안상 이메일 존재 여부를 노출하지 않기 위해 미존재 이메일에도 BusinessException(INVALID_PASSWORD) 을 던진다 (user enumeration 방지)")
         void throws_whenEmailNotFound() {
             // given
             UserLoginRequest request = new UserLoginRequest("none@test.com", "raw-pw");
