@@ -40,6 +40,9 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // Spring Cache (Redis 를 CacheManager 로 활용)
+    implementation 'org.springframework.boot:spring-boot-starter-cache'
+
     // QueryDSL
     implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
     annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
