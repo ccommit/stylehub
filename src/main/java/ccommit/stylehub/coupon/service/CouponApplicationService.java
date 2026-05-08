@@ -1,5 +1,6 @@
 package ccommit.stylehub.coupon.service;
 
+import ccommit.stylehub.common.aop.DistributedLock;
 import ccommit.stylehub.coupon.dto.request.CouponEventCreateRequest;
 import ccommit.stylehub.coupon.dto.request.CouponEventUpdateRequest;
 import ccommit.stylehub.coupon.dto.response.CouponEventResponse;
@@ -15,6 +16,7 @@ import java.util.List;
 /**
  * @author WonJin Bae
  * @created 2026/04/22
+ * @modified 2026/05/06 by WonJin - perf: 선착순 쿠폰 발급 동시성 메커니즘 진화 측정 — @Transactional → @DistributedLock 시도 (측정 결과 비관적 락보다 나쁨) → 비관적 락 복원 → CouponService 의 Redis DECR + Lua atomic + 비동기 저장 채택에 따라 단순 위임자로 정리 (선착순쿠폰-동시성측정.md 참조)
  *
  * <p>
  * Coupon 유스케이스를 오케스트레이션하는 Application 계층 서비스이다.
@@ -51,7 +53,15 @@ public class CouponApplicationService {
         couponService.deactivateCouponEvent(couponEventId);
     }
 
-    @Transactional
+    /**
+     * 선착순 쿠폰 발급. 동시성 제어는 도메인 서비스의 Redis DECR + Lua atomic 이 담당한다.
+     *
+     * <p>설계 진화: 비관적 락 → @DistributedLock (SETNX 폴링) → Redis DECR + Lua atomic + 비동기 저장.
+     * 모든 측정은 선착순쿠폰-동시성측정.md 참조.
+     *
+     * <p>이 메서드는 *DB 트랜잭션을 열지 않는다*. CouponService 가 Redis 호출만 하므로
+     * @Transactional 불필요. UserCoupon DB INSERT 는 비동기 listener 가 별도 트랜잭션에서 처리.
+     */
     public void issueCoupon(Long userId, Long couponEventId) {
         User user = userPort.findUserById(userId);
         couponService.issueCoupon(user, couponEventId);
