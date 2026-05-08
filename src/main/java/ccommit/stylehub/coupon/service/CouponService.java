@@ -2,6 +2,7 @@ package ccommit.stylehub.coupon.service;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.dto.CouponUsageResult;
 import ccommit.stylehub.coupon.dto.request.CouponEventCreateRequest;
 import ccommit.stylehub.coupon.dto.request.CouponEventUpdateRequest;
 import ccommit.stylehub.coupon.dto.response.CouponEventResponse;
@@ -9,6 +10,7 @@ import ccommit.stylehub.coupon.dto.response.UserCouponResponse;
 import ccommit.stylehub.coupon.entity.CouponEvent;
 import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.coupon.event.CouponIssuedEvent;
+import ccommit.stylehub.coupon.port.CouponPort;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.UserCouponRepository;
 import ccommit.stylehub.coupon.validator.CouponValidator;
@@ -40,7 +42,7 @@ import java.util.List;
  */
 @Service
 @RequiredArgsConstructor
-public class CouponService {
+public class CouponService implements CouponPort {
 
     private final CouponEventRepository couponEventRepository;
     private final UserCouponRepository userCouponRepository;
@@ -115,6 +117,45 @@ public class CouponService {
         ));
 
         return CouponEventResponse.from(event);
+    }
+
+    /**
+     * UserCoupon 사용 처리 — 비관적 락으로 동시 사용 차단 + 검증 + 상태 전이 + 할인 계산.
+     *
+     * <p>실패 케이스:
+     * <br>- USER_COUPON_NOT_FOUND: 존재하지 않는 UserCoupon
+     * <br>- UNAUTHORIZED_USER_COUPON: 본인 소유 X
+     * <br>- COUPON_NOT_AVAILABLE: 이미 USED (재사용 / 동시 사용 차단)
+     * <br>- COUPON_NOT_ACTIVE / NOT_STARTED / EXPIRED: 쿠폰 이벤트 상태
+     * <br>- MIN_ORDER_AMOUNT_NOT_MET: 최소 주문 금액 미달
+     */
+    @Override
+    @Transactional
+    public CouponUsageResult useUserCoupon(Long userId, Long userCouponId, int totalAmount) {
+        UserCoupon userCoupon = userCouponRepository.findByIdWithLock(userCouponId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_COUPON_NOT_FOUND));
+
+        if (!userCoupon.getUser().getUserId().equals(userId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_USER_COUPON);
+        }
+
+        couponValidator.validateUsable(userCoupon);
+        int discount = userCoupon.getCouponEvent().calculateDiscount(totalAmount);
+        userCoupon.markUsed();
+
+        return new CouponUsageResult(userCoupon, discount);
+    }
+
+    /**
+     * UserCoupon 복구 (보상 트랜잭션) — 결제 실패 / 주문 취소 시 호출.
+     * 멱등 — 이미 UNUSED 면 그대로.
+     */
+    @Override
+    @Transactional
+    public void restoreUserCoupon(Long userCouponId) {
+        UserCoupon userCoupon = userCouponRepository.findByIdWithLock(userCouponId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_COUPON_NOT_FOUND));
+        userCoupon.markUnused();
     }
 
     /**
