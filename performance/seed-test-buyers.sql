@@ -2,8 +2,9 @@
 -- 시나리오 2 (주문 → 결제) 부하 테스트용 buyer 시드
 --
 -- 생성:
---   - users 500명: email perf_buyer_1@perf.test ~ perf_buyer_500@perf.test
---   - addresses 500건: 각 buyer 당 1개 (default)
+--   - users 1000명: email perf_buyer_1@perf.test ~ perf_buyer_1000@perf.test
+--   - addresses 1000건: 각 buyer 당 1개 (default)
+--   - 1000장 / 1000명 시나리오 (시나리오 4) 측정 위해 500 → 1000 으로 확장
 --
 -- 비밀번호: Test1234!
 --   BCrypt cost 10 해시. Java BCrypt 라이브러리(at.favre.lib.crypto.bcrypt)는
@@ -25,8 +26,8 @@ WHERE user_id IN (
 );
 DELETE FROM users WHERE email LIKE 'perf_buyer_%@perf.test';
 
--- 2. buyer 500명 생성
---    10x10x5 sequence 로 1..500 생성, 동일 BCrypt 해시 사용 (single hash 빠름)
+-- 2. buyer 1000명 생성
+--    10x10x10 sequence 로 1..1000 생성, 동일 BCrypt 해시 사용 (single hash 빠름)
 INSERT INTO users (
     name, email, password, role, grade,
     total_spent, point_balance, is_active,
@@ -45,9 +46,10 @@ FROM (
           UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
          (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
           UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b,
-         (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) c
+         (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4
+          UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) c
 ) nums
-WHERE seq <= 500;
+WHERE seq <= 1000;
 
 -- 3. 각 buyer 당 address 1건 생성 (default 배송지)
 INSERT INTO addresses (
@@ -73,4 +75,4 @@ SELECT
     (SELECT COUNT(*) FROM users WHERE email LIKE 'perf_buyer_%@perf.test') AS buyer_count,
     (SELECT COUNT(*) FROM addresses WHERE user_id IN
         (SELECT user_id FROM users WHERE email LIKE 'perf_buyer_%@perf.test')) AS address_count;
--- 기대: buyer_count = 500, address_count = 500
+-- 기대: buyer_count = 1000, address_count = 1000

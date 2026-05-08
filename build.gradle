@@ -40,6 +40,9 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+    // Spring Session — 다중 인스턴스 환경에서 세션을 Redis 에 저장 (Tomcat 메모리 세션의 분산 한계 해결)
+    implementation 'org.springframework.session:spring-session-data-redis'
+
     // QueryDSL
     implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'
     annotationProcessor 'com.querydsl:querydsl-apt:5.1.0:jakarta'
