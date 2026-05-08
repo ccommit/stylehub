@@ -68,6 +68,14 @@ public class OrderDetail {
         return unitPrice * quantity;
     }
 
+    /**
+     * 주문 생성 *후* 사용된 쿠폰을 연결한다 (placeOrder 의 쿠폰 적용 단계에서 호출).
+     * cancelOrder 의 보상 트랜잭션 시 어떤 UserCoupon 을 복구해야 하는지 추적용.
+     */
+    public void attachCoupon(UserCoupon userCoupon) {
+        this.userCoupon = userCoupon;
+    }
+
     public static OrderDetail create(ProductOption productOption, Order order,
                                      Integer quantity, Integer unitPrice,
                                      UserCoupon userCoupon) {

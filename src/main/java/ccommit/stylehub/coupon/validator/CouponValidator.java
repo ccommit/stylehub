@@ -39,6 +39,14 @@ public class CouponValidator {
     }
 
     /**
+     * UserCoupon 사용 시점 검증 — 쿠폰 이벤트 자체의 활성/시작/만료 상태가 유효한지.
+     * UNUSED 상태 검증은 UserCoupon.markUsed() 안에서 수행.
+     */
+    public void validateUsable(ccommit.stylehub.coupon.entity.UserCoupon userCoupon) {
+        validateIssuable(userCoupon.getCouponEvent());
+    }
+
+    /**
      * 쿠폰 이벤트 생성 시점 검증.
      * - 유효기간이 올바를 것 (시작일 <= 만료일)
      * - 할인 유형이 RATE인 경우 할인 값이 100% 이하일 것
