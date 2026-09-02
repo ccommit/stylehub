@@ -1,0 +1,36 @@
+# 빌드 컨텍스트에서 제외 — 이미지 크기/빌드 속도/시크릿 유출 방지
+
+# 빌드 산출물 (이미지 안에서 다시 빌드하므로 불필요)
+build/
+.gradle/
+out/
+bin/
+
+# IDE / OS
+.idea/
+*.iml
+.DS_Store
+__pycache__/
+
+# VCS
+.git/
+.github/
+
+# 문서 / 성능 리포트 (런타임 불필요, 컨텍스트만 키움)
+docs/
+performance/
+reports/
+*.md
+*.html
+
+# 로컬 시크릿 / 환경파일 (절대 이미지에 넣지 않는다)
+.env
+.env.*
+!.env.example
+
+# 배포 관련 (이미지 내부에 있을 이유 없음)
+Jenkinsfile
+docker-compose*.yml
+
+# 대용량 시드 SQL (필요 시 compose init 볼륨으로만 주입)
+*.sql
