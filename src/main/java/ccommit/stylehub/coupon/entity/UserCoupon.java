@@ -1,5 +1,7 @@
 package ccommit.stylehub.coupon.entity;
 
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.coupon.enums.CouponStatus;
 import ccommit.stylehub.user.entity.User;
 import jakarta.persistence.Column;
@@ -29,6 +31,7 @@ import java.time.LocalDateTime;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/04/09 by WonJin - feat: 와일드카드 import 수정, UniqueConstraint 추가
  * @modified 2026/04/16 by WonJin - docs: (user_id, coupon_event_id) UNIQUE 제약 사용 이유 주석 추가
+ * @modified 2026/05/08 by WonJin - feat: markUsed() / markUnused() 상태 전이 메서드 추가 — 쿠폰 사용 주문 + 결제 실패 시 보상 트랜잭션 지원
  *
  * <p>
  * 사용자에게 발급된 개별 쿠폰 인스턴스를 관리한다.
@@ -93,5 +96,26 @@ public class UserCoupon {
                 .user(user)
                 .couponEvent(couponEvent)
                 .build();
+    }
+
+    /**
+     * 쿠폰을 USED 상태로 전이한다. 주문 시점에 호출.
+     * 이미 USED 면 예외 — 동시 사용 / 재사용 차단의 마지막 방어선.
+     */
+    public void markUsed() {
+        if (this.status != CouponStatus.UNUSED) {
+            throw new BusinessException(ErrorCode.COUPON_NOT_AVAILABLE);
+        }
+        this.status = CouponStatus.USED;
+        this.usedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 쿠폰을 UNUSED 상태로 복구한다. 결제 실패 시 보상 트랜잭션에서 호출.
+     * 이미 UNUSED 면 멱등 (예외 X) — 보상 호출이 중복돼도 안전.
+     */
+    public void markUnused() {
+        this.status = CouponStatus.UNUSED;
+        this.usedAt = null;
     }
 }

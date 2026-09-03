@@ -31,6 +31,7 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator' // 헬스체크(/actuator/health) — 컨테이너 HEALTHCHECK, 무중단 배포 게이트
     runtimeOnly 'com.mysql:mysql-connector-j' // MySQL JDBC 드라이버 — 컴파일 시 불필요, 런타임에 JPA가 DB 연결 시 사용
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'at.favre.lib:bcrypt:0.10.2'
@@ -40,8 +41,13 @@ dependencies {
     // Redis
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 
+ 
+    // Spring Session — 다중 인스턴스 환경에서 세션을 Redis 에 저장 (Tomcat 메모리 세션의 분산 한계 해결)
+    implementation 'org.springframework.session:spring-session-data-redis'
+ 
     // Spring Cache (Redis 를 CacheManager 로 활용)
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+ 
 
     // QueryDSL
     implementation 'com.querydsl:querydsl-jpa:5.1.0:jakarta'

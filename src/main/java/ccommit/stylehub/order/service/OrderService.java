@@ -4,7 +4,9 @@ import ccommit.stylehub.common.aop.ExecutionTimeCheck;
 import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.dto.CouponUsageResult;
 import ccommit.stylehub.coupon.entity.UserCoupon;
+import ccommit.stylehub.coupon.port.CouponPort;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
@@ -45,6 +47,7 @@ import java.util.TreeMap;
  * @modified 2026/04/08 by WonJin - refactor: 이벤트 발행 제거, Payment 직접 생성 + TransactionSynchronization으로 Redis 타임아웃 등록
  * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
  * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
+ * @modified 2026/05/08 by WonJin - feat: 쿠폰 사용 주문 + 보상 트랜잭션 — placeOrder 가 CouponPort.useUserCoupon (비관적 락 + 검증 + 할인 + USED 전이) 호출, cancelOrder 에 restoreUserCoupon 추가 (결제 실패 시 UNUSED 복구). 시나리오 2-2 측정 위한 구현.
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -65,6 +68,7 @@ public class OrderService {
     private final DeliveryValidator deliveryValidator;
     private final UserPort userPort;
     private final ProductPort productPort;
+    private final CouponPort couponPort;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -79,18 +83,28 @@ public class OrderService {
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
         Address address = userPort.findAddressByOwner(userId, request.addressId());
 
-        // TODO: 쿠폰 유효성 검증 + 할인 금액 계산
-        // TODO: 포인트 잔액 확인 + 차감
-
         Order savedOrder = orderRepository.save(Order.create(address.getUser(), address));
-        List<OrderDetail> savedDetails = decreaseStockAndCreateDetails(savedOrder, request.details());
-
-        // TODO: 쿠폰 사용 처리 (UserCoupon 상태 변경)
-        // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
+        UserCoupon appliedCoupon = null;
+        List<OrderDetail> savedDetails = decreaseStockAndCreateDetails(savedOrder, request.details(), appliedCoupon);
 
         int totalAmount = savedDetails.stream()
                 .mapToInt(OrderDetail::getTotalPrice)
                 .sum();
+
+        // 쿠폰 사용 — 비관적 락으로 동시 사용 차단 + 검증 + 할인 적용 + UNUSED → USED
+        // 결제 실패 시 cancelOrder 가 보상으로 markUnused 호출
+        if (request.userCouponId() != null) {
+            CouponUsageResult usage = couponPort.useUserCoupon(
+                    userId, request.userCouponId(), totalAmount);
+            savedOrder.applyDiscount(usage.discountAmount());
+            // OrderDetail 의 첫 번째 항목에 userCoupon 연결 (cancelOrder 보상 시 추적용)
+            if (!savedDetails.isEmpty()) {
+                savedDetails.get(0).attachCoupon(usage.userCoupon());
+            }
+        }
+
+        // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
+
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
         eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getOrderId(), totalAmount, finalAmount));
@@ -110,6 +124,21 @@ public class OrderService {
 
         order.cancel();
         restoreStock(orderId);
+        restoreUserCoupon(orderId);  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+    }
+
+    /**
+     * 주문 취소 시 사용된 UserCoupon 을 UNUSED 로 복구 (보상 트랜잭션).
+     * OrderDetail 의 첫 항목에서 userCoupon 추출 (placeOrder 시 첫 항목에만 attach).
+     * 쿠폰 미사용 주문이면 noop.
+     */
+    private void restoreUserCoupon(Long orderId) {
+        List<OrderDetail> details = orderDetailRepository.findByOrderIdWithDetails(orderId);
+        details.stream()
+                .map(OrderDetail::getUserCoupon)
+                .filter(uc -> uc != null)
+                .findFirst()
+                .ifPresent(uc -> couponPort.restoreUserCoupon(uc.getUserCouponId()));
     }
 
     private void restoreStock(Long orderId) {
@@ -191,7 +220,7 @@ public class OrderService {
      * 같은 옵션 ID의 수량을 합산한 뒤, 재고를 차감하고 주문 항목을 생성한다.
      * deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
      */
-    private List<OrderDetail> decreaseStockAndCreateDetails(Order order, List<OrderDetailRequest> detailRequests) {
+    private List<OrderDetail> decreaseStockAndCreateDetails(Order order, List<OrderDetailRequest> detailRequests, UserCoupon userCoupon) {
         List<OrderDetailRequest> merged = mergeAndSort(detailRequests);
 
         List<OrderDetail> details = new ArrayList<>(merged.size());
@@ -200,11 +229,9 @@ public class OrderService {
                     request.productOptionId(), request.quantity()
             );
 
-            // TODO: 쿠폰 기능 구현 시 UserCoupon 전달
-            UserCoupon noCoupon = null;
             details.add(OrderDetail.create(
                     option, order, request.quantity(),
-                    option.getProductPrice(), noCoupon
+                    option.getProductPrice(), userCoupon
             ));
         }
 
