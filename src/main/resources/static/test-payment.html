@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StyleHub 결제 테스트</title>
+    <script src="https://js.tosspayments.com/v2/standard"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+            background: #f4f6f8;
+            color: #333;
+        }
+        .wrapper {
+            display: flex;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+        .max-w-540 {
+            max-width: 540px;
+            width: 100%;
+        }
+        .w-100 { width: 100%; }
+
+        .input-section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .input-section h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            color: #1b1d1f;
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            color: #6b7684;
+            margin-bottom: 4px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e5e8eb;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+        }
+        .form-group input:focus {
+            border-color: #3182f6;
+        }
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+        .form-row .form-group { flex: 1; }
+
+        #payment-method { width: 100%; }
+        #agreement { width: 100%; }
+
+        .btn-wrapper {
+            padding: 16px 0;
+        }
+        .btn {
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+        }
+        .btn.primary {
+            background: #3182f6;
+            color: #fff;
+        }
+        .btn.primary:hover {
+            background: #1b64da;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper w-100">
+        <div class="max-w-540 w-100">
+            <div class="input-section">
+                <h3>주문 정보</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>주문번호 (pgOrderId)</label>
+                        <input type="text" id="orderId" placeholder="ORD-20260402-xxxxxxxx">
+                    </div>
+                    <div class="form-group">
+                        <label>결제금액</label>
+                        <input type="number" id="amount" placeholder="129000">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>주문명</label>
+                    <input type="text" id="orderName" value="테스트 주문">
+                </div>
+            </div>
+            <div id="payment-method" class="w-100"></div>
+            <div id="agreement" class="w-100"></div>
+            <div class="btn-wrapper w-100">
+                <button id="payment-request-button" class="btn primary w-100">결제하기</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const clientKey = "test_ck_QbgMGZzorzqRAEpGbAqkVl5E1em4";
+        const customerKey = "customer_1";
+
+        const tossPayments = TossPayments(clientKey);
+        const widgets = tossPayments.widgets({customerKey: customerKey});
+
+        async function init() {
+            await widgets.setAmount({currency: "KRW", value: 129000});
+            await widgets.renderPaymentMethods({selector: "#payment-method"});
+            await widgets.renderAgreement({selector: "#agreement"});
+        }
+
+        // 금액 변경 시 위젯 업데이트
+        document.getElementById("amount").addEventListener("change", async function() {
+            const amount = Number(this.value);
+            if (amount > 0) {
+                await widgets.setAmount({currency: "KRW", value: amount});
+            }
+        });
+
+        // 결제하기 버튼
+        document.getElementById("payment-request-button").addEventListener("click", async function() {
+            const orderId = document.getElementById("orderId").value;
+            const amount = Number(document.getElementById("amount").value);
+            const orderName = document.getElementById("orderName").value;
+
+            if (!orderId || !amount) {
+                alert("주문번호와 결제금액을 입력해주세요.");
+                return;
+            }
+
+            await widgets.requestPayment({
+                orderId: orderId,
+                orderName: orderName,
+                successUrl: "http://localhost:8080/api/v1/payments/success",
+                failUrl: "http://localhost:8080/api/v1/payments/fail"
+            });
+        });
+
+        init();
+    </script>
+</body>
+</html>

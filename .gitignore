@@ -285,3 +285,16 @@ gradle-app.setting
 *.hprof
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,windows,java,intellij,intellij+all,gradle
+
+### StyleHub — local secrets & tooling artifacts ###
+# 로컬 개발용 application.properties에는 실제 OAuth/결제 시크릿이 평문으로 들어간다.
+# 커밋 대상은 환경변수 참조만 쓰는 application-prod.properties뿐.
+src/main/resources/application.properties
+.env
+
+# Python (Locust 성능 테스트 스크립트)
+__pycache__/
+*.pyc
+
+# IntelliJ module file (로컬 IDE 전용)
+*.iml
