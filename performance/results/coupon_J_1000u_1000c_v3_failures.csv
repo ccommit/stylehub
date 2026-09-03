@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+POST,POST /coupon-events/{id}/issue,CatchResponseError('unexpected status=0'),1047

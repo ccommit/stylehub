@@ -1,0 +1,172 @@
+package ccommit.stylehub.coupon.entity;
+
+import ccommit.stylehub.common.entity.BaseEntity;
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.enums.CouponType;
+import ccommit.stylehub.coupon.enums.DiscountType;
+import ccommit.stylehub.user.entity.User;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+import java.time.LocalDateTime;
+
+/**
+ * @author WonJin Bae
+ * @created 2026/03/21 08:17
+ * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
+ * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/04/09 by WonJin - feat: issuedCount 필드 추가, 선착순 발급 검증 메서드 추가
+ * @modified 2026/04/16 by WonJin - refactor: couponType 필드 추가, PLATFORM/STORE 명시적 구분
+ * @modified 2026/05/08 by WonJin - feat: calculateDiscount 에 minOrderAmount 검증 추가 (쿠폰 사용 주문 시 최소 주문 금액 미달 거절)
+ *
+ * <p>
+ * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
+ * couponType으로 PLATFORM/STORE를 명시적으로 구분하며,
+ * 생성 시 타입-스토어 관계의 불변식을 강제한다.
+ * </p>
+ */
+
+@Entity
+@Table(name = "coupon_events")
+@Getter
+@SuperBuilder
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class CouponEvent extends BaseEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "coupon_event_id")
+    private Long couponEventId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_user_id")
+    private User storeUser;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "coupon_type", nullable = false)
+    private CouponType couponType;
+
+    @Column(nullable = false, length = 20)
+    private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", nullable = false)
+    private DiscountType discountType;
+
+    @Column(name = "discount_value", nullable = false)
+    private Integer discountValue;
+
+    @Column(name = "min_order_amount", nullable = false)
+    @Builder.Default
+    private Integer minOrderAmount = 0;
+
+    @Column(name = "issue_count", nullable = false)
+    private Integer issueCount;
+
+    @Column(name = "issued_count", nullable = false)
+    @Builder.Default
+    private Integer issuedCount = 0;
+
+    @Column(name = "started_at", nullable = false)
+    private LocalDateTime startedAt;
+
+    @Column(name = "expired_at", nullable = false)
+    private LocalDateTime expiredAt;
+
+    @Column(name = "is_active", nullable = false)
+    @Builder.Default
+    private Boolean active = true;
+
+    // 스토어 쿠폰 생성 — couponType = STORE, store != null 불변식
+    public static CouponEvent create(User storeUser, String name, DiscountType discountType,
+                                     Integer discountValue, Integer minOrderAmount,
+                                     Integer issueCount, LocalDateTime startedAt,
+                                     LocalDateTime expiredAt) {
+        if (storeUser == null) {
+            throw new BusinessException(ErrorCode.INVALID_COUPON_TYPE);
+        }
+        return CouponEvent.builder()
+                .storeUser(storeUser)
+                .couponType(CouponType.STORE)
+                .name(name)
+                .discountType(discountType)
+                .discountValue(discountValue)
+                .minOrderAmount(minOrderAmount)
+                .issueCount(issueCount)
+                .startedAt(startedAt)
+                .expiredAt(expiredAt)
+                .build();
+    }
+
+    // 플랫폼(관리자) 쿠폰 생성 — couponType = PLATFORM, store = null 불변식
+    public static CouponEvent createPlatform(String name, DiscountType discountType,
+                                             Integer discountValue, Integer minOrderAmount,
+                                             Integer issueCount, LocalDateTime startedAt,
+                                             LocalDateTime expiredAt) {
+        return CouponEvent.builder()
+                .couponType(CouponType.PLATFORM)
+                .name(name)
+                .discountType(discountType)
+                .discountValue(discountValue)
+                .minOrderAmount(minOrderAmount)
+                .issueCount(issueCount)
+                .startedAt(startedAt)
+                .expiredAt(expiredAt)
+                .build();
+    }
+
+    public void increaseIssuedCount() {
+        if (this.issuedCount >= this.issueCount) {
+            throw new BusinessException(ErrorCode.COUPON_SOLD_OUT);
+        }
+        this.issuedCount++;
+    }
+
+    public void update(Integer issueCount, Integer minOrderAmount,
+                       LocalDateTime startedAt, LocalDateTime expiredAt) {
+        this.issueCount = issueCount;
+        this.minOrderAmount = minOrderAmount;
+        this.startedAt = startedAt;
+        this.expiredAt = expiredAt;
+    }
+
+    /**
+     * 최소 주문 금액을 검증한 후 할인 금액을 계산한다.
+     *
+     * <p>최소 금액 미달 시 MIN_ORDER_AMOUNT_NOT_MET 던짐 — 쿠폰 사용 불가.
+     * 검증 통과 시 discountType 에 따라 FIXED (정액) 또는 RATE (정률) 계산.
+     */
+    public int calculateDiscount(int orderAmount) {
+        if (orderAmount < this.minOrderAmount) {
+            throw new BusinessException(ErrorCode.MIN_ORDER_AMOUNT_NOT_MET);
+        }
+        return discountType.calculate(orderAmount, discountValue);
+    }
+
+    public void deactivate() {
+        this.active = false;
+    }
+
+    public boolean isExpired() {
+        return LocalDateTime.now().isAfter(this.expiredAt);
+    }
+
+    public boolean isNotStarted() {
+        return LocalDateTime.now().isBefore(this.startedAt);
+    }
+}

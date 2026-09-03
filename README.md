@@ -26,21 +26,7 @@
 > 화면의 흐름을 따라가며 예외 상황을 미리 시뮬레이션했고, 이를 통해 요구사항에 최적화된 견고한 백엔드 아키텍처를 구축했습니다.
  
 ---
-
-
-## 📌 목차
-1. [프로젝트 소개](#1-프로젝트-소개)
-2. [기술 스택](#2-기술-스택)
-3. [해결하고자 한 핵심 기술 과제](#3-해결하고자-한-핵심-기술-과제)
-4. [API 문서](#4-api-문서)
-5. [테스트 전략](#5-테스트-전략)
-6. [트러블슈팅](#6-트러블슈팅)
-7. [가장 어려웠던 이슈](#7-가장-어려웠던-이슈)
-8. [시퀀스 다이어그램](#8-시퀀스-다이어그램)
-9. [협업 방식](#9-협업-방식)
-
---- 
-<details><summary><b> 🛠️ 개발 철학 및 마음가짐</b></summary>
+<details><summary><b> 개발 철학 및 마음가짐</b></summary>
 
 ### 1. 협업의 시작은 '문서화'로부터
 > **"기억은 기록을 이길 수 없고, 기록은 삭제를 이길 수 없다. 하지만 기록된 지식은 팀의 문화를 만든다."**
@@ -66,6 +52,19 @@
 * **추적 가능한 구조와 완결성:** 테스트를 통해 발견된 취약점을 즉각 보완하며 코드의 기술적 완결성을 높였습니다. 검증 가능한 구조를 유지함으로써 문제 발생 시 원인을 빠르게 파악할 수 있는 환경을 조성했습니다.
 
 </details>
+
+---
+
+## 📌 목차
+1. [프로젝트 소개](#1-프로젝트-소개)
+2. [기술 스택](#2-기술-스택)
+3. [해결하고자 한 핵심 기술 과제](#3-해결하고자-한-핵심-기술-과제)
+4. [API 문서](#4-api-문서)
+5. [테스트 전략](#5-테스트-전략)
+6. [트러블슈팅](#6-트러블슈팅)
+8. [시퀀스 다이어그램](#8-시퀀스-다이어그램)
+9. [협업 방식](#9-협업-방식)
+
 
 ---
 
@@ -233,7 +232,7 @@ src
 | Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
 | ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
 | Caching | [Redis](https://bwj1207.tistory.com/116) | 분산 락 기반 동시성 제어, 빠른 캐싱 처리 |
-| Infrastructure | [AWS EC2 / S3](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
+| Infrastructure | [AWS EC2](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
 
 ---
@@ -260,7 +259,6 @@ src
 
 ---
 
-## 7. 가장 어려웠던 이슈
 
 ---
 
@@ -278,38 +276,63 @@ sequenceDiagram
     participant DB as DB
 
     Client->>Controller: POST /api/v1/orders
-
+    activate Controller
+    Note over Controller: @Valid 요청값 검증
     Controller->>Service: 주문 생성 요청
+    activate Service
+    Note over Service: @Transactional
 
     Service->>Repository: 상품 옵션 조회
-    Repository->>DB: SELECT products_options
-    DB-->>Repository: ProductOption 엔티티 목록
-
-    alt 재고 부족
-        Repository-->>Service: 재고 부족
-        Service-->>Controller: OutOfStockException
-        Controller-->>Client: 409 재고 부족
-    end
-
-    Repository-->>Service: 상품 옵션 조회 성공
+    activate Repository
+    Repository->>DB: SELECT FROM product_options
+    activate DB
+    DB-->>Repository: ProductOption 엔티티 반환
+    deactivate DB
+    Repository-->>Service: Optional(ProductOption)
+    deactivate Repository
 
     Service->>Repository: 쿠폰 / 포인트 조회
-    Repository->>DB: SELECT user_coupons, users
-    DB-->>Repository: 쿠폰 / 포인트 정보 (없으면 0)
+    activate Repository
+    Repository->>DB: SELECT FROM user_coupons, users
+    activate DB
+    DB-->>Repository: 쿠폰 / 포인트 정보 반환 (없으면 0)
+    deactivate DB
+    Repository-->>Service: CouponAndPointResult
+    deactivate Repository
 
-    Service->>Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
+    Note over Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
 
-    Service->>Repository: 재고 차감 (비관적 락)
-    Repository->>DB: SELECT ... FOR UPDATE → UPDATE stock
-    DB-->>Repository: 재고 차감 완료
+    Service->>Repository: 재고 차감 요청 (비관적 락)
+    activate Repository
+    Repository->>DB: SELECT FROM product_options FOR UPDATE
+    activate DB
 
-    Service->>Repository: 주문 저장
-    Repository->>DB: INSERT orders status=PENDING
-    DB-->>Repository: 저장 완료
+    alt 동시 주문으로 인한 재고 부족 or 락 타임아웃
+        DB-->>Repository: LockTimeoutException or 재고 0
+        Repository-->>Service: 예외 전파 (StockLockTimeoutException)
+        Service-->>Controller: 예외 전파
+        Controller-->>Client: 503 주문이 집중되고 있습니다. 잠시 후 다시 시도해주세요
+    else 재고 차감 성공
+        DB-->>Repository: 재고 차감 완료
+        deactivate DB
+        Repository-->>Service: 재고 차감 완료
+        deactivate Repository
 
-    Repository-->>Service: 주문 저장 완료
-    Service-->>Controller: 주문 생성 완료
-    Controller-->>Client: 201 Created {orderId, finalAmount}
+        Service->>Repository: 주문 저장
+        activate Repository
+        Repository->>DB: INSERT INTO orders status=PENDING
+        activate DB
+        DB-->>Repository: 저장 완료
+        deactivate DB
+        Repository-->>Service: Order 엔티티 반환
+        deactivate Repository
+
+        Service-->>Controller: 주문 생성 완료
+        Controller-->>Client: 201 Created (orderId, tossOrderId, finalAmount)
+    end
+
+    deactivate Service
+    deactivate Controller
 
     Note over Client: 결제하기 버튼 클릭
     Note over Client: tossOrderId, finalAmount로<br/>토스 결제 위젯 호출
@@ -322,46 +345,72 @@ sequenceDiagram
 <summary><b>토스 결제 시퀀스</b></summary>
 
 ``` mermaid
-sequenceDiagram
-    actor Dev as 개발자 (수동)
-    participant Toss as 토스페이먼츠 서버
-    participant Controller as PaymentController
-    participant Service as PaymentService
+   sequenceDiagram
+    actor Client as 클라이언트
+    participant CT as PaymentController
+    participant SV as PaymentService
+    participant Repo as PaymentRepository (JPA)
     participant DB as DB
 
-    Note over Dev,Toss: ① 샌드박스에서 결제창 진입 및 인증
+    Note over Client,DB: ① 결제 준비
 
-    Dev->>Toss: pg_order_id, amount, successUrl, failUrl 입력 후 인증 진행
-    Toss-->>Controller: successUrl 리다이렉트<br/>GET /api/v1/payments/success
-
-    Note over Controller,DB: ② 결제 승인 요청
-
-    Controller->>Service: 결제 승인 요청
-    Service->>DB: pg_order_id로 결제 정보 조회
-
-    Note over Service: 금액 변조 검증<br/>(requested_amount vs amount)
-
-    alt 금액 불일치
-        Service-->>Controller: CustomException(INVALID_PAYMENT_AMOUNT)
-        Controller-->>Dev: 400 Bad Request
-    else 유효시간 30분 초과
-        Service-->>Controller: CustomException(PAYMENT_EXPIRED)
-        Controller-->>Dev: 400 Bad Request
-    else 상태가 IN_PROGRESS (정상)
-        Service->>Toss: 최종 승인 요청<br/>POST /v1/payments/confirm
-        alt 승인 실패
-            Toss-->>Service: 4xx / 5xx
-            Service->>DB: UPDATE payments status=ABORTED
-            Service-->>Controller: CustomException(PAYMENT_FAILED)
-            Controller-->>Dev: 400 Bad Request
-        else 승인 성공
-            Toss-->>Service: 승인 완료
-            Service->>DB: UPDATE payments status=DONE
-            Service->>DB: UPDATE orders order_status=PAYMENT_COMPLETED
-            Service-->>Controller: 결제 완료
-            Controller-->>Dev: 200 OK
-        end
+    Client->>CT: POST /api/payments/prepare
+    Note over CT: @Valid 요청값 검증<br/>(orderName, amount, customerEmail)
+    CT->>SV: preparePayment(request)
+    Note over SV: orderId 생성 / status = READY
+    SV->>Repo: 결제 정보 저장
+    Repo->>DB: INSERT payments
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
     end
+    DB-->>Repo: 저장 완료
+    Repo-->>SV: 결제 저장 완료
+    SV-->>CT: 결제 준비 완료
+    CT-->>Client: 200 OK (orderId, amount)
+
+    Note over Client,DB: ② 결제 승인
+
+    Client->>CT: POST /api/payments/confirm
+    Note over CT: @Valid 요청값 검증<br/>(paymentKey, orderId, amount)
+    CT->>SV: confirmPayment(request)
+    SV->>Repo: 결제 정보 조회
+    Repo->>DB: SELECT payments WHERE orderId
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
+    end
+    DB-->>Repo: 조회 완료
+    Repo-->>SV: Payment(READY)
+    Note over SV: 금액 검증 (amount 비교)
+    alt 주문 없음 / 금액 불일치
+        SV-->>CT: CustomException
+        CT-->>Client: 400 / 404
+    end
+    alt 결제 인증 후 10분 초과
+        SV-->>CT: CustomException (PAYMENT_EXPIRED)
+        CT-->>Client: 400 Bad Request
+    end
+    Note over SV: POST /v1/payments/confirm<br/>Authorization: Basic {secretKey:Base64}
+    SV->>Repo: 결제 상태 업데이트
+    Repo->>DB: UPDATE payments SET paymentKey
+    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
+    alt DB 타임아웃 발생
+        DB-->>Repo: DataAccessException
+        Repo-->>SV: DB_TIMEOUT
+        SV-->>CT: CustomException (DB_TIMEOUT)
+        CT-->>Client: 503 Service Unavailable
+    end
+    DB-->>Repo: 저장 완료
+    Repo-->>SV: 결제 상태 업데이트 완료
+    SV-->>CT: 결제 승인 완료
+    CT-->>Client: 200 OK  
 ```
  
 </details> 
@@ -372,25 +421,29 @@ sequenceDiagram
 ``` mermaid
 
 sequenceDiagram
-    actor Client as Client (Manager or Admin)
+    actor Client as Client (STORE or Admin)
     participant Controller as CouponController
     participant Service as CouponService
     participant Repository as CouponRepository (JPA)
     participant DB as DB
-
-    Client->>Controller: POST /api/v1/coupons
-
+    Client->>Controller: POST /api/v1/coupons<br/>CouponCreateRequest(discountType, quantity, startAt, endAt)
+    activate Controller
     Note over Controller: @Valid 요청값 검증<br/>(할인타입, 발급수량, 시작일/종료일)
-
-    Controller->>Service: 쿠폰 발행 요청
-
-    Service->>Repository: 쿠폰 저장
-    Repository->>DB: INSERT coupons
+    Controller->>Service: createCoupon(role, storeId, CouponCreateRequest)
+    activate Service
+    Note over Service: @Transactional<br/>role=STORE: storeId 쿠폰 발행<br/>role=ADMIN: 플랫폼 전체 쿠폰 발행
+    Service->>Repository: save(Coupon)
+    activate Repository
+    Repository->>DB: INSERT INTO coupons
+    activate DB
     DB-->>Repository: 저장 완료
-
-    Repository-->>Service: 쿠폰 저장 완료
-    Service-->>Controller: 쿠폰 발행 완료
-    Controller-->>Client: 201 Created
+    deactivate DB
+    Repository-->>Service: Coupon (저장된 엔티티)
+    deactivate Repository
+    Service-->>Controller: CouponResponse(couponId, discountType, quantity, startAt, endAt)
+    deactivate Service
+    Controller-->>Client: 201 Created CouponResponse
+    deactivate Controller
 ```
  
 </details> 
