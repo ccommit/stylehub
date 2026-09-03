@@ -12,7 +12,6 @@ import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.event.PaymentApprovedEvent;
 import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
-import ccommit.stylehub.payment.event.PaymentApprovedEvent;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
 import jakarta.persistence.EntityManager;
@@ -24,14 +23,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.test.util.ReflectionTestUtils;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,13 +36,11 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-@ExtendWith(MockitoExtension.class)
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 
 /**
  * @author WonJin Bae
@@ -79,8 +72,6 @@ class PaymentServiceTest {
 
     @Mock
     private PaymentClient tossClient;
-
-    private PaymentClient paymentClient;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -122,101 +113,6 @@ class PaymentServiceTest {
             assertThat(saved.getTotalAmount()).isEqualTo(10000);
             assertThat(saved.getBalanceAmount()).isEqualTo(9000);
             assertThat(saved.getStatus()).isEqualTo(PaymentStatus.READY);
-        }
-    }
-
-    @Nested
-    @DisplayName("confirmPayment")
-    class ConfirmPayment {
-
-        @Test
-        @DisplayName("검증과 PG 승인을 통과하면 결제를 승인 처리하고 주문을 결제완료로 전환한다")
-        void 정상적으로_승인처리한다() {
-            // given
-            Order order = orderWithStatus(1L, OrderStatus.PENDING);
-            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
-            when(paymentRepository.findByOrderPgOrderId("ORD-1")).thenReturn(Optional.of(payment));
-            when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
-
-            // when
-            PaymentResponse response = paymentService.confirmPayment("pk-1", "ORD-1", 10000);
-
-            // then
-            assertThat(response.status()).isEqualTo(PaymentStatus.DONE);
-            assertThat(payment.getPaymentKey()).isEqualTo("pk-1");
-            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
-            verify(tossClient).confirmPayment("pk-1", "ORD-1", 10000);
-            verify(eventPublisher).publishEvent(new PaymentApprovedEvent(1L));
-        }
-
-        @Test
-        @DisplayName("결제를 찾을 수 없으면 PAYMENT_NOT_FOUND 예외가 발생한다")
-        void 결제가_없으면_예외() {
-            // given
-            when(paymentRepository.findByOrderPgOrderId("NONE")).thenReturn(Optional.empty());
-
-            // when & then
-            assertThatThrownBy(() -> paymentService.confirmPayment("pk", "NONE", 1000))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                    .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
-        }
-
-        @Test
-        @DisplayName("승인 불가 상태면 PG 호출 없이 예외가 전파된다")
-        void 승인불가_상태면_PG를_호출하지_않는다() {
-            // given
-            Order order = orderWithStatus(1L, OrderStatus.PAID);
-            Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
-            when(paymentRepository.findByOrderPgOrderId("ORD-1")).thenReturn(Optional.of(payment));
-            doThrow(new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED))
-                    .when(paymentValidator).validateApprovable(payment);
-
-            // when & then
-            assertThatThrownBy(() -> paymentService.confirmPayment("pk", "ORD-1", 10000))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                    .isEqualTo(ErrorCode.PAYMENT_ALREADY_PROCESSED);
-            verify(paymentClientFactory, never()).getClient(anyString());
-        }
-
-        @Test
-        @DisplayName("금액이 일치하지 않으면 PG 호출 없이 예외가 전파된다")
-        void 금액불일치면_PG를_호출하지_않는다() {
-            // given
-            Order order = orderWithStatus(1L, OrderStatus.PENDING);
-            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
-            when(paymentRepository.findByOrderPgOrderId("ORD-1")).thenReturn(Optional.of(payment));
-            doThrow(new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH))
-                    .when(paymentValidator).validateAmount(payment, 9999);
-
-            // when & then
-            assertThatThrownBy(() -> paymentService.confirmPayment("pk", "ORD-1", 9999))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                    .isEqualTo(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
-            verify(paymentClientFactory, never()).getClient(anyString());
-        }
-
-        @Test
-        @DisplayName("PG 승인이 실패하면 결제/주문 상태를 변경하지 않고 예외가 전파된다")
-        void PG승인실패시_상태를_변경하지_않는다() {
-            // given
-            Order order = orderWithStatus(1L, OrderStatus.PENDING);
-            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
-            when(paymentRepository.findByOrderPgOrderId("ORD-1")).thenReturn(Optional.of(payment));
-            when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
-            doThrow(new BusinessException(ErrorCode.PAYMENT_APPROVAL_FAILED))
-                    .when(tossClient).confirmPayment("pk", "ORD-1", 10000);
-
-            // when & then
-            assertThatThrownBy(() -> paymentService.confirmPayment("pk", "ORD-1", 10000))
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
-                    .isEqualTo(ErrorCode.PAYMENT_APPROVAL_FAILED);
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
-            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING);
-            verify(eventPublisher, never()).publishEvent(any());
         }
     }
 
@@ -343,6 +239,9 @@ class PaymentServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
+        }
+    }
+
     @Nested
     @DisplayName("confirmPayment (결제 승인)")
     class ConfirmPayment {
@@ -365,15 +264,15 @@ class PaymentServiceTest {
                     .willReturn(Optional.of(payment));
             willDoNothing().given(paymentValidator).validateApprovable(payment);
             willDoNothing().given(paymentValidator).validateAmount(payment, tossAmount);
-            given(paymentClientFactory.getClient("TOSS")).willReturn(paymentClient);
-            willDoNothing().given(paymentClient).confirmPayment(paymentKey, pgOrderId, tossAmount);
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
+            willDoNothing().given(tossClient).confirmPayment(paymentKey, pgOrderId, tossAmount);
 
             // when
             PaymentResponse response = paymentService.confirmPayment(paymentKey, pgOrderId, tossAmount);
 
             // then
             assertThat(response).isNotNull();
-            then(paymentClient).should().confirmPayment(paymentKey, pgOrderId, tossAmount);
+            then(tossClient).should().confirmPayment(paymentKey, pgOrderId, tossAmount);
             then(payment).should().approve(paymentKey, tossAmount);
             then(order).should().markPaid();
             then(eventPublisher).should().publishEvent(any(PaymentApprovedEvent.class));
@@ -434,9 +333,9 @@ class PaymentServiceTest {
             given(paymentRepository.findByOrderPgOrderIdWithLock("ORD-X")).willReturn(Optional.of(payment));
             willDoNothing().given(paymentValidator).validateApprovable(payment);
             willDoNothing().given(paymentValidator).validateAmount(payment, 10000);
-            given(paymentClientFactory.getClient("TOSS")).willReturn(paymentClient);
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
             willThrow(new BusinessException(ErrorCode.PAYMENT_APPROVAL_FAILED))
-                    .given(paymentClient).confirmPayment("pk", "ORD-X", 10000);
+                    .given(tossClient).confirmPayment("pk", "ORD-X", 10000);
 
             // when / then
             assertThatThrownBy(() -> paymentService.confirmPayment("pk", "ORD-X", 10000))
