@@ -32,7 +32,10 @@ import java.util.List;
  * @modified 2026/03/27 by WonJin - feat: 비관적 락 재고 차감/복구 메서드 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증은 ProductApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
- * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지)
+ * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지
+ * @modified 2026/05/03 by WonJin - perf: decreaseStockWithLock 을 SELECT FOR UPDATE 비관적 락에서 단일 atomic UPDATE 로 전환 (락 점유 시간 0 → 동시 주문 처리량 향상)
+ 
+ 
  *
  * <p>
  * 상품 등록, 재고 관리, 조회를 담당하는 순수 도메인 서비스이다.
@@ -87,14 +90,33 @@ public class ProductService implements ProductPort {
         return ProductOptionResponse.from(target);
     }
 
-    // 비관적 락으로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
-    // TODO: 대용량 트래픽 대응 시 Redis DECR 원자적 연산으로 전환 예정
+    /**
+     * 단일 atomic UPDATE 로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
+     *
+     * <p>이전 구현: SELECT FOR UPDATE 비관적 락 → 차감 → flush 시 UPDATE (쿼리 2번 + 락 점유)
+     * <br>현재 구현: UPDATE WHERE stock >= qty 단일 쿼리 (락 점유 시간 0)
+     *
+     * <p>DB 가 단일 UPDATE 를 atomic 으로 처리하므로 race condition 자체가 발생하지 않는다.
+     * WHERE 절의 stock_quantity >= :qty 조건이 음수 재고 방지 역할을 겸한다.
+     *
+     * <p>차감 후 OrderDetail 생성을 위해 ProductOption 엔티티 1회 조회 (단순 SELECT, 락 없음).
+     * 다음 단계 개선 영역: OrderDetail.create 시그니처를 productOptionId + price 로 단순화하면 이 SELECT 도 제거 가능.
+     *
+     * <p>TODO: 더 큰 트래픽 (100k+ TPS) 대응 시 Redis DECR 원자 연산으로 전환 검토
+     */
     @Override
     public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
-        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
+        int updated = productOptionRepository.decreaseStockAtomic(optionId, quantity);
+        if (updated == 0) {
+            // 0건 = 옵션이 없거나 재고 부족 — 둘을 구분해서 정확한 에러 코드 반환
+            if (!productOptionRepository.existsById(optionId)) {
+                throw new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+            }
+            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+        }
+        // OrderDetail FK + getProductPrice() 호출을 위해 1회 조회 (단순 SELECT)
+        return productOptionRepository.findById(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
-        option.decreaseStock(quantity);
-        return option;
     }
 
     // 비관적 락으로 재고를 복구한다. 주문 취소 시 사용.
