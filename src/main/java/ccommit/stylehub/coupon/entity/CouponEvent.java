@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/04/09 by WonJin - feat: issuedCount 필드 추가, 선착순 발급 검증 메서드 추가
  * @modified 2026/04/16 by WonJin - refactor: couponType 필드 추가, PLATFORM/STORE 명시적 구분
+ * @modified 2026/05/08 by WonJin - feat: calculateDiscount 에 minOrderAmount 검증 추가 (쿠폰 사용 주문 시 최소 주문 금액 미달 거절)
  *
  * <p>
  * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
@@ -144,7 +145,16 @@ public class CouponEvent extends BaseEntity {
         this.expiredAt = expiredAt;
     }
 
+    /**
+     * 최소 주문 금액을 검증한 후 할인 금액을 계산한다.
+     *
+     * <p>최소 금액 미달 시 MIN_ORDER_AMOUNT_NOT_MET 던짐 — 쿠폰 사용 불가.
+     * 검증 통과 시 discountType 에 따라 FIXED (정액) 또는 RATE (정률) 계산.
+     */
     public int calculateDiscount(int orderAmount) {
+        if (orderAmount < this.minOrderAmount) {
+            throw new BusinessException(ErrorCode.MIN_ORDER_AMOUNT_NOT_MET);
+        }
         return discountType.calculate(orderAmount, discountValue);
     }
 
