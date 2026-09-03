@@ -31,6 +31,7 @@ repositories {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator' // 헬스체크(/actuator/health) — 컨테이너 HEALTHCHECK, 무중단 배포 게이트
     runtimeOnly 'com.mysql:mysql-connector-j' // MySQL JDBC 드라이버 — 컴파일 시 불필요, 런타임에 JPA가 DB 연결 시 사용
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'at.favre.lib:bcrypt:0.10.2'
