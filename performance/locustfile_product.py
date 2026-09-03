@@ -24,11 +24,16 @@
   Heavy     500    50/s    5m
   Spike    1000   100/s    1m
 """
-
+ 
 import random
 import requests
 from locust import HttpUser, task, between, events
 
+ 
+
+# 모든 가상 유저가 공유하는 productId 목록.
+# test_start 리스너가 테스트 시작 시 1번만 채우므로 read-only 로 안전하게 공유 가능하다.
+ 
 PRODUCT_IDS: list[int] = []
 
 
@@ -39,6 +44,7 @@ def fetch_product_ids(environment, **kwargs):
     Locust client 가 아닌 raw requests 로 호출해 측정 stats 에서 격리한다.
     유저별 on_start 에 두면 N명 = N번 init 호출이 stats 에 섞여 RPS/응답시간을 왜곡한다.
     """
+ 
     host = environment.host
     if not host:
         print("[setup] host 가 설정되지 않아 productId 목록을 비워둔다.")
@@ -59,6 +65,34 @@ class ProductReadUser(HttpUser):
     wait_time = between(0.5, 2.0)
 
     @task(5)
+ 
+    global PRODUCT_IDS
+    host = environment.host
+    if not host:
+        print("[setup] host 가 설정되지 않아 productId 목록을 비워둔다.")
+        PRODUCT_IDS = []
+        return
+
+    try:
+        response = requests.get(f"{host}/api/v1/products?pageSize=50", timeout=5)
+        if response.status_code == 200:
+            PRODUCT_IDS = [item["productId"] for item in response.json().get("items", [])]
+            print(f"[setup] productId 목록 확보: {len(PRODUCT_IDS)}개")
+        else:
+            print(f"[setup] 상품 조회 실패 status={response.status_code}, 빈 목록으로 진행")
+            PRODUCT_IDS = []
+    except requests.RequestException as e:
+        print(f"[setup] 상품 조회 예외: {e}, 빈 목록으로 진행")
+        PRODUCT_IDS = []
+
+
+class ProductReadUser(HttpUser):
+    # 가상 유저가 요청 간 대기하는 시간 (초). 실제 사용자의 클릭/스크롤 간격을 흉내낸다.
+    # 너무 짧으면 비현실적 봇 부하가 되어 측정 왜곡이 생긴다.
+    wait_time = between(0.5, 2.0)
+
+    @task(5)   # 가중치 5: 가장 빈번한 호출 패턴
+ 
     def list_products_first_page(self):
         """첫 페이지 조회 (커서 없음)"""
         self.client.get("/api/v1/products", name="GET /products (first page)")
@@ -69,13 +103,28 @@ class ProductReadUser(HttpUser):
         if not PRODUCT_IDS:
             return
         cursor = random.choice(PRODUCT_IDS)
+ 
         self.client.get(f"/api/v1/products?cursor={cursor}", name="GET /products (next page)")
+=======
+        self.client.get(
+            f"/api/v1/products?cursor={cursor}",
+            name="GET /products (next page)",
+        )
+ 
 
     @task(2)
     def list_products_by_store(self):
         """스토어 필터 조회"""
+ 
         store_id = random.randint(1, 3)
         self.client.get(f"/api/v1/products?storeId={store_id}", name="GET /products (by store)")
+ 
+        # 실제 존재하는 store_id 범위로 조정 필요 (시드 데이터의 스토어 유저 id)
+        store_id = random.randint(1, 3)
+        self.client.get(
+            f"/api/v1/products?storeId={store_id}",
+            name="GET /products (by store)",
+ 
 
     @task(2)
     def list_products_by_category(self):
@@ -91,4 +140,10 @@ class ProductReadUser(HttpUser):
         if not PRODUCT_IDS:
             return
         product_id = random.choice(PRODUCT_IDS)
+ 
         self.client.get(f"/api/v1/products/{product_id}", name="GET /products/{id}")
+ 
+        self.client.get(
+            f"/api/v1/products/{product_id}",
+            name="GET /products/{id}",
+        )

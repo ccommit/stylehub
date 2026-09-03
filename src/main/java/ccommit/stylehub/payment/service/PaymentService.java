@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
  * @modified 2026/04/01 by WonJin - refactor: 검증 로직을 PaymentValidator로 분리
  * @modified 2026/04/22 by WonJin - refactor: OrderPort 직접 의존 제거, Payment 이벤트 발행으로 전환 (순환 참조 해소)
  * @modified 2026/04/22 by WonJin - refactor: createReady 시그니처 primitives로 변경, Order FK는 EntityManager.getReference 프록시로 처리 (도메인 경계 누수 해소)
+ * @modified 2026/05/01 by WonJin - fix: confirmPayment 동시 호출 멱등성 보장 — findByOrderPgOrderIdWithLock 으로 비관적 락 조회 도입 (PaymentIdempotencyTest.concurrentIdempotency 노출 버그 해소)
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -49,9 +50,12 @@ public class PaymentService {
     }
 
     // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
+    // 같은 paymentKey 콜백이 동시에 여러 번 도착해도 1건만 승인되도록 비관적 락으로 조회한다.
+    // 2번째 이후 스레드는 락 해제 시점에 status=DONE 을 보고 validateApprovable 에서 PAYMENT_ALREADY_PROCESSED 로 거절된다.
     @Transactional
     public PaymentResponse confirmPayment(String paymentKey, String pgOrderId, Integer tossAmount) {
-        Payment payment = findPaymentByOrderId(pgOrderId);
+        Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 
         paymentValidator.validateApprovable(payment);
         paymentValidator.validateAmount(payment, tossAmount);
