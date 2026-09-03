@@ -32,11 +32,12 @@
   - DB 가 못 버틸 때 시그널: 5xx 발생, P99 가 시간이 지나도 안 떨어짐, HikariCP 고갈
   - 같은 부하를 hit 시나리오와 비교했을 때의 P95 격차가 = 캐시가 가려놓던 진짜 DB 부하
 """
+ 
 import random
 import requests
 from locust import HttpUser, task, between, events
 
-
+ 
 # 모든 가상 유저가 공유하는 productId 목록.
 # test_start 리스너가 1번만 채우므로 read-only 로 안전하게 공유 가능하다.
 PRODUCT_IDS: list[int] = []
@@ -50,6 +51,23 @@ def setup_cold_start_state(environment, **kwargs):
       2) Redis 의 products:* 캐시 키를 모두 삭제 → 부하 시작 시점이 cold-start 상태
     유저별 on_start 가 아니므로 N명이어도 init 호출은 1번뿐이다.
     """
+ 
+    host = environment.host
+    if not host:
+        print("[setup] host 가 설정되지 않아 productId 목록을 비워둔다.")
+        return
+    try:
+        response = requests.get(f"{host}/api/v1/products?pageSize=50", timeout=5)
+        if response.status_code == 200:
+            for item in response.json()["items"]:
+                PRODUCT_IDS.append(item["productId"])
+            print(f"[setup] productId 목록 확보: {len(PRODUCT_IDS)}개")
+        else:
+            print(f"[setup] 상품 조회 실패 status={response.status_code}, 빈 목록으로 진행")
+    except requests.RequestException as e:
+        print(f"[setup] 상품 조회 예외: {e}")
+
+
     global PRODUCT_IDS
     host = environment.host
     if not host:
@@ -72,12 +90,15 @@ def setup_cold_start_state(environment, **kwargs):
 
     # 2) Redis products:* 캐시 무효화 — productId 사전 확보 직후 실행해
     #    setup 단계에서 채워진 캐시 키도 함께 비운다.
+ 
     try:
         import redis
         r = redis.Redis(host="localhost", port=6379, decode_responses=True)
         deleted = 0
+ 
         # Spring RedisCache 기본 키 포맷: "<cacheName>::<key>"
         # ProductService 의 캐시는 products:firstPage / products:detail 두 종류
+ 
         for pattern in ("products:firstPage*", "products:detail*"):
             for key in r.scan_iter(pattern, count=500):
                 r.delete(key)
@@ -90,8 +111,10 @@ def setup_cold_start_state(environment, **kwargs):
 
 
 class ProductReadUser(HttpUser):
+ 
     # 가상 유저가 요청 간 대기하는 시간. cold-start 측정에선 thundering herd 를 강하게 내기 위해
     # 기본 시나리오보다 짧게 잡아도 된다. 다만 측정 결과의 비교 가능성을 위해 동일 값을 유지.
+ 
     wait_time = between(0.5, 2.0)
 
     @task(5)
@@ -105,15 +128,22 @@ class ProductReadUser(HttpUser):
         if not PRODUCT_IDS:
             return
         cursor = random.choice(PRODUCT_IDS)
+ 
+        self.client.get(f"/api/v1/products?cursor={cursor}", name="GET /products (next page)")
+ 
         self.client.get(
             f"/api/v1/products?cursor={cursor}",
             name="GET /products (next page)",
         )
+ 
 
     @task(2)
     def list_products_by_store(self):
         """스토어 필터 조회 — 필터 조합별로 캐시 키가 분리되어 cold-start miss 발생 가능성 ↑"""
         store_id = random.randint(1, 3)
+ 
+        self.client.get(f"/api/v1/products?storeId={store_id}", name="GET /products (by store)")
+ 
         self.client.get(
             f"/api/v1/products?storeId={store_id}",
             name="GET /products (by store)",
@@ -133,7 +163,11 @@ class ProductReadUser(HttpUser):
         if not PRODUCT_IDS:
             return
         product_id = random.choice(PRODUCT_IDS)
+ 
+        self.client.get(f"/api/v1/products/{product_id}", name="GET /products/{id}")
+ 
         self.client.get(
             f"/api/v1/products/{product_id}",
             name="GET /products/{id}",
         )
+ 
