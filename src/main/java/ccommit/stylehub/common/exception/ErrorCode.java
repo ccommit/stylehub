@@ -75,6 +75,10 @@ public enum ErrorCode {
     INVALID_DISCOUNT_VALUE(HttpStatus.BAD_REQUEST, "CP007", "할인 값이 유효하지 않습니다"),
     INVALID_COUPON_PERIOD(HttpStatus.BAD_REQUEST, "CP008", "쿠폰 유효기간이 올바르지 않습니다"),
     INVALID_COUPON_TYPE(HttpStatus.BAD_REQUEST, "CP009", "쿠폰 타입과 스토어 설정이 일치하지 않습니다"),
+    USER_COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "CP010", "존재하지 않는 보유 쿠폰입니다"),
+    COUPON_NOT_AVAILABLE(HttpStatus.CONFLICT, "CP011", "사용 가능한 상태의 쿠폰이 아닙니다"),
+    MIN_ORDER_AMOUNT_NOT_MET(HttpStatus.BAD_REQUEST, "CP012", "최소 주문 금액 미달로 쿠폰을 사용할 수 없습니다"),
+    UNAUTHORIZED_USER_COUPON(HttpStatus.FORBIDDEN, "CP013", "본인의 쿠폰이 아닙니다"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),
