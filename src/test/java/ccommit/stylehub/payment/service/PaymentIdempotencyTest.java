@@ -200,7 +200,7 @@ class PaymentIdempotencyTest {
         productOptionRepository.save(option);
 
         OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
-                addressId, List.of(new OrderDetailRequest(optionId, 1))
+                addressId, List.of(new OrderDetailRequest(optionId, 1)), null
         ));
         return new ReadyPaymentContext(placed.pgOrderId(), placed.finalAmount());
     }

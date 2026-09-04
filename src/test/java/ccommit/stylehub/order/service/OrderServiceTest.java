@@ -97,7 +97,8 @@ class OrderServiceTest {
 
             OrderCreateRequest request = new OrderCreateRequest(
                     addressId,
-                    List.of(new OrderDetailRequest(optionId, quantity))
+                    List.of(new OrderDetailRequest(optionId, quantity)),
+                    null
             );
 
             stubAddressOwnedByUser(userId, addressId);
@@ -128,7 +129,8 @@ class OrderServiceTest {
             Long addressId = 10L;
             OrderCreateRequest request = new OrderCreateRequest(
                     addressId,
-                    List.of(new OrderDetailRequest(100L, 1))
+                    List.of(new OrderDetailRequest(100L, 1)),
+                    null
             );
             willThrow(new BusinessException(ErrorCode.UNAUTHORIZED_ORDER_ACCESS))
                     .given(userPort).findAddressByOwner(userId, addressId);
@@ -152,7 +154,8 @@ class OrderServiceTest {
             Long optionId = 100L;
             OrderCreateRequest request = new OrderCreateRequest(
                     addressId,
-                    List.of(new OrderDetailRequest(optionId, 999))
+                    List.of(new OrderDetailRequest(optionId, 999)),
+                    null
             );
 
             stubAddressOwnedByUser(userId, addressId);
@@ -181,7 +184,8 @@ class OrderServiceTest {
                     List.of(
                             new OrderDetailRequest(optionId, 2),
                             new OrderDetailRequest(optionId, 3)        // 같은 옵션 → 합산되어 5개 차감
-                    )
+                    ),
+                    null
             );
 
             stubAddressOwnedByUser(userId, addressId);
