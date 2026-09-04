@@ -11,6 +11,7 @@ import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
+import ccommit.stylehub.support.OrderFixtureFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,12 +72,15 @@ class OrderTimeoutSchedulerTest {
     @Autowired
     private StringRedisTemplate redisTemplate;
 
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
     /**
      * 테스트 간 isolation 보장:
      * - Redis ZSET 타임아웃 키 정리
      * - DB 의 Payment / OrderDetail / Order 행을 외래키 의존 순서대로 삭제
      *   (Payment.order_id → OrderDetail.order_id → Order)
-     * 재고(ProductOption.stockQuantity) 는 각 테스트 첫 줄의 setStock() 이 명시적으로 덮어쓰므로 별도 정리 불필요.
+     * User/Address/Product/ProductOption 은 각 테스트가 OrderFixtureFactory 로 매번 새로 생성하므로 별도 정리 불필요.
      */
     @AfterEach
     void cleanUp() {
@@ -90,13 +94,13 @@ class OrderTimeoutSchedulerTest {
     @DisplayName("ZSET에 만료된 주문이 있으면 cancelExpiredOrders가 CANCELLED로 전이하고 재고를 복구한다")
     void cancelsExpiredOrderAndRestoresStock() {
         // given
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
         int initialStock = 10;
         int orderQuantity = 3;
 
-        setStock(optionId, initialStock);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(initialStock);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
                 addressId, List.of(new OrderDetailRequest(optionId, orderQuantity)), null
@@ -124,14 +128,14 @@ class OrderTimeoutSchedulerTest {
     @DisplayName("100건 만료 주문이 한 번에 들어와도 모두 CANCELLED로 처리되고 재고는 정확히 초기값으로 복구된다")
     void handlesBulkExpiredOrders() {
         // given
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
         int orderCount = 100;
         int qtyPerOrder = 1;
         int initialStock = orderCount + 50; // 여유 재고
 
-        setStock(optionId, initialStock);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(initialStock);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         List<Long> orderIds = placeOrdersAndGetIds(userId, addressId, optionId, orderCount, qtyPerOrder);
         orderIds.forEach(this::moveTimeoutToPast);
@@ -156,13 +160,13 @@ class OrderTimeoutSchedulerTest {
     @DisplayName("두 스레드가 동시에 cancelExpiredOrders를 호출해도 같은 주문이 두 번 취소되지 않는다 (Lua 원자성)")
     void luaScriptPreventsDuplicateProcessingUnderConcurrency() throws InterruptedException {
         // given
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
         int orderCount = 30;
         int initialStock = orderCount + 50;
 
-        setStock(optionId, initialStock);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(initialStock);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         List<Long> orderIds = placeOrdersAndGetIds(userId, addressId, optionId, orderCount, 1);
         orderIds.forEach(this::moveTimeoutToPast);
@@ -208,11 +212,10 @@ class OrderTimeoutSchedulerTest {
     @DisplayName("아직 만료되지 않은 주문(score가 미래)은 ZSET에 남고 처리되지 않는다")
     void doesNotProcessFutureOrders() {
         // given
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
-
-        setStock(optionId, 10);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(10);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
                 addressId, List.of(new OrderDetailRequest(optionId, 1)), null
@@ -231,12 +234,6 @@ class OrderTimeoutSchedulerTest {
         );
         assertThat(score).isNotNull();
         assertThat(score).isGreaterThan(System.currentTimeMillis());
-    }
-
-    private void setStock(Long optionId, int stock) {
-        ProductOption option = productOptionRepository.findById(optionId).orElseThrow();
-        option.updateStockQuantity(stock);
-        productOptionRepository.save(option);
     }
 
     private List<Long> placeOrdersAndGetIds(Long userId, Long addressId, Long optionId, int count, int qtyPerOrder) {

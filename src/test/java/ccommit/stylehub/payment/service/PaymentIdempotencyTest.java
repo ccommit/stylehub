@@ -11,8 +11,7 @@ import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.repository.PaymentRepository;
-import ccommit.stylehub.product.entity.ProductOption;
-import ccommit.stylehub.product.repository.ProductOptionRepository;
+import ccommit.stylehub.support.OrderFixtureFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,7 +68,7 @@ class PaymentIdempotencyTest {
     private PaymentRepository paymentRepository;
 
     @Autowired
-    private ProductOptionRepository productOptionRepository;
+    private OrderFixtureFactory fixtureFactory;
 
     @MockitoBean
     private PaymentClientFactory paymentClientFactory;
@@ -191,16 +190,10 @@ class PaymentIdempotencyTest {
     }
 
     private ReadyPaymentContext setupReadyPayment() {
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(100);
 
-        ProductOption option = productOptionRepository.findById(optionId).orElseThrow();
-        option.updateStockQuantity(100);
-        productOptionRepository.save(option);
-
-        OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
-                addressId, List.of(new OrderDetailRequest(optionId, 1)), null
+        OrderResponse placed = orderService.placeOrder(fx.userId(), new OrderCreateRequest(
+                fx.addressId(), List.of(new OrderDetailRequest(fx.optionId(), 1)), null
         ));
         return new ReadyPaymentContext(placed.pgOrderId(), placed.finalAmount());
     }
