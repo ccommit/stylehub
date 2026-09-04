@@ -1,29 +1,31 @@
 // =========================================================================
 // StyleHub CI/CD 파이프라인
 //
-// 흐름: Checkout → Test(도커 컨테이너 내부 Gradle) → 이미지 빌드
-//       → GHCR push → 운영서버로 SSH 배포
+// 흐름: Checkout → Test(도커 컨테이너 내부 Gradle) → JAR 빌드
+//       → 운영서버로 SCP 전송 → systemd 서비스 재시작
+//
+// 운영서버는 Docker가 아니라 java -jar 를 systemd(stylehub.service)로 관리하는
+// 네이티브 배포 방식이다 (MySQL/Redis도 서버에 네이티브 설치되어 있음).
 //
 // 사전 준비 (Jenkins Credentials):
-//   - ghcr-credentials      : Username/Password (GitHub 계정 / write:packages PAT)
 //   - stylehub-deploy-ssh   : SSH Username with private key (운영서버 배포 계정)
 //   - deploy-host           : Secret text (운영서버 접속 대상, 예: deploy@1.2.3.4) — 공개 저장소에
 //                             실제 호스트를 남기지 않기 위해 코드에 하드코딩하지 않고 credential로 분리
 //
-// Jenkins 에이전트 요구사항: docker CLI + 데몬 접근 권한
+// 운영서버 사전 준비 (1회):
+//   - /etc/systemd/system/stylehub.service 유닛 파일
+//   - /home/ubuntu/stylehub/.env (DB/Redis/OAuth/Toss 실제 값)
+//   - ubuntu 계정이 stylehub 서비스를 sudo 로 재시작할 수 있어야 함
+//
+// Jenkins 에이전트 요구사항: docker CLI + 데몬 접근 권한 (Test/Build 단계용)
 // =========================================================================
 
 pipeline {
     agent any
 
     environment {
-        REGISTRY    = 'ghcr.io'
-        // ccommit 은 조직 계정이라 소속 member PAT로는 패키지 push 가 owner 승인 없이 막혀있어,
-        // 개인 네임스페이스로 push 한다 (소스 코드 저장소 자체는 ccommit/stylehub 그대로 유지)
-        IMAGE_NAME  = 'try3982/stylehub'
-        IMAGE       = "${REGISTRY}/${IMAGE_NAME}"
-        TAG         = "${env.BUILD_NUMBER}"
-        DEPLOY_DIR  = '/opt/stylehub'
+        DEPLOY_DIR = '/home/ubuntu/stylehub'
+        JAR_NAME   = 'stylehub-0.0.1-SNAPSHOT.jar'
     }
 
     options {
@@ -62,50 +64,34 @@ pipeline {
             }
         }
 
-        stage('Build Image') {
-            steps {
-                sh 'docker build -t $IMAGE:$TAG -t $IMAGE:latest .'
-            }
-        }
-
-        stage('Push to GHCR') {
-            steps {
-                withCredentials([usernamePassword(
-                        credentialsId: 'ghcr-credentials',
-                        usernameVariable: 'GHCR_USER',
-                        passwordVariable: 'GHCR_TOKEN')]) {
-                    sh '''
-                        echo "$GHCR_TOKEN" | docker login $REGISTRY -u "$GHCR_USER" --password-stdin
-                        docker push $IMAGE:$TAG
-                        docker push $IMAGE:latest
-                        docker logout $REGISTRY
-                    '''
+        stage('Build Jar') {
+            agent {
+                docker {
+                    image 'eclipse-temurin:17-jdk-jammy'
+                    args '-v $HOME/.gradle:/root/.gradle'
+                    reuseNode true
                 }
+            }
+            steps {
+                sh 'chmod +x gradlew && ./gradlew clean bootJar -x test --no-daemon'
             }
         }
 
         stage('Deploy') {
             steps {
                 sshagent(credentials: ['stylehub-deploy-ssh']) {
-                    withCredentials([
-                            usernamePassword(
-                                    credentialsId: 'ghcr-credentials',
-                                    usernameVariable: 'GHCR_USER',
-                                    passwordVariable: 'GHCR_TOKEN'),
-                            string(credentialsId: 'deploy-host', variable: 'DEPLOY_HOST')
-                    ]) {
-                        // 운영서버에서 방금 push 한 태그를 pull 하고 app 만 교체 기동.
-                        // --password-stdin 으로 토큰이 프로세스 인자에 남지 않게 한다.
+                    withCredentials([string(credentialsId: 'deploy-host', variable: 'DEPLOY_HOST')]) {
                         sh '''
+                            JAR_FILE=$(ls build/libs/*-SNAPSHOT.jar | grep -v plain)
+                            scp -o StrictHostKeyChecking=no "$JAR_FILE" $DEPLOY_HOST:$DEPLOY_DIR/$JAR_NAME.new
+
                             ssh -o StrictHostKeyChecking=no $DEPLOY_HOST bash -s <<REMOTE
                                 set -e
-                                echo "$GHCR_TOKEN" | docker login $REGISTRY -u "$GHCR_USER" --password-stdin
-                                cd $DEPLOY_DIR
-                                export IMAGE_TAG=$TAG
-                                docker compose pull app
-                                docker compose up -d app
-                                docker logout $REGISTRY
-                                docker image prune -f
+                                mv $DEPLOY_DIR/$JAR_NAME.new $DEPLOY_DIR/$JAR_NAME
+                                sudo systemctl restart stylehub
+                                sleep 15
+                                sudo systemctl is-active stylehub
+                                curl -fsS http://localhost:8080/actuator/health
 REMOTE
                         '''
                     }
@@ -116,14 +102,10 @@ REMOTE
 
     post {
         success {
-            echo "배포 완료: ${IMAGE}:${TAG}"
+            echo "배포 완료 — 빌드 #${env.BUILD_NUMBER}"
         }
         failure {
             echo "파이프라인 실패 — 빌드 #${env.BUILD_NUMBER} 로그 확인"
-        }
-        always {
-            // 빌드 호스트에 쌓인 dangling 이미지 정리
-            sh 'docker image prune -f || true'
         }
     }
 }
