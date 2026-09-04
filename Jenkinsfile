@@ -18,7 +18,9 @@ pipeline {
 
     environment {
         REGISTRY    = 'ghcr.io'
-        IMAGE_NAME  = 'ccommit/stylehub'
+        // ccommit 은 조직 계정이라 소속 member PAT로는 패키지 push 가 owner 승인 없이 막혀있어,
+        // 개인 네임스페이스로 push 한다 (소스 코드 저장소 자체는 ccommit/stylehub 그대로 유지)
+        IMAGE_NAME  = 'try3982/stylehub'
         IMAGE       = "${REGISTRY}/${IMAGE_NAME}"
         TAG         = "${env.BUILD_NUMBER}"
         DEPLOY_DIR  = '/opt/stylehub'
