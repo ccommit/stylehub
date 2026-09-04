@@ -44,7 +44,9 @@ pipeline {
             agent {
                 docker {
                     image 'eclipse-temurin:17-jdk-jammy'
-                    args '-v $HOME/.gradle:/root/.gradle'   // 의존성 캐시 재사용
+                    // 의존성 캐시 재사용 + 테스트가 로컬(Docker Desktop 호스트)의 Redis 에 붙도록 지정
+                    // (MySQL 은 테스트 시 H2 로 자동 폴백되어 별도 지정 불필요)
+                    args '-v $HOME/.gradle:/root/.gradle -e SPRING_DATA_REDIS_HOST=host.docker.internal'
                     reuseNode true
                 }
             }
