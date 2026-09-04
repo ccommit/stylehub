@@ -4,6 +4,7 @@ import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
+import ccommit.stylehub.support.OrderFixtureFactory;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,23 +36,17 @@ class OrderConcurrencyTest {
     @Autowired
     private ProductOptionRepository productOptionRepository;
 
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
     @Test
     @DisplayName("재고 10개인 상품에 동시에 10명이 1개씩 주문하면 재고가 정확히 0이 된다")
     void concurrentOrderDecreasesStockCorrectly() throws InterruptedException {
         // given
-        // 테스트 전 DB에 다음 데이터가 있어야 합니다:
-        // - userId에 해당하는 User (bwj3@test.com)
-        // - 해당 User의 Address (addressId)
-        // - stockQuantity = 10인 ProductOption (optionId)
-        // 아래 값을 실제 DB 데이터에 맞게 수정하세요
-        Long userId = 1L;       // 테스트 유저 ID
-        Long addressId = 1L;    // 테스트 배송지 ID
-        Long optionId = 1L;     // 테스트 옵션 ID (재고를 10으로 미리 설정)
-
-        // 재고를 10으로 설정
-        ProductOption option = productOptionRepository.findById(optionId).orElseThrow();
-        option.updateStockQuantity(10);
-        productOptionRepository.save(option);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(10);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         int threadCount = 10;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -97,14 +92,10 @@ class OrderConcurrencyTest {
     @DisplayName("재고 5개인 상품에 동시에 10명이 1개씩 주문하면 5명만 성공한다")
     void concurrentOrderWithInsufficientStock() throws InterruptedException {
         // given
-        Long userId = 1L;
-        Long addressId = 1L;
-        Long optionId = 1L;
-
-        // 재고를 5로 설정
-        ProductOption option = productOptionRepository.findById(optionId).orElseThrow();
-        option.updateStockQuantity(5);
-        productOptionRepository.save(option);
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(5);
+        Long userId = fx.userId();
+        Long addressId = fx.addressId();
+        Long optionId = fx.optionId();
 
         int threadCount = 10;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
