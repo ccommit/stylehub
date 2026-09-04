@@ -7,6 +7,7 @@ import ccommit.stylehub.coupon.entity.CouponEvent;
 import ccommit.stylehub.coupon.entity.UserCoupon;
 import ccommit.stylehub.coupon.enums.CouponStatus;
 import ccommit.stylehub.coupon.enums.DiscountType;
+import ccommit.stylehub.coupon.event.CouponIssuedEvent;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.UserCouponRepository;
 import ccommit.stylehub.coupon.validator.CouponValidator;
@@ -21,6 +22,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,6 +32,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willDoNothing;
@@ -57,6 +63,12 @@ class CouponServiceTest {
     @Mock
     private CouponValidator couponValidator;
 
+    @Mock
+    private StringRedisTemplate stringRedisTemplate;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private CouponService couponService;
 
@@ -65,7 +77,7 @@ class CouponServiceTest {
     class IssueCoupon {
 
         @Test
-        @DisplayName("정상 발급 시 이벤트 수량 증가 + UserCoupon 저장이 호출된다")
+        @DisplayName("정상 발급 시 Redis atomic 차감에 성공하면 발급 이벤트를 발행한다")
         void issuesCouponSuccessfully() {
             // given
             Long userId = 1L;
@@ -73,20 +85,20 @@ class CouponServiceTest {
             User user = mock(User.class);
             given(user.getUserId()).willReturn(userId);
             CouponEvent event = mock(CouponEvent.class);
-            given(couponEventRepository.findByIdWithLock(couponEventId)).willReturn(Optional.of(event));
+            given(event.getIssueCount()).willReturn(100);
+            given(couponEventRepository.findById(couponEventId)).willReturn(Optional.of(event));
             willDoNothing().given(couponValidator).validateIssuable(event);
-            given(userCouponRepository
-                    .existsByUserUserIdAndCouponEventCouponEventId(userId, couponEventId))
-                    .willReturn(false);
+            given(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any()))
+                    .willReturn(5L);     // 남은 수량 (발급 성공)
 
             // when
             couponService.issueCoupon(user, couponEventId);
 
             // then
-            then(event).should().increaseIssuedCount();
-            ArgumentCaptor<UserCoupon> captor = ArgumentCaptor.forClass(UserCoupon.class);
-            then(userCouponRepository).should().save(captor.capture());
-            assertThat(captor.getValue()).isNotNull();
+            ArgumentCaptor<CouponIssuedEvent> captor = ArgumentCaptor.forClass(CouponIssuedEvent.class);
+            then(eventPublisher).should().publishEvent(captor.capture());
+            assertThat(captor.getValue().userId()).isEqualTo(userId);
+            assertThat(captor.getValue().couponEventId()).isEqualTo(couponEventId);
         }
 
         @Test
@@ -94,13 +106,13 @@ class CouponServiceTest {
         void throwsNotFound_whenEventMissing() {
             // given
             User user = mock(User.class);
-            given(couponEventRepository.findByIdWithLock(999L)).willReturn(Optional.empty());
+            given(couponEventRepository.findById(999L)).willReturn(Optional.empty());
 
             // when / then
             assertThatThrownBy(() -> couponService.issueCoupon(user, 999L))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COUPON_NOT_FOUND);
-            then(userCouponRepository).should(never()).save(org.mockito.ArgumentMatchers.any());
+            then(eventPublisher).should(never()).publishEvent(any());
         }
 
         @Test
@@ -112,28 +124,27 @@ class CouponServiceTest {
             User user = mock(User.class);
             given(user.getUserId()).willReturn(userId);
             CouponEvent event = mock(CouponEvent.class);
-            given(couponEventRepository.findByIdWithLock(couponEventId)).willReturn(Optional.of(event));
+            given(event.getIssueCount()).willReturn(100);
+            given(couponEventRepository.findById(couponEventId)).willReturn(Optional.of(event));
             willDoNothing().given(couponValidator).validateIssuable(event);
-            given(userCouponRepository
-                    .existsByUserUserIdAndCouponEventCouponEventId(userId, couponEventId))
-                    .willReturn(true);     // 이미 발급
+            given(stringRedisTemplate.execute(any(RedisScript.class), anyList(), any(), any()))
+                    .willReturn(-2L);    // Redis Set 에 이미 존재 (중복 발급)
 
             // when / then
             assertThatThrownBy(() -> couponService.issueCoupon(user, couponEventId))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COUPON_ALREADY_ISSUED);
-            then(event).should(never()).increaseIssuedCount();
-            then(userCouponRepository).should(never()).save(org.mockito.ArgumentMatchers.any());
+            then(eventPublisher).should(never()).publishEvent(any());
         }
 
         @Test
-        @DisplayName("validator 가 만료 예외를 던지면 저장 로직까지 진행되지 않는다")
+        @DisplayName("validator 가 만료 예외를 던지면 Redis 호출 없이 예외가 전파된다")
         void doesNotIssue_whenValidatorThrows() {
             // given
             Long couponEventId = 100L;
             User user = mock(User.class);
             CouponEvent event = mock(CouponEvent.class);
-            given(couponEventRepository.findByIdWithLock(couponEventId)).willReturn(Optional.of(event));
+            given(couponEventRepository.findById(couponEventId)).willReturn(Optional.of(event));
             willThrow(new BusinessException(ErrorCode.COUPON_EXPIRED))
                     .given(couponValidator).validateIssuable(event);
 
@@ -141,7 +152,7 @@ class CouponServiceTest {
             assertThatThrownBy(() -> couponService.issueCoupon(user, couponEventId))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.COUPON_EXPIRED);
-            then(userCouponRepository).should(never()).save(org.mockito.ArgumentMatchers.any());
+            then(eventPublisher).should(never()).publishEvent(any());
         }
     }
 

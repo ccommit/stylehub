@@ -72,8 +72,9 @@ class ProductServiceTest {
         void callsQueryWithDefaultPageSize_whenNoFilter() {
             // given
             Product product = createMockProduct(1L);
+            ProductListResponse dto = ProductListResponse.from(product);
             given(productQueryRepository.findProductsWithCursor(null, null, null, null, 21))
-                    .willReturn(List.of(product));
+                    .willReturn(List.of(dto));
 
             // when
             CursorResponse<ProductListResponse> response =
@@ -112,8 +113,11 @@ class ProductServiceTest {
             Product r1 = createMockProduct(101L);
             Product r2 = createMockProduct(102L);
             Product r3 = createMockProduct(103L);   // +1 건 (hasNext 판정용)
+            ProductListResponse dto1 = ProductListResponse.from(r1);
+            ProductListResponse dto2 = ProductListResponse.from(r2);
+            ProductListResponse dto3 = ProductListResponse.from(r3);
             given(productQueryRepository.findProductsWithCursor(null, null, null, null, 3))
-                    .willReturn(List.of(r1, r2, r3));
+                    .willReturn(List.of(dto1, dto2, dto3));
 
             // when
             CursorResponse<ProductListResponse> response =

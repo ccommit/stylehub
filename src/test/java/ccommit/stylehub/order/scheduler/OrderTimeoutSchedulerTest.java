@@ -99,7 +99,7 @@ class OrderTimeoutSchedulerTest {
         setStock(optionId, initialStock);
 
         OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
-                addressId, List.of(new OrderDetailRequest(optionId, orderQuantity))
+                addressId, List.of(new OrderDetailRequest(optionId, orderQuantity)), null
         ));
         Long orderId = placed.orderId();
 
@@ -215,7 +215,7 @@ class OrderTimeoutSchedulerTest {
         setStock(optionId, 10);
 
         OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
-                addressId, List.of(new OrderDetailRequest(optionId, 1))
+                addressId, List.of(new OrderDetailRequest(optionId, 1)), null
         ));
         Long orderId = placed.orderId();
 
@@ -243,7 +243,7 @@ class OrderTimeoutSchedulerTest {
         List<Long> orderIds = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             OrderResponse placed = orderService.placeOrder(userId, new OrderCreateRequest(
-                    addressId, List.of(new OrderDetailRequest(optionId, qtyPerOrder))
+                    addressId, List.of(new OrderDetailRequest(optionId, qtyPerOrder)), null
             ));
             orderIds.add(placed.orderId());
         }

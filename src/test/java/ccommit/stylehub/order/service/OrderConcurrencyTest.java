@@ -65,7 +65,8 @@ class OrderConcurrencyTest {
                 try {
                     OrderCreateRequest request = new OrderCreateRequest(
                             addressId,
-                            List.of(new OrderDetailRequest(optionId, 1))
+                            List.of(new OrderDetailRequest(optionId, 1)),
+                            null
                     );
                     orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
@@ -117,7 +118,8 @@ class OrderConcurrencyTest {
                 try {
                     OrderCreateRequest request = new OrderCreateRequest(
                             addressId,
-                            List.of(new OrderDetailRequest(optionId, 1))
+                            List.of(new OrderDetailRequest(optionId, 1)),
+                            null
                     );
                     orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
