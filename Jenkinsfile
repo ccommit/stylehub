@@ -89,9 +89,15 @@ pipeline {
                                 set -e
                                 mv $DEPLOY_DIR/$JAR_NAME.new $DEPLOY_DIR/$JAR_NAME
                                 sudo systemctl restart stylehub
-                                sleep 15
                                 sudo systemctl is-active stylehub
-                                curl -fsS http://localhost:8080/actuator/health
+                                for i in \$(seq 1 20); do
+                                    if curl -fsS http://localhost:8080/actuator/health; then
+                                        exit 0
+                                    fi
+                                    sleep 3
+                                done
+                                echo "헬스체크 타임아웃"
+                                exit 1
 REMOTE
                         '''
                     }
