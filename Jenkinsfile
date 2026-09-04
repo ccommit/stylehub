@@ -84,21 +84,8 @@ pipeline {
                         sh '''
                             JAR_FILE=$(ls build/libs/*-SNAPSHOT.jar | grep -v plain)
                             scp -o StrictHostKeyChecking=no "$JAR_FILE" $DEPLOY_HOST:$DEPLOY_DIR/$JAR_NAME.new
-
-                            ssh -o StrictHostKeyChecking=no $DEPLOY_HOST bash -s <<REMOTE
-                                set -e
-                                mv $DEPLOY_DIR/$JAR_NAME.new $DEPLOY_DIR/$JAR_NAME
-                                sudo systemctl restart stylehub
-                                sudo systemctl is-active stylehub
-                                for i in \$(seq 1 20); do
-                                    if curl -fsS http://localhost:8080/actuator/health; then
-                                        exit 0
-                                    fi
-                                    sleep 3
-                                done
-                                echo "헬스체크 타임아웃"
-                                exit 1
-REMOTE
+                            scp -o StrictHostKeyChecking=no scripts/deploy-remote.sh $DEPLOY_HOST:/tmp/deploy-remote.sh
+                            ssh -o StrictHostKeyChecking=no $DEPLOY_HOST bash /tmp/deploy-remote.sh
                         '''
                     }
                 }
