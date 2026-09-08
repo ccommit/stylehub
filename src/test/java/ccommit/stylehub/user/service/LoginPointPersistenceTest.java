@@ -4,12 +4,15 @@ import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.repository.UserRepository;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,6 +50,21 @@ class LoginPointPersistenceTest {
     @Autowired
     private UserRepository userRepository;
 
+    /** 테스트가 만든 회원을 끝나고 지운다. 지우지 않으면 실행할 때마다 DB 에 행이 쌓인다. */
+    private final List<Long> createdUserIds = new ArrayList<>();
+
+    /**
+     * 날짜를 테스트마다 한 번만 구해 재사용한다.
+     * LocalDate.now() 를 여러 번 부르면 자정을 걸칠 때 값이 달라져 테스트가 흔들린다.
+     */
+    private final LocalDate today = LocalDate.now();
+
+    @AfterEach
+    void cleanUp() {
+        createdUserIds.forEach(userRepository::deleteById);
+        createdUserIds.clear();
+    }
+
     @Test
     @DisplayName("일반 로그인(같은 클래스 내부 호출)으로 적립한 포인트가 DB에 반영된다")
     void persistsPoint_whenRewardedThroughLogin() {
@@ -63,7 +81,7 @@ class LoginPointPersistenceTest {
         // then — 응답이 아니라 DB 를 다시 읽어 확인한다
         User reloaded = reload(userId);
         assertThat(reloaded.getPointBalance()).isEqualTo(FIRST_LOGIN_POINT);
-        assertThat(reloaded.getLastLoginDate()).isEqualTo(LocalDate.now());
+        assertThat(reloaded.getLastLoginDate()).isEqualTo(today);
     }
 
     @Test
@@ -74,12 +92,12 @@ class LoginPointPersistenceTest {
         Long userId = signedUp.getUserId();
 
         // when — OAuthService 가 호출하는 것과 같은 형태의 외부 호출
-        userService.rewardLoginPoint(userId, LocalDate.now());
+        userService.rewardLoginPoint(userId, today);
 
         // then
         User reloaded = reload(userId);
         assertThat(reloaded.getPointBalance()).isEqualTo(FIRST_LOGIN_POINT);
-        assertThat(reloaded.getLastLoginDate()).isEqualTo(LocalDate.now());
+        assertThat(reloaded.getLastLoginDate()).isEqualTo(today);
     }
 
     @Test
@@ -88,7 +106,7 @@ class LoginPointPersistenceTest {
         // given — 오늘 이미 한 번 적립된 상태
         User signedUp = signUpUser();
         Long userId = signedUp.getUserId();
-        userService.rewardLoginPoint(userId, LocalDate.now());
+        userService.rewardLoginPoint(userId, today);
         int afterFirst = reload(userId).getPointBalance();
 
         // when — 같은 날 다시 로그인
@@ -104,15 +122,15 @@ class LoginPointPersistenceTest {
         // given — 어제 적립된 상태
         User signedUp = signUpUser();
         Long userId = signedUp.getUserId();
-        userService.rewardLoginPoint(userId, LocalDate.now().minusDays(1));
+        userService.rewardLoginPoint(userId, today.minusDays(1));
         int afterYesterday = reload(userId).getPointBalance();
 
         // when — 오늘 다시 적립
-        userService.rewardLoginPoint(userId, LocalDate.now());
+        userService.rewardLoginPoint(userId, today);
 
         // then
         assertThat(reload(userId).getPointBalance()).isEqualTo(afterYesterday + DAILY_LOGIN_POINT);
-        assertThat(reload(userId).getLastLoginDate()).isEqualTo(LocalDate.now());
+        assertThat(reload(userId).getLastLoginDate()).isEqualTo(today);
     }
 
     // ===== Helper =====
@@ -120,13 +138,15 @@ class LoginPointPersistenceTest {
     /** 매 실행마다 중복되지 않는 회원을 만든다. */
     private User signUpUser() {
         String unique = UUID.randomUUID().toString().substring(0, 8);
-        return userService.signUp(
+        User user = userService.signUp(
                 "포인트테스트-" + unique,
                 "point-" + unique + "@test.com",
                 rawPassword(),
                 LocalDate.of(1996, 1, 1),
                 UserRole.USER
         );
+        createdUserIds.add(user.getUserId());
+        return user;
     }
 
     private String rawPassword() {
