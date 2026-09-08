@@ -43,15 +43,26 @@ if [ ! -f "$NEW_JAR" ]; then
 fi
 
 # 되돌릴 수 있도록 현재 버전을 보관한다. 최초 배포라면 보관할 대상이 없다.
+#
+# 보관에 실패했는데 그대로 진행하면, 나중에 롤백을 시도할 때 되돌릴 파일이 없어
+# 문제 있는 산출물이 올라간 채 서비스가 내려간다. 그 상태가 되느니 배포를 시작하지 않는 편이 낫다.
 if [ -f "$JAR" ]; then
-    cp -p "$JAR" "$PREV_JAR"
-    HAS_PREV=1
+    if cp -p "$JAR" "$PREV_JAR"; then
+        HAS_PREV=1
+    else
+        echo "이전 버전 보관에 실패했습니다. 되돌릴 수단이 없으므로 배포를 중단합니다."
+        exit 1
+    fi
 else
     echo "이전 버전이 없습니다. 최초 배포로 진행합니다."
     HAS_PREV=0
 fi
 
-mv "$NEW_JAR" "$JAR"
+if ! mv "$NEW_JAR" "$JAR"; then
+    echo "산출물 교체에 실패했습니다. 서비스는 이전 버전 그대로입니다."
+    exit 1
+fi
+
 sudo systemctl restart stylehub
 
 if wait_for_health; then
@@ -67,7 +78,11 @@ if [ "$HAS_PREV" -eq 0 ]; then
 fi
 
 echo "이전 버전으로 되돌립니다."
-mv "$PREV_JAR" "$JAR"
+if ! mv "$PREV_JAR" "$JAR"; then
+    echo "롤백에 실패했습니다. 보관본을 복원하지 못했으므로 수동 확인이 필요합니다."
+    exit 1
+fi
+
 sudo systemctl restart stylehub
 
 if wait_for_health; then
