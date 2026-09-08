@@ -17,16 +17,19 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
@@ -155,11 +158,20 @@ class UserServiceTest {
     /**
      * TransactionTemplate 를 "콜백을 즉시 실행하고 결과를 반환"하도록 스텁한다.
      * 실제 트랜잭션 없이 내부 조회/검증 로직을 그대로 검증할 수 있다.
+     *
+     * <p>반환값이 있는 execute 와 없는 executeWithoutResult 를 모두 스텁한다.
+     * executeWithoutResult 는 TransactionOperations 의 default 메서드지만 목 객체에서는
+     * 기본 구현이 호출되지 않으므로, 스텁하지 않으면 콜백이 아예 실행되지 않는다.
      */
     private void stubTransactionTemplatePassthrough() {
         given(transactionTemplate.execute(any())).willAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);
             return callback.doInTransaction(null);
         });
+        willAnswer(invocation -> {
+            Consumer<TransactionStatus> callback = invocation.getArgument(0);
+            callback.accept(null);
+            return null;
+        }).given(transactionTemplate).executeWithoutResult(any());
     }
 }
