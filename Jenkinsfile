@@ -91,7 +91,22 @@ pipeline {
             }
         }
 
+        // 운영 서버로 나가는 단계이므로 어느 브랜치에서 실행됐는지를 확인한다.
+        //
+        // 폴링 트리거를 붙이면서 실행 주체가 사람에서 Jenkins 로 바뀌었다. 사람이 실행할 때는
+        // 어느 브랜치를 배포할지 사람이 골랐지만, 자동 실행에서는 그 판단이 없다.
+        // Multibranch 잡이라면 feature 브랜치 푸시가 그대로 운영 배포로 이어질 수 있다.
+        //
+        // BRANCH_NAME 이 없는 경우(단일 브랜치 Pipeline 잡)는 잡 설정에서 이미 브랜치가
+        // 고정되어 있으므로 그대로 진행한다. 이 조건이 없으면 단일 브랜치 잡에서 배포가
+        // 아예 실행되지 않는다.
         stage('Deploy') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    expression { env.BRANCH_NAME == null }
+                }
+            }
             steps {
                 sshagent(credentials: ['stylehub-deploy-ssh']) {
                     withCredentials([string(credentialsId: 'deploy-host', variable: 'DEPLOY_HOST')]) {
