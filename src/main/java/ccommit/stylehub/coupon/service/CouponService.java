@@ -164,8 +164,13 @@ public class CouponService implements CouponPort {
      * <p>설계 변경 이력:
      * <br>v1: SELECT FOR UPDATE 비관적 락 (DB row lock)
      * <br>v2: @DistributedLock (Redis SETNX 폴링) — 측정 결과 v1 보다 나쁨
-     * <br>v3: Redis DECR + Lua atomic — 락 제거, 동기 INSERT (DB 가 천장)
-     * <br>v4: <strong>Redis DECR + Lua + 비동기 INSERT (Spring Event)</strong> — 응답에서 DB 비용 분리
+     * <br>v3: Redis DECR + Lua atomic — 락 제거, 동기 INSERT. 안정 RPS 640
+     * <br>v4: <strong>Redis DECR + Lua + 비동기 INSERT (Spring Event)</strong> — 응답 경로에서 DB 분리. 안정 RPS 632
+     *
+     * <p>v3 → v4 에서 처리량은 오르지 않았다. DB INSERT 가 천장일 것이라 보고 비동기로 뺐지만
+     * 640 에서 632 로 사실상 동일했고, 실제 천장은 부하 클라이언트의 대기 시간 설정과 단일 머신의
+     * CPU 경합이었다. v4 를 유지하는 이유는 처리량이 아니라 피크 흡수와 DB 자원 분리다.
+     * 자세한 내용은 CouponIssuedEventListener 주석 참고.
      *
      * <p>처리 흐름:
      * <br>1) Redis Lua atomic: 카운터 차감 + 중복 검증 (수 ms)
