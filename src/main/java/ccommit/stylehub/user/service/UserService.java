@@ -33,6 +33,7 @@ import java.util.function.Consumer;
  * @modified 2026/03/26 by WonJin - refactor: 해싱과 저장 분리로 외부 트랜잭션 참여 지원
  * @modified 2026/03/27 by WonJin - feat: findUserById, findAddressByOwner 추가
  * @modified 2026/04/19 by WonJin - refactor: StoreService, StoreAdminService, PointRewardService를 UserService로 통합
+ * @modified 2026/09/08 by WonJin - fix: rewardLoginPoint 를 TransactionTemplate 으로 전환 — login() 의 self-invocation 으로 @Transactional 이 적용되지 않아 포인트 적립이 DB 에 반영되지 않던 문제 해결
  *
  * <p>
  * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다.
@@ -253,20 +254,32 @@ public class UserService implements UserPort {
     // 포인트
     // ========================
 
-    @Transactional
+    /**
+     * 로그인 포인트를 적립한다.
+     *
+     * <p>@Transactional 대신 TransactionTemplate 을 쓴다. login() 이 같은 클래스에서 이 메서드를
+     * 호출하는데(self-invocation), 그 경우 프록시를 거치지 않아 @Transactional 이 적용되지 않는다.
+     * 트랜잭션이 열리지 않으면 findById 로 얻은 엔티티가 영속 상태로 유지되지 않아 변경 감지가
+     * 동작하지 않고, 포인트가 예외나 로그 없이 조용히 유실된다.
+     *
+     * <p>TransactionTemplate 은 프록시가 아니라 블록 자체가 트랜잭션 경계이므로 호출 경로와 무관하게
+     * 동작한다. login() 과 OAuthService 양쪽에서 동일하게 적립된다.
+     */
     public void rewardLoginPoint(Long userId, LocalDate today) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        transactionTemplate.executeWithoutResult(status -> {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        if (user.getRole() == UserRole.ADMIN) {
-            return;
-        }
+            if (user.getRole() == UserRole.ADMIN) {
+                return;
+            }
 
-        if (user.getLastLoginDate() == null) {
-            user.addPoint(FIRST_LOGIN_POINT);
-        } else if (!user.getLastLoginDate().equals(today)) {
-            user.addPoint(DAILY_LOGIN_POINT);
-        }
-        user.updateLastLoginDate(today);
+            if (user.getLastLoginDate() == null) {
+                user.addPoint(FIRST_LOGIN_POINT);
+            } else if (!user.getLastLoginDate().equals(today)) {
+                user.addPoint(DAILY_LOGIN_POINT);
+            }
+            user.updateLastLoginDate(today);
+        });
     }
 }
