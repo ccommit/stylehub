@@ -7,6 +7,7 @@ import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.payment.client.PaymentClient;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
+import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.event.PaymentApprovedEvent;
@@ -47,8 +48,9 @@ import static org.mockito.Mockito.mock;
  * @created 2026/04/24
  *
  * <p>
- * PaymentService.confirmPayment 의 단위 테스트이다.
- * 정상 승인 / 미존재 결제 / 이미 처리된 결제 / 금액 불일치 / PG 호출 실패 경로를 검증한다.
+ * PaymentService 의 단위 테스트이다.
+ * 승인은 정상 / 미존재 결제 / 이미 처리된 결제 / 금액 불일치 / PG 호출 실패 경로를,
+ * 만료 직전 PG 대조(reconcileIfApproved)는 승인 응답 유실 복구와 오탐 방지 경로를 검증한다.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -80,6 +82,12 @@ class PaymentServiceTest {
     private Order orderWithStatus(long orderId, OrderStatus status) {
         Order order = Order.builder().orderStatus(status).build();
         ReflectionTestUtils.setField(order, "orderId", orderId);
+        return order;
+    }
+
+    private Order orderWithPgOrderId(long orderId, OrderStatus status, String pgOrderId) {
+        Order order = orderWithStatus(orderId, status);
+        ReflectionTestUtils.setField(order, "pgOrderId", pgOrderId);
         return order;
     }
 
@@ -342,6 +350,130 @@ class PaymentServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_APPROVAL_FAILED);
             then(payment).should(never()).approve(any(), any());
+            then(eventPublisher).should(never()).publishEvent(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("reconcileIfApproved")
+    class ReconcileIfApproved {
+
+        // 승인 요청이 PG 에 도달했는데 응답만 유실된 상황이다.
+        // 우리 DB 는 결제 대기인데 PG 는 승인 완료라, 이대로 만료시키면 결제한 주문이 취소된다.
+        @Test
+        @DisplayName("PG 기준 승인 완료면 우리 결제를 승인 처리하고 취소하지 말라고 알린다")
+        void PG가_승인상태면_우리상태를_맞춘다() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PENDING, "ORD-1");
+            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.of(payment));
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
+            given(tossClient.findPayment("ORD-1"))
+                    .willReturn(new PgPaymentSnapshot(true, "pk-1", 10000));
+
+            // when
+            boolean approved = paymentService.reconcileIfApproved(1L);
+
+            // then
+            assertThat(approved).isTrue();
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.DONE);
+            assertThat(payment.getPaymentKey()).isEqualTo("pk-1");
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+            then(eventPublisher).should().publishEvent(new PaymentApprovedEvent(1L));
+        }
+
+        @Test
+        @DisplayName("PG 에 결제 기록이 없으면 승인 처리하지 않고 취소를 막지 않는다")
+        void PG에_기록이_없으면_취소를_막지_않는다() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PENDING, "ORD-1");
+            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.of(payment));
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
+            given(tossClient.findPayment("ORD-1")).willReturn(PgPaymentSnapshot.notFound());
+
+            // when
+            boolean approved = paymentService.reconcileIfApproved(1L);
+
+            // then
+            assertThat(approved).isFalse();
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING);
+            then(eventPublisher).should(never()).publishEvent(any());
+        }
+
+        @Test
+        @DisplayName("결제 레코드 자체가 없으면 PG 를 조회하지 않는다")
+        void 결제가_없으면_PG를_조회하지_않는다() {
+            // given
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.empty());
+
+            // when
+            boolean approved = paymentService.reconcileIfApproved(1L);
+
+            // then
+            assertThat(approved).isFalse();
+            then(paymentClientFactory).should(never()).getClient(anyString());
+        }
+
+        // 이미 승인·취소로 끝난 건은 대조 대상이 아니다. 만료 배치가 돌 때마다
+        // 종료된 결제까지 PG 에 물어보면 외부 호출만 늘어난다.
+        @Test
+        @DisplayName("이미 승인이 끝난 결제는 PG 를 조회하지 않는다")
+        void 이미_처리된_결제는_PG를_조회하지_않는다() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PAID, "ORD-1");
+            Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.of(payment));
+
+            // when
+            boolean approved = paymentService.reconcileIfApproved(1L);
+
+            // then
+            assertThat(approved).isFalse();
+            then(paymentClientFactory).should(never()).getClient(anyString());
+        }
+
+        // PG 를 거쳐 들어온 값이라도 우리가 저장해둔 요청 금액과 다르면 승인하지 않는다.
+        // 승인 콜백과 같은 기준을 적용해, 대조 경로가 금액 검증의 우회로가 되지 않게 한다.
+        @Test
+        @DisplayName("PG 금액이 요청 금액과 다르면 승인하지 않고 예외를 던진다")
+        void 금액이_다르면_승인하지_않는다() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PENDING, "ORD-1");
+            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.of(payment));
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
+            given(tossClient.findPayment("ORD-1"))
+                    .willReturn(new PgPaymentSnapshot(true, "pk-1", 1000));
+            willThrow(new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH))
+                    .given(paymentValidator).validateAmount(payment, 1000);
+
+            // when / then
+            assertThatThrownBy(() -> paymentService.reconcileIfApproved(1L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
+            then(eventPublisher).should(never()).publishEvent(any());
+        }
+
+        // 조회에 실패한 것과 승인되지 않은 것은 다르다. 실패를 false 로 뭉개면
+        // 알 수 없는 상태에서 취소해버려 막으려던 문제가 그대로 발생한다.
+        @Test
+        @DisplayName("PG 조회가 실패하면 삼키지 않고 예외를 전파한다")
+        void PG_조회_실패는_전파한다() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PENDING, "ORD-1");
+            Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
+            given(paymentRepository.findByOrderOrderId(1L)).willReturn(Optional.of(payment));
+            given(paymentClientFactory.getClient("TOSS")).willReturn(tossClient);
+            willThrow(new BusinessException(ErrorCode.PAYMENT_APPROVAL_FAILED))
+                    .given(tossClient).findPayment("ORD-1");
+
+            // when / then
+            assertThatThrownBy(() -> paymentService.reconcileIfApproved(1L))
+                    .isInstanceOf(BusinessException.class);
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.READY);
             then(eventPublisher).should(never()).publishEvent(any());
         }
     }

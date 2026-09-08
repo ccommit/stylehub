@@ -8,15 +8,20 @@ import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderDetailRepository;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderService;
+import ccommit.stylehub.payment.client.PaymentClient;
+import ccommit.stylehub.payment.client.PaymentClientFactory;
+import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.support.OrderFixtureFactory;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.ArrayList;
@@ -27,6 +32,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 /**
  * @author WonJin Bae
@@ -50,6 +58,24 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 class OrderTimeoutSchedulerTest {
+
+    /**
+     * PG 통신만 차단한다.
+     *
+     * <p>스케줄러가 주문을 취소하기 전에 PG 에 결제 상태를 조회하는데, 차단하지 않으면
+     * 만료 주문 수만큼 실제 외부 호출이 나간다. 느리고 네트워크 상태에 따라 결과가 흔들린다.
+     * 조회 결과를 "결제 기록 없음" 으로 고정해, 이 테스트가 검증하려는 만료 처리 자체에 집중한다.
+     * PG 가 승인 상태를 돌려주는 경우의 동작은 결제 도메인 테스트에서 다룬다.
+     */
+    @MockitoBean
+    private PaymentClientFactory paymentClientFactory;
+
+    @BeforeEach
+    void stubPgLookup() {
+        PaymentClient paymentClient = mock(PaymentClient.class);
+        given(paymentClientFactory.getClient(any())).willReturn(paymentClient);
+        given(paymentClient.findPayment(any())).willReturn(PgPaymentSnapshot.notFound());
+    }
 
     @Autowired
     private OrderTimeoutScheduler scheduler;
