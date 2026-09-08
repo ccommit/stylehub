@@ -35,6 +35,20 @@ pipeline {
         timeout(time: 30, unit: 'MINUTES')
     }
 
+    // 변경이 병합되면 별도 조작 없이 파이프라인이 실행되도록 SCM 을 주기적으로 확인한다.
+    //
+    // 웹훅(GitHub → Jenkins) 대신 폴링(Jenkins → GitHub)을 쓰는 이유:
+    // 웹훅은 GitHub 이 Jenkins 로 요청을 보내는 방향이라 Jenkins 가 외부에서 접근 가능해야 한다.
+    // 폴링은 반대 방향이라 Jenkins 가 어디서 돌든 동작하고, 설정이 이 파일에 남아
+    // 저장소만 봐도 어떻게 실행되는지 알 수 있다.
+    //
+    // H/5 의 H 는 해시 기반 분산이다. 모든 잡이 정각에 몰려 폴링하지 않도록 Jenkins 가
+    // 잡별로 시작 시점을 흩어준다. 주기 5분은 병합 후 반영까지의 지연과 폴링 비용의 절충이며,
+    // 폴링은 변경 여부만 확인하므로 변경이 없으면 빌드를 실행하지 않는다.
+    triggers {
+        pollSCM('H/5 * * * *')
+    }
+
     stages {
 
         stage('Checkout') {
@@ -77,7 +91,22 @@ pipeline {
             }
         }
 
+        // 운영 서버로 나가는 단계이므로 어느 브랜치에서 실행됐는지를 확인한다.
+        //
+        // 폴링 트리거를 붙이면서 실행 주체가 사람에서 Jenkins 로 바뀌었다. 사람이 실행할 때는
+        // 어느 브랜치를 배포할지 사람이 골랐지만, 자동 실행에서는 그 판단이 없다.
+        // Multibranch 잡이라면 feature 브랜치 푸시가 그대로 운영 배포로 이어질 수 있다.
+        //
+        // BRANCH_NAME 이 없는 경우(단일 브랜치 Pipeline 잡)는 잡 설정에서 이미 브랜치가
+        // 고정되어 있으므로 그대로 진행한다. 이 조건이 없으면 단일 브랜치 잡에서 배포가
+        // 아예 실행되지 않는다.
         stage('Deploy') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    expression { env.BRANCH_NAME == null }
+                }
+            }
             steps {
                 sshagent(credentials: ['stylehub-deploy-ssh']) {
                     withCredentials([string(credentialsId: 'deploy-host', variable: 'DEPLOY_HOST')]) {
