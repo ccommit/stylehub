@@ -22,6 +22,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByOrderPgOrderId(String pgOrderId);
 
+    // 주문 만료 처리에서 결제 상태를 대조할 때 사용한다.
+    Optional<Payment> findByOrderOrderId(Long orderId);
+
     /**
      * 결제 승인 시 같은 paymentKey 의 콜백이 동시에 도착해도 1건만 승인되도록 비관적 락으로 조회한다.
      * 2번째 스레드부터는 1번째 스레드의 commit 후 status=DONE 을 보고 validateApprovable 에서 거절된다.
