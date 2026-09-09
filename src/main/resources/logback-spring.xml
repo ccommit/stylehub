@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  운영(prod) 프로파일에서만 콘솔 로그를 파일에도 함께 남긴다.
+  systemd(journalctl)의 콘솔 로그는 저널 버퍼가 순환되면 과거 기록을 잃을 수 있어,
+  장애 조사를 위한 별도 보관소로 로컬 파일 로그를 둔다.
+
+  로그 위치는 프로세스의 working directory 기준 상대경로(logs/)를 쓴다.
+  systemd 유닛의 WorkingDirectory가 배포 디렉터리(/home/ubuntu/stylehub)로 설정되어 있어
+  별도 환경변수 없이도 logs/ 하위에 쌓인다.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProfile name="prod">
+        <property name="LOG_DIR" value="logs"/>
+
+        <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <file>${LOG_DIR}/stylehub.log</file>
+            <encoder>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+            </encoder>
+            <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+                <!-- 하루 단위 + 50MB 초과 시 분할 회전, 14일 보관, 전체 1GB 넘으면 오래된 것부터 삭제 -->
+                <fileNamePattern>${LOG_DIR}/stylehub.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+                <maxFileSize>50MB</maxFileSize>
+                <maxHistory>14</maxHistory>
+                <totalSizeCap>1GB</totalSizeCap>
+            </rollingPolicy>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="!prod">
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>
