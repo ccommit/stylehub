@@ -5,7 +5,10 @@ import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
+import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.enums.PaymentStatus;
+import ccommit.stylehub.payment.port.PaymentPort;
 import ccommit.stylehub.payment.event.PaymentApprovedEvent;
 import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
@@ -23,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
  * @modified 2026/04/01 by WonJin - refactor: 검증 로직을 PaymentValidator로 분리
  * @modified 2026/04/22 by WonJin - refactor: OrderPort 직접 의존 제거, Payment 이벤트 발행으로 전환 (순환 참조 해소)
  * @modified 2026/04/22 by WonJin - refactor: createReady 시그니처 primitives로 변경, Order FK는 EntityManager.getReference 프록시로 처리 (도메인 경계 누수 해소)
+ * @modified 2026/09/08 by WonJin - feat: reconcileIfApproved 구현 — 만료 처리 직전 PG 결제 상태 대조로 승인 응답 유실 구간 축소
  * @modified 2026/05/01 by WonJin - fix: confirmPayment 동시 호출 멱등성 보장 — findByOrderPgOrderIdWithLock 으로 비관적 락 조회 도입 (PaymentIdempotencyTest.concurrentIdempotency 노출 버그 해소)
  *
  * <p>
@@ -34,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @RequiredArgsConstructor
-public class PaymentService {
+public class PaymentService implements PaymentPort {
 
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
@@ -42,11 +46,51 @@ public class PaymentService {
     private final ApplicationEventPublisher eventPublisher;
     private final EntityManager em;
 
+    @Override
     public void createReady(Long orderId, int totalAmount, int finalAmount) {
         Order orderRef = em.getReference(Order.class, orderId);
         paymentRepository.save(Payment.create(
                 orderRef, "", "주문 결제", finalAmount, totalAmount, finalAmount
         ));
+    }
+
+    /**
+     * 만료 처리 직전에 PG 쪽 결제 상태를 대조한다.
+     *
+     * <p>승인 요청이 PG 에 도달했는데 응답만 유실되면 우리 DB 에는 결제 대기로 남는다.
+     * 그대로 만료 시간이 지나면 사용자는 결제했는데 주문은 취소되고 재고까지 복구된다.
+     * 취소하기 전에 한 번 확인해 그 경우를 걸러낸다.
+     *
+     * <p>조회 실패는 삼키지 않고 그대로 던진다. 조회에 실패한 것과 승인되지 않은 것은 다르다.
+     * 알 수 없는 상태에서 취소해버리면 막으려던 문제가 그대로 발생하므로,
+     * 호출자가 이번 회차를 건너뛰고 다음에 다시 시도하도록 한다.
+     *
+     * <p>금액은 승인 콜백과 동일하게 검증한다. PG 를 통해 들어온 값이라도 저장해둔 요청 금액과
+     * 다르면 승인 처리하지 않는다.
+     */
+    @Override
+    @Transactional
+    public boolean reconcileIfApproved(Long orderId) {
+        Payment payment = paymentRepository.findByOrderOrderId(orderId).orElse(null);
+        if (payment == null) {
+            return false;
+        }
+
+        // 이미 승인·취소 등으로 처리가 끝난 건은 대조 대상이 아니다.
+        if (payment.getStatus() != PaymentStatus.READY && payment.getStatus() != PaymentStatus.IN_PROGRESS) {
+            return false;
+        }
+
+        PgPaymentSnapshot snapshot = paymentClientFactory.getClient("TOSS")
+                .findPayment(payment.getOrder().getPgOrderId());
+
+        if (!snapshot.approved()) {
+            return false;
+        }
+
+        paymentValidator.validateAmount(payment, snapshot.totalAmount());
+        approvePayment(payment, snapshot.paymentKey(), snapshot.totalAmount());
+        return true;
     }
 
     // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
