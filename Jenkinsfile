@@ -11,6 +11,9 @@
 //   - stylehub-deploy-ssh   : SSH Username with private key (운영서버 배포 계정)
 //   - deploy-host           : Secret text (운영서버 접속 대상, 예: deploy@1.2.3.4) — 공개 저장소에
 //                             실제 호스트를 남기지 않기 위해 코드에 하드코딩하지 않고 credential로 분리
+//   - slack-webhook-url     : Secret text (Slack Incoming Webhook URL) — 파이프라인 실패 알림용.
+//                             미리 만들어두지 않으면 실패 알림 전송 단계 자체가 에러로 표시된다
+//                             (빌드 결과 자체는 이미 FAILURE로 확정된 뒤라 영향 없음).
 //
 // 운영서버 사전 준비 (1회):
 //   - /etc/systemd/system/stylehub.service 유닛 파일
@@ -99,6 +102,13 @@ pipeline {
         }
         failure {
             echo "파이프라인 실패 — 빌드 #${env.BUILD_NUMBER} 로그 확인"
+            withCredentials([string(credentialsId: 'slack-webhook-url', variable: 'SLACK_WEBHOOK_URL')]) {
+                sh '''
+                    curl -sf -X POST -H "Content-type: application/json" \
+                        -d "{\\"text\\":\\"🚨 StyleHub 배포 파이프라인 실패 — 빌드 #${BUILD_NUMBER}\\n${BUILD_URL}\\"}" \
+                        "$SLACK_WEBHOOK_URL" || echo "Slack 알림 전송 실패 (webhook credential 확인 필요)"
+                '''
+            }
         }
     }
 }
