@@ -120,6 +120,36 @@ pipeline {
                 }
             }
         }
+
+        // deploy-remote.sh 내부에도 헬스체크(+실패 시 롤백)가 있지만, 그건 배포 스크립트 안에
+        // 묻혀 있어 빌드 로그만 봐서는 무엇이 확인됐는지 바로 드러나지 않는다. 배포와 확인을
+        // 분리해 파이프라인 화면에 별도 단계로 보이게 하면, 어느 단계에서 무엇을 검증했는지
+        // 로그를 뒤지지 않고도 바로 알 수 있다.
+        stage('Verify') {
+            when {
+                anyOf {
+                    branch 'develop'
+                    expression { env.BRANCH_NAME == null }
+                }
+            }
+            steps {
+                sshagent(credentials: ['stylehub-deploy-ssh']) {
+                    withCredentials([string(credentialsId: 'deploy-host', variable: 'DEPLOY_HOST')]) {
+                        sh '''
+                            ssh -o StrictHostKeyChecking=no $DEPLOY_HOST "
+                                echo '--- 헬스체크 ---'
+                                curl -fsS http://localhost:8080/actuator/health
+                                echo
+                                echo '--- 배포된 JAR 시각 ---'
+                                stat -c '%y' $DEPLOY_DIR/$JAR_NAME
+                                echo '--- 서비스 상태 ---'
+                                sudo systemctl is-active stylehub
+                            "
+                        '''
+                    }
+                }
+            }
+        }
     }
 
     post {
