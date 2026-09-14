@@ -27,7 +27,8 @@ public class OrderPaymentTimeout {
 
     /**
      * 주문 생성 시 타임아웃 타이머를 등록한다.
-     * score = 현재 시각 + 30분 (만료 시각)
+     * score = 현재 시각 + TIMEOUT_MILLIS(10분) — 이 값이 만료 시각이 되고,
+     * OrderTimeoutScheduler 가 현재 시각 이하의 score 를 범위 조회해 만료 대상을 꺼낸다.
      */
     public void registerTimeout(Long orderId) {
         double expireAt = System.currentTimeMillis() + TIMEOUT_MILLIS;

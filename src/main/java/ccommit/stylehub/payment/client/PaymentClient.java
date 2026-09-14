@@ -1,5 +1,7 @@
 package ccommit.stylehub.payment.client;
 
+import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
+
 /**
  * @author WonJin Bae
  * @created 2026/04/01
@@ -14,6 +16,12 @@ public interface PaymentClient {
     void confirmPayment(String paymentKey, String orderId, Integer amount);
 
     void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount);
+
+    /**
+     * 우리가 PG 에 넘긴 주문 식별자로 결제 현재 상태를 조회한다.
+     * 승인 요청은 보냈으나 응답을 받지 못한 경우, PG 쪽 상태를 확인하는 유일한 수단이다.
+     */
+    PgPaymentSnapshot findPayment(String pgOrderId);
 
     // 팩토리에서 구현체를 식별하기 위한 PG사 타입
     String getType();

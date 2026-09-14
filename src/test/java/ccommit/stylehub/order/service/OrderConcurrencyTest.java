@@ -24,7 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>
  * 주문 시 재고 차감 동시성 테스트이다.
- * 비관적 락(SELECT FOR UPDATE)이 동시 주문에서 재고 정합성을 보장하는지 검증한다.
+ * 조건부 원자 UPDATE(UPDATE ... WHERE stock_quantity >= :qty)가 동시 주문에서
+ * 재고 정합성을 보장하는지 검증한다.
+ *
+ * 초기 구현은 비관적 락(SELECT FOR UPDATE)이었고 이후 조건부 원자 UPDATE 로 전환됐다.
+ * 검증하는 성질은 두 방식이 같다. 동시 요청이 몰려도 재고가 음수가 되지 않고,
+ * 재고 수량만큼만 성공해야 한다.
  * </p>
  */
 @SpringBootTest

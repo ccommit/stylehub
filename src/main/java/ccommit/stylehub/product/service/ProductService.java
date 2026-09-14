@@ -33,7 +33,7 @@ import java.util.List;
  * @modified 2026/04/01 by WonJin - refactor: ProductViewService를 ProductService로 통합
  * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증은 ProductApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
  * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지
- * @modified 2026/05/03 by WonJin - perf: decreaseStockWithLock 을 SELECT FOR UPDATE 비관적 락에서 단일 atomic UPDATE 로 전환 (락 점유 시간 0 → 동시 주문 처리량 향상)
+ * @modified 2026/05/03 by WonJin - perf: decreaseStockWithLock 을 SELECT FOR UPDATE 비관적 락에서 단일 atomic UPDATE 로 전환 (쿼리 2번 → 1번, 락을 쥐고 지나는 구간 단축)
  
  
  *
@@ -93,11 +93,15 @@ public class ProductService implements ProductPort {
     /**
      * 단일 atomic UPDATE 로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
      *
-     * <p>이전 구현: SELECT FOR UPDATE 비관적 락 → 차감 → flush 시 UPDATE (쿼리 2번 + 락 점유)
-     * <br>현재 구현: UPDATE WHERE stock >= qty 단일 쿼리 (락 점유 시간 0)
+     * <p>이전 구현: SELECT FOR UPDATE 비관적 락 → 차감 → flush 시 UPDATE (쿼리 2번, 조회 시점부터 락 점유)
+     * <br>현재 구현: UPDATE WHERE stock >= qty 단일 쿼리 (쿼리 1번, UPDATE 시점부터 락 점유)
      *
-     * <p>DB 가 단일 UPDATE 를 atomic 으로 처리하므로 race condition 자체가 발생하지 않는다.
-     * WHERE 절의 stock_quantity >= :qty 조건이 음수 재고 방지 역할을 겸한다.
+     * <p><strong>락이 사라진 것은 아니다.</strong> UPDATE 도 해당 행에 배타 락을 걸고 커밋까지 유지하므로
+     * 동일 행에 대한 경합 한계는 비관적 락과 같다. 줄어든 것은 SELECT 왕복 한 번과, 락을 쥔 채로
+     * 지나는 구간의 길이다. 락 획득 시점이 트랜잭션 뒤로 밀린 만큼 다른 요청이 기다리는 시간이 짧아진다.
+     *
+     * <p>단일 UPDATE 는 DB 가 원자적으로 처리하므로 조회와 차감 사이에 다른 트랜잭션이 끼어드는
+     * Lost Update 가 발생하지 않는다. WHERE 절의 stock_quantity >= :qty 조건이 음수 재고 방지를 겸한다.
      *
      * <p>차감 후 OrderDetail 생성을 위해 ProductOption 엔티티 1회 조회 (단순 SELECT, 락 없음).
      * 다음 단계 개선 영역: OrderDetail.create 시그니처를 productOptionId + price 로 단순화하면 이 SELECT 도 제거 가능.

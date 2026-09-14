@@ -15,7 +15,7 @@ import java.util.Optional;
  * @author WonJin Bae
  * @created 2026/03/25
  * @modified 2026/03/27 by WonJin - feat: findByProductProductId 조회, 비관적 락 조회 메서드 추가
- * @modified 2026/05/03 by WonJin - perf: decreaseStockAtomic 추가 — SELECT FOR UPDATE 비관적 락 제거, 단일 atomic UPDATE 로 락 점유 시간 0 화
+ * @modified 2026/05/03 by WonJin - perf: decreaseStockAtomic 추가 — SELECT FOR UPDATE 대신 단일 atomic UPDATE (쿼리 2번 → 1번, 락 획득 시점을 트랜잭션 뒤로 이동)
  *
  * <p>
  * ProductOption 엔티티의 데이터 접근을 담당한다.
@@ -34,9 +34,10 @@ public interface ProductOptionRepository extends JpaRepository<ProductOption, Lo
 
     /**
      * 재고를 단일 atomic UPDATE 로 차감한다. 비관적 락 대신 사용.
-     * - DB 가 단일 UPDATE 를 atomic 으로 처리 → race condition 자체가 발생 불가능
+     * - DB 가 단일 UPDATE 를 원자적으로 처리 → 조회와 차감 사이의 Lost Update 가 발생하지 않음
      * - WHERE stock_quantity >= :qty 조건이 음수 재고 방지 (SOLD_OUT 케이스도 자연스럽게 처리)
-     * - 락 점유 시간 = 0 → SELECT FOR UPDATE 시절의 락 대기가 사라짐
+     * - UPDATE 도 행에 배타 락을 걸고 커밋까지 유지한다. 락이 없어진 것이 아니라 SELECT 왕복이
+     *   사라지고 락을 쥔 채 지나는 구간이 짧아진 것이다. 동일 행 경합 한계는 비관적 락과 같다.
      *
      * @return 1 = 차감 성공, 0 = 옵션 없거나 재고 부족 (호출자가 구분 처리 필요)
      */
