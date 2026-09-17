@@ -96,8 +96,8 @@ class StoreCouponOrderTest {
     void storeCouponDiscountsOnlyOwnStoreItems() {
         // given
         OrderFixtureFactory.Fixture buyer = fixtureFactory.create(STOCK);
-        OrderFixtureFactory.StoreOption storeA = fixtureFactory.createApprovedStoreOption(STOCK);
-        OrderFixtureFactory.StoreOption storeB = fixtureFactory.createApprovedStoreOption(STOCK);
+        OrderFixtureFactory.StoreProduct storeA = fixtureFactory.createStoreProduct(STOCK);
+        OrderFixtureFactory.StoreProduct storeB = fixtureFactory.createStoreProduct(STOCK);
         Long userCouponId = issueStoreCoupon(storeA.storeId(), buyer.userId(), DiscountType.RATE, 10);
 
         // when — 상품 가격은 모두 10,000원
@@ -119,8 +119,8 @@ class StoreCouponOrderTest {
     void rejectsStoreCouponWithoutOwnItems() {
         // given
         OrderFixtureFactory.Fixture buyer = fixtureFactory.create(STOCK);
-        OrderFixtureFactory.StoreOption storeA = fixtureFactory.createApprovedStoreOption(STOCK);
-        OrderFixtureFactory.StoreOption storeB = fixtureFactory.createApprovedStoreOption(STOCK);
+        OrderFixtureFactory.StoreProduct storeA = fixtureFactory.createStoreProduct(STOCK);
+        OrderFixtureFactory.StoreProduct storeB = fixtureFactory.createStoreProduct(STOCK);
         Long userCouponId = issueStoreCoupon(storeA.storeId(), buyer.userId(), DiscountType.FIXED, 3000);
 
         // when & then

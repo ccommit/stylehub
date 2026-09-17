@@ -4,13 +4,17 @@ import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
+import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
 import ccommit.stylehub.product.entity.Product;
+import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
+import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.StoreStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -27,13 +31,16 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 /**
  * @author WonJin Bae
  * @created 2026/04/24
+ * @modified 2026/09/17 by WonJin - test: 재고 변경 옵션 소속 검증(IDOR), 스토어 승인 조건 재고 차감의 실패 원인 구분, 상세 조회 승인 상태 조건 테스트 추가
  *
  * <p>
  * ProductService 의 단위 테스트이다.
@@ -50,6 +57,9 @@ class ProductServiceTest {
 
     @Mock
     private ProductQueryRepository productQueryRepository;
+
+    @Mock
+    private ProductOptionRepository productOptionRepository;
 
     @InjectMocks
     private ProductService productService;
@@ -141,24 +151,24 @@ class ProductServiceTest {
             Long productId = 1L;
             Product product = createMockProduct(productId);
             given(product.getOptions()).willReturn(List.of());
-            given(productRepository.findByIdWithUserAndOptions(productId))
+            given(productRepository.findByIdWithUserAndOptions(productId, StoreStatus.APPROVED))
                     .willReturn(Optional.of(product));
 
             // when
             ProductResponse response = productService.getProduct(productId);
 
-            // then
+            // then — 승인 스토어 조건으로 조회해야 정지 스토어 상품이 상세에 노출되지 않는다
             assertThat(response.productId()).isEqualTo(productId);
             assertThat(response.storeId()).isEqualTo(10L);
-            then(productRepository).should().findByIdWithUserAndOptions(productId);
+            then(productRepository).should().findByIdWithUserAndOptions(productId, StoreStatus.APPROVED);
         }
 
         @Test
-        @DisplayName("존재하지 않는 productId 면 PRODUCT_NOT_FOUND 예외를 던진다")
+        @DisplayName("존재하지 않거나 승인 스토어의 상품이 아니면 PRODUCT_NOT_FOUND 예외를 던진다")
         void throwsNotFound_whenProductMissing() {
             // given
             Long productId = 999L;
-            given(productRepository.findByIdWithUserAndOptions(productId))
+            given(productRepository.findByIdWithUserAndOptions(productId, StoreStatus.APPROVED))
                     .willReturn(Optional.empty());
 
             // when / then
@@ -168,7 +178,150 @@ class ProductServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("updateStock (스토어 재고 수동 변경)")
+    class UpdateStock {
+
+        private static final Long STORE_ID = 10L;
+        private static final Long PRODUCT_ID = 1L;
+        private static final Long OPTION_ID = 100L;
+
+        @Test
+        @DisplayName("옵션이 요청한 상품·스토어에 속하면 재고를 변경한다")
+        void updatesStock_whenOptionBelongsToProductAndStore() {
+            // given
+            ProductOption option = createOption(createMockProduct(PRODUCT_ID), OPTION_ID, 10);
+            given(productOptionRepository.findByIdWithLock(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when
+            ProductOptionResponse response = productService.updateStock(STORE_ID, PRODUCT_ID, OPTION_ID, 3);
+
+            // then
+            assertThat(response.stockQuantity()).isEqualTo(3);
+            assertThat(option.getStockQuantity()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("다른 스토어의 옵션이면 존재 여부를 숨기기 위해 PRODUCT_OPTION_NOT_FOUND 를 던지고 재고를 바꾸지 않는다")
+        void throwsNotFound_whenOptionBelongsToOtherStore() {
+            // given — 옵션의 실제 소유 스토어는 10L, 요청은 20L
+            ProductOption option = createOption(createMockProduct(PRODUCT_ID), OPTION_ID, 10);
+            given(productOptionRepository.findByIdWithLock(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when / then
+            assertThatThrownBy(() -> productService.updateStock(20L, PRODUCT_ID, OPTION_ID, 0))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+            assertThat(option.getStockQuantity()).isEqualTo(10);
+        }
+
+        @Test
+        @DisplayName("옵션이 경로의 상품에 속하지 않으면 PRODUCT_OPTION_NOT_FOUND 를 던지고 재고를 바꾸지 않는다")
+        void throwsNotFound_whenOptionBelongsToOtherProduct() {
+            // given — 옵션의 실제 상품은 1L, 요청은 2L
+            ProductOption option = createOption(createMockProduct(PRODUCT_ID), OPTION_ID, 10);
+            given(productOptionRepository.findByIdWithLock(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when / then
+            assertThatThrownBy(() -> productService.updateStock(STORE_ID, 2L, OPTION_ID, 0))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+            assertThat(option.getStockQuantity()).isEqualTo(10);
+        }
+
+        @Test
+        @DisplayName("옵션이 없으면 PRODUCT_OPTION_NOT_FOUND 를 던진다")
+        void throwsNotFound_whenOptionMissing() {
+            // given
+            given(productOptionRepository.findByIdWithLock(OPTION_ID)).willReturn(Optional.empty());
+
+            // when / then
+            assertThatThrownBy(() -> productService.updateStock(STORE_ID, PRODUCT_ID, OPTION_ID, 0))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+        }
+    }
+
+    @Nested
+    @DisplayName("decreaseStockWithLock (주문 재고 차감)")
+    class DecreaseStock {
+
+        private static final Long OPTION_ID = 100L;
+
+        @Test
+        @DisplayName("승인 스토어 조건의 원자 UPDATE 가 1건이면 옵션을 반환하고 원인 조회는 하지 않는다")
+        void returnsOption_whenDecreased() {
+            // given
+            ProductOption option = createOption(createMockProduct(1L), OPTION_ID, 9);
+            given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(1);
+            given(productOptionRepository.findById(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when
+            ProductOption result = productService.decreaseStockWithLock(OPTION_ID, 1);
+
+            // then
+            assertThat(result).isSameAs(option);
+            then(productOptionRepository).should(never()).findByIdWithProductAndStore(anyLong());
+        }
+
+        @Test
+        @DisplayName("0건이고 옵션이 없으면 PRODUCT_OPTION_NOT_FOUND 를 던진다")
+        void throwsOptionNotFound_whenOptionMissing() {
+            // given
+            given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(0);
+            given(productOptionRepository.findByIdWithProductAndStore(OPTION_ID)).willReturn(Optional.empty());
+
+            // when / then
+            assertThatThrownBy(() -> productService.decreaseStockWithLock(OPTION_ID, 1))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("0건이고 스토어가 승인 상태가 아니면 재고와 무관하게 PRODUCT_NOT_ON_SALE 을 던진다")
+        void throwsNotOnSale_whenStoreNotApproved() {
+            // given — 재고는 충분하지만 스토어가 정지됨
+            Product product = createMockProduct(1L);
+            given(product.isOnSale()).willReturn(false);
+            ProductOption option = createOption(product, OPTION_ID, 10);
+            given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(0);
+            given(productOptionRepository.findByIdWithProductAndStore(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when / then
+            assertThatThrownBy(() -> productService.decreaseStockWithLock(OPTION_ID, 1))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_NOT_ON_SALE);
+        }
+
+        @Test
+        @DisplayName("0건이고 옵션이 있으며 스토어가 승인 상태면 INSUFFICIENT_STOCK 을 던진다")
+        void throwsInsufficientStock_whenStoreApproved() {
+            // given
+            Product product = createMockProduct(1L);
+            given(product.isOnSale()).willReturn(true);
+            ProductOption option = createOption(product, OPTION_ID, 0);
+            given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(0);
+            given(productOptionRepository.findByIdWithProductAndStore(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when / then
+            assertThatThrownBy(() -> productService.decreaseStockWithLock(OPTION_ID, 1))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INSUFFICIENT_STOCK);
+            then(productOptionRepository).should(never()).findById(anyLong());
+        }
+    }
+
     // ===== Helper =====
+
+    private ProductOption createOption(Product product, Long optionId, int stock) {
+        return ProductOption.builder()
+                .productOptionId(optionId)
+                .product(product)
+                .color("black")
+                .size("M")
+                .stockQuantity(stock)
+                .build();
+    }
 
     // ProductListResponse.from / ProductResponse.from 둘 다 Product 엔티티를 입력으로 받으므로 mock 한 개로 통합한다.
     private Product createMockProduct(Long productId) {

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * @author WonJin Bae
  * @created 2026/04/22
+ * @modified 2026/09/17 by WonJin - fix: updateStock 이 storeId·productId 를 도메인 서비스로 넘겨 옵션 소속까지 검증 (IDOR 차단)
  *
  * <p>
  * Product 유스케이스를 오케스트레이션하는 Application 계층 서비스이다.
@@ -43,11 +44,12 @@ public class ProductApplicationService {
         return productService.getMyStoreProducts(storeId, cursor, pageSize);
     }
 
+    // 자기 storeId로 소유권 검증을 통과한 뒤 다른 스토어의 optionId를 넣을 수 있어, 옵션 소속은 ProductService가 다시 확인한다.
     @Transactional
-    public ProductOptionResponse updateStock(Long userId, Long storeId,
+    public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId,
                                              Long optionId, Integer stockQuantity) {
         userPort.validateApprovedStoreOwner(userId, storeId);
-        return productService.updateStock(optionId, stockQuantity);
+        return productService.updateStock(storeId, productId, optionId, stockQuantity);
     }
 
     @Transactional(readOnly = true)
