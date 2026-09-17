@@ -3,9 +3,15 @@ package ccommit.stylehub.order.entity;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.user.entity.Address;
+import ccommit.stylehub.user.entity.User;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+
+import java.util.HashSet;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -13,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/17 by WonJin - test: 주문번호 형식·길이·중복 없음 검증 추가
  *
  * <p>
  * Order 엔티티의 취소 전이 규칙을 검증하는 단위 테스트이다.
@@ -61,5 +68,26 @@ class OrderTest {
         assertThatThrownBy(other::cancelUnpaid)
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ORDER_STATUS);
+    }
+
+    @Test
+    @DisplayName("주문번호는 ORD-날짜-32자리 16진수 형식이고 토스·컬럼 길이 제한(64자)을 넘지 않는다")
+    void generatesPgOrderIdWithinTossRules() {
+        String pgOrderId = Order.create(User.builder().build(), Address.builder().build()).getPgOrderId();
+
+        assertThat(pgOrderId).matches("^ORD-\\d{8}-[0-9a-f]{32}$");
+        assertThat(pgOrderId.length()).isBetween(6, 64);
+    }
+
+    @Test
+    @DisplayName("주문번호를 10만 번 만들어도 중복되지 않는다")
+    void generatesDistinctPgOrderIds() {
+        int count = 100_000;
+        Set<String> ids = new HashSet<>(count * 2);
+        for (int i = 0; i < count; i++) {
+            ids.add(Order.create(User.builder().build(), Address.builder().build()).getPgOrderId());
+        }
+
+        assertThat(ids).hasSize(count);
     }
 }
