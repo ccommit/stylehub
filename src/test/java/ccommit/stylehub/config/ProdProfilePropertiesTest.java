@@ -23,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @created 2026/09/08
  * @modified 2026/09/17 by WonJin - test: Redis 명령 타임아웃 설정 누락 검증 추가 (선착순 쿠폰 fail-closed 시 스레드 고갈 방지)
  * @modified 2026/09/17 by WonJin - test: Boot 4 세션 키(spring.session.data.redis.namespace, cookie.secure, spring.session.timeout) 존재와, 세션 키가 Boot 설정 메타데이터에 실제로 선언된(바인딩되는) 이름인지 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 운영 프로파일에서 OSIV(spring.jpa.open-in-view)가 꺼져 있는지 검증 추가
  *
  * <p>
  * application.properties는 gitignore되어 CI·배포 산출물에 없으므로, 운영 필수 키가 prod 프로파일에 남아 있는지 검증한다.
@@ -140,6 +141,19 @@ class ProdProfilePropertiesTest {
     void secureCookieIsToggledByEnvironment() throws IOException {
         assertThat(loadProdProperties().getProperty("server.servlet.session.cookie.secure"))
                 .isEqualTo("${SESSION_COOKIE_SECURE:false}");
+    }
+
+    @Test
+    @DisplayName("운영 프로파일은 OSIV 를 끈다 (켜져 있으면 트랜잭션이 끝난 뒤에도 요청이 끝날 때까지 DB 커넥션을 쥔다)")
+    void openInViewIsDisabled() throws IOException {
+        String key = "spring.jpa.open-in-view";
+
+        assertThat(loadProdProperties().getProperty(key))
+                .as("값이 없으면 Boot 기본값(true)으로 동작해 요청이 끝날 때까지 커넥션을 반납하지 않는다")
+                .isEqualTo("false");
+        assertThat(loadBootConfigurationMetadata())
+                .as("%s 가 Boot 설정 메타데이터에 없으면 이름이 바뀌어 값이 무시되고 있다는 뜻이다", key)
+                .containsEntry(key, "");
     }
 
     @Test
