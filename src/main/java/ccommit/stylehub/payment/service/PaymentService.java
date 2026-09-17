@@ -42,6 +42,7 @@ import java.time.LocalDateTime;
  * @modified 2026/09/17 by WonJin - fix: cancelPayment 에 요청자 권한 검증 추가 — 주문자 본인/관리자만 취소 가능 (타인 결제 취소 차단)
  * @modified 2026/09/17 by WonJin - fix: 실패 콜백을 승인 대기 결제에만 반영 — 승인된 결제가 환불 없이 ABORTED·주문 취소되던 문제 해결
  * @modified 2026/09/17 by WonJin - fix: 승인을 선점·PG 호출·반영 3단계로 분리(PG 호출 중 커넥션·락 미점유), 만료·취소된 주문 승인 차단, 만료 직전 대조 결과 세분화
+ * @modified 2026/09/17 by WonJin - fix: 결제 취소를 결제·주문 행 락 → 검증 → DB 반영(flush) → PG 취소 순서로 변경 (PG 환불 후 DB 롤백·동시 부분 취소 중복 환불 차단)
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -267,21 +268,25 @@ public class PaymentService implements PaymentPort {
         }
     }
 
-    // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
+    // DB 반영을 PG 취소보다 먼저 끝내 PG 환불 후 DB 만 롤백되는 불일치를 막고, 동시 부분 취소의 중복 환불을 막으려 PG 호출 동안 락을 유지한다.
     // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
                                          String cancelReason, Integer cancelAmount) {
-        Payment payment = paymentRepository.findById(paymentId)
+        Payment payment = paymentRepository.findByIdWithLock(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        lockOrder(payment);
 
         paymentValidator.validateCancelAuthority(payment, requesterId, requesterRole);
         paymentValidator.validateCancel(payment, cancelAmount);
 
-        paymentClientFactory.getClient("TOSS")
+        PaymentResponse response = applyCancellation(payment, cancelReason, cancelAmount);
+        em.flush();
+
+        paymentClientFactory.getClient(PG_TYPE)
                 .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount);
 
-        return applyCancellation(payment, cancelReason, cancelAmount);
+        return response;
     }
 
     // 토스 취소 성공 후 우리 DB에 취소를 반영한다.
