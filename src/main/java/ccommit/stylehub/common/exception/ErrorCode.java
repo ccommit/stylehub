@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - feat: ORDER_NOT_PAYABLE, PAYMENT_RESULT_UNKNOWN 추가 (만료 주문 승인 차단, PG 결과 불명 구분)
  * @modified 2026/09/17 by WonJin - feat: COUPON_NOT_APPLICABLE 추가 (발행 스토어 상품이 없는 주문의 스토어 쿠폰 사용 거절)
  * @modified 2026/09/17 by WonJin - fix: PRODUCT_NOT_ON_SALE 추가 (승인 상태가 아닌 스토어 상품 주문 거절)
+ * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -89,7 +90,9 @@ public enum ErrorCode {
     COUPON_NOT_AVAILABLE(HttpStatus.CONFLICT, "CP011", "사용 가능한 상태의 쿠폰이 아닙니다"),
     MIN_ORDER_AMOUNT_NOT_MET(HttpStatus.BAD_REQUEST, "CP012", "최소 주문 금액 미달로 쿠폰을 사용할 수 없습니다"),
     UNAUTHORIZED_USER_COUPON(HttpStatus.FORBIDDEN, "CP013", "본인의 쿠폰이 아닙니다"),
+    INVALID_ISSUE_COUNT(HttpStatus.BAD_REQUEST, "CP014", "이미 발급된 수량보다 적게 변경할 수 없습니다"),
     COUPON_NOT_APPLICABLE(HttpStatus.BAD_REQUEST, "CP015", "쿠폰을 발행한 스토어의 상품이 주문에 없습니다"),
+    COUPON_ISSUE_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CP016", "선착순 쿠폰 발급을 잠시 처리할 수 없습니다. 잠시 후 다시 시도해주세요"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),

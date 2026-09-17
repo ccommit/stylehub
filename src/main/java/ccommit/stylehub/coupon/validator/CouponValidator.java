@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 /**
  * @author WonJin Bae
  * @created 2026/04/16
+ * @modified 2026/09/15 by WonJin - fix: 발급 수량 축소 검증의 에러 코드를 INVALID_ISSUE_COUNT 로 교정
  * @modified 2026/09/17 by WonJin - fix: 기획서 규칙 반영 — 정률 상한 90%, 기간 최소 1일, 시작일 과거 불가(서버 도착 지연 1분 허용), 진행 중 이벤트는 시작일 변경 없이 수정 가능
  *
  * <p>
@@ -69,7 +70,7 @@ public class CouponValidator {
             throw new BusinessException(ErrorCode.INVALID_COUPON_PERIOD);
         }
         if (request.issueCount() < event.getIssuedCount()) {
-            throw new BusinessException(ErrorCode.INVALID_DISCOUNT_VALUE);
+            throw new BusinessException(ErrorCode.INVALID_ISSUE_COUNT);
         }
     }
 
