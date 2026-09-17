@@ -50,6 +50,7 @@ import java.util.TreeMap;
  * @modified 2026/05/08 by WonJin - feat: 쿠폰 사용 주문 + 보상 트랜잭션 — placeOrder 가 CouponPort.useUserCoupon (비관적 락 + 검증 + 할인 + USED 전이) 호출, cancelOrder 에 restoreUserCoupon 추가 (결제 실패 시 UNUSED 복구). 시나리오 2-2 측정 위한 구현.
  * @modified 2026/09/17 by WonJin - fix: cancelUnpaidOrder 추가 — 만료·결제 실패 처리는 결제 대기 주문만 취소 (이미 결제된 주문을 환불 없이 취소하던 경로 차단)
  * @modified 2026/09/17 by WonJin - fix: 결제 후 취소를 cancelPaidOrder 로 분리(배송 준비·배송 완료 주문 포함), 배송 상태 변경 시 주문 행 락
+ * @modified 2026/09/17 by WonJin - fix: 쿠폰 할인 기준으로 스토어별 주문 금액 전달 (스토어 쿠폰이 다른 스토어 상품까지 할인하던 문제)
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -87,11 +88,11 @@ public class OrderService {
                 .mapToInt(OrderDetail::getTotalPrice)
                 .sum();
 
-        // 쿠폰 사용 — 비관적 락으로 동시 사용 차단 + 검증 + 할인 적용 + UNUSED → USED
-        // 결제 실패 시 cancelOrder 가 보상으로 markUnused 호출
+        // 쿠폰은 비관적 락으로 동시 사용을 막고 USED로 바꾸며, 결제 실패·주문 취소 시 UNUSED로 복구된다.
+        // 할인 기준 금액은 쿠폰 유형(플랫폼/스토어)에 따라 쿠폰 도메인이 고르도록 스토어별 금액을 넘긴다.
         if (request.userCouponId() != null) {
             CouponUsageResult usage = couponPort.useUserCoupon(
-                    userId, request.userCouponId(), totalAmount);
+                    userId, request.userCouponId(), amountByStore(savedDetails));
             savedOrder.applyDiscount(usage.discountAmount());
             // OrderDetail 의 첫 번째 항목에 userCoupon 연결 (cancelOrder 보상 시 추적용)
             if (!savedDetails.isEmpty()) {
@@ -235,6 +236,14 @@ public class OrderService {
         }
 
         return orderDetailRepository.saveAll(details);
+    }
+
+    private Map<Long, Integer> amountByStore(List<OrderDetail> details) {
+        Map<Long, Integer> amounts = new HashMap<>();
+        for (OrderDetail detail : details) {
+            amounts.merge(detail.getProductOption().getStoreId(), detail.getTotalPrice(), Integer::sum);
+        }
+        return amounts;
     }
 
     private List<OrderDetailRequest> mergeAndSort(List<OrderDetailRequest> detailRequests) {

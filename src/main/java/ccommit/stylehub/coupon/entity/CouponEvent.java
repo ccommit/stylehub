@@ -24,6 +24,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 /**
  * @author WonJin Bae
@@ -33,6 +34,7 @@ import java.time.LocalDateTime;
  * @modified 2026/04/09 by WonJin - feat: issuedCount 필드 추가, 선착순 발급 검증 메서드 추가
  * @modified 2026/04/16 by WonJin - refactor: couponType 필드 추가, PLATFORM/STORE 명시적 구분
  * @modified 2026/05/08 by WonJin - feat: calculateDiscount 에 minOrderAmount 검증 추가 (쿠폰 사용 주문 시 최소 주문 금액 미달 거절)
+ * @modified 2026/09/17 by WonJin - fix: 쿠폰 유형에 따라 할인 기준 금액을 고르는 discountBaseAmount 추가 (스토어 쿠폰은 발행 스토어 상품 금액만)
  *
  * <p>
  * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
@@ -145,12 +147,18 @@ public class CouponEvent extends BaseEntity {
         this.expiredAt = expiredAt;
     }
 
-    /**
-     * 최소 주문 금액을 검증한 후 할인 금액을 계산한다.
-     *
-     * <p>최소 금액 미달 시 MIN_ORDER_AMOUNT_NOT_MET 던짐 — 쿠폰 사용 불가.
-     * 검증 통과 시 discountType 에 따라 FIXED (정액) 또는 RATE (정률) 계산.
-     */
+    // 스토어 쿠폰은 발행 스토어가 할인 비용을 부담하므로 발행 스토어 상품 금액만 기준으로 삼는다. 다른 스토어 상품까지 할인하면 정산 기준이 틀어진다.
+    public int discountBaseAmount(Map<Long, Integer> amountByStore) {
+        if (this.couponType == CouponType.PLATFORM) {
+            return amountByStore.values().stream().mapToInt(Integer::intValue).sum();
+        }
+        Integer storeAmount = amountByStore.get(this.storeUser.getUserId());
+        if (storeAmount == null || storeAmount == 0) {
+            throw new BusinessException(ErrorCode.COUPON_NOT_APPLICABLE);
+        }
+        return storeAmount;
+    }
+
     public int calculateDiscount(int orderAmount) {
         if (orderAmount < this.minOrderAmount) {
             throw new BusinessException(ErrorCode.MIN_ORDER_AMOUNT_NOT_MET);
