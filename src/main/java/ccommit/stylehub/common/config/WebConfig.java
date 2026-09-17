@@ -18,6 +18,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @modified 2026/03/23 by WonJin - feat: 인증/역할 검증 인터셉터 등록
  * @modified 2026/03/27 by WonJin - feat: 상품 조회 공개 API 경로 인증 제외 추가
  * @modified 2026/04/16 by WonJin - refactor: @RestController 공통 프리픽스 /api/v1 자동 부여
+ * @modified 2026/09/17 by WonJin - fix: 결제 인증 제외 범위를 토스 콜백(success/fail)으로 축소 — 결제 취소 API 무인증 호출 차단
  *
  * <p>
  * Spring MVC 커스텀 Converter, 인터셉터, 공통 경로 프리픽스를 등록한다.
@@ -58,7 +59,10 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
                         "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
                         "/api/v1/products/**",     // 상품 조회 — 비인증 공개 API
-                        "/api/v1/payments/**",     // 토스 결제 콜백 — 토스 서버에서 리다이렉트
+                        // 토스 결제 콜백 — 토스 결제창에서 리다이렉트. 취소(/payments/{id}/cancel)는 로그인 필요하므로
+                        // /payments/** 로 넓게 열지 않고 콜백 경로만 명시한다.
+                        "/api/v1/payments/success",
+                        "/api/v1/payments/fail",
                         "/v3/api-docs/**",         // Swagger API 문서
                         "/swagger-ui/**",          // Swagger UI 웹 화면
                         "/actuator/**"             // Spring Boot Actuator 모니터링

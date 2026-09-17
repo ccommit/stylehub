@@ -6,6 +6,8 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
+import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.UserRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -21,9 +23,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * @author WonJin Bae
  * @created 2026/08/27
+ * @modified 2026/09/17 by WonJin - test: validateCancelAuthority(주문자 본인/타인/관리자) 검증 추가
  *
  * <p>
- * PaymentValidator의 결제 승인/취소 가능 여부, 금액 위변조, 배송 상태별 취소·환불 기한
+ * PaymentValidator의 결제 승인/취소 가능 여부, 금액 위변조, 취소 요청자 권한, 배송 상태별 취소·환불 기한
  * 검증 로직을 검증하는 단위테스트이다. 외부 의존성이 없어 Mock 없이 실제 객체로 검증한다.
  * </p>
  */
@@ -97,6 +100,57 @@ class PaymentValidatorTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+        }
+    }
+
+    @Nested
+    @DisplayName("validateCancelAuthority")
+    class ValidateCancelAuthority {
+
+        private final Long ownerId = 1L;
+        private final Long otherUserId = 2L;
+
+        private Payment paymentOrderedBy(Long userId) {
+            Order order = Order.builder()
+                    .user(User.builder().userId(userId).build())
+                    .orderStatus(OrderStatus.PAID)
+                    .build();
+            return paymentWith(PaymentStatus.DONE, order, 10000, 10000);
+        }
+
+        @Test
+        @DisplayName("주문자 본인이면 예외가 발생하지 않는다")
+        void 주문자_본인이면_통과한다() {
+            // given
+            Payment payment = paymentOrderedBy(ownerId);
+
+            // when & then
+            assertThatCode(() -> validator.validateCancelAuthority(payment, ownerId, UserRole.USER))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("주문자가 아니면 UNAUTHORIZED_PAYMENT_ACCESS 예외가 발생한다")
+        void 주문자가_아니면_예외() {
+            // given
+            Payment payment = paymentOrderedBy(ownerId);
+
+            // when & then
+            assertThatThrownBy(() -> validator.validateCancelAuthority(payment, otherUserId, UserRole.USER))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS);
+        }
+
+        @Test
+        @DisplayName("관리자는 주문자가 아니어도 예외가 발생하지 않는다")
+        void 관리자는_주문자가_아니어도_통과한다() {
+            // given
+            Payment payment = paymentOrderedBy(ownerId);
+
+            // when & then
+            assertThatCode(() -> validator.validateCancelAuthority(payment, otherUserId, UserRole.ADMIN))
+                    .doesNotThrowAnyException();
         }
     }
 

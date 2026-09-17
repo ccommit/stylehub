@@ -14,8 +14,11 @@ import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
+import ccommit.stylehub.user.enums.UserRole;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
  * @modified 2026/04/22 by WonJin - refactor: createReady 시그니처 primitives로 변경, Order FK는 EntityManager.getReference 프록시로 처리 (도메인 경계 누수 해소)
  * @modified 2026/09/08 by WonJin - feat: reconcileIfApproved 구현 — 만료 처리 직전 PG 결제 상태 대조로 승인 응답 유실 구간 축소
  * @modified 2026/05/01 by WonJin - fix: confirmPayment 동시 호출 멱등성 보장 — findByOrderPgOrderIdWithLock 으로 비관적 락 조회 도입 (PaymentIdempotencyTest.concurrentIdempotency 노출 버그 해소)
+ * @modified 2026/09/17 by WonJin - fix: cancelPayment 에 요청자 권한 검증 추가 — 주문자 본인/관리자만 취소 가능 (타인 결제 취소 차단)
+ * @modified 2026/09/17 by WonJin - fix: 실패 콜백을 승인 대기 결제에만 반영 — 승인된 결제가 환불 없이 ABORTED·주문 취소되던 문제 해결
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -39,6 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PaymentService implements PaymentPort {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
@@ -119,11 +126,15 @@ public class PaymentService implements PaymentPort {
     }
 
     // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
+    // 권한 검증을 상태 검증보다 먼저 수행해, 권한 없는 요청자에게 남의 주문·배송·결제 상태가 응답으로 노출되지 않게 한다.
+    // 결제 존재 여부는 404(없음)와 403(타인)의 차이로 드러나는데, 주문 조회 API 와 같은 기준을 유지했다.
     @Transactional
-    public PaymentResponse cancelPayment(Long paymentId, String cancelReason, Integer cancelAmount) {
+    public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
+                                         String cancelReason, Integer cancelAmount) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 
+        paymentValidator.validateCancelAuthority(payment, requesterId, requesterRole);
         paymentValidator.validateCancel(payment, cancelAmount);
 
         paymentClientFactory.getClient("TOSS")
@@ -142,18 +153,24 @@ public class PaymentService implements PaymentPort {
         return PaymentResponse.from(payment);
     }
 
-    // 토스 결제창에서 사용자가 취소/실패 시 failUrl(/fail)로 리다이렉트되어 호출된다.
-    // confirmPayment()와 별도 요청이므로 독립 메서드로 존재한다.
+    /**
+     * 토스 결제창에서 사용자가 취소하거나 인증에 실패하면 failUrl(/fail)로 리다이렉트되어 호출된다.
+     *
+     * <p>이 경로는 인증 없이 열려 있고 누구나 pgOrderId 로 호출할 수 있다. 그래서 승인 대기(READY, IN_PROGRESS)
+     * 결제에만 반영하고, 이미 승인·취소된 결제에 대한 호출은 아무것도 바꾸지 않고 끝낸다(멱등).
+     * 승인 콜백과 동시에 들어와도 한쪽만 반영되도록 승인 경로와 같은 비관적 락으로 조회한다.
+     */
     @Transactional
     public void handlePaymentFailure(String pgOrderId) {
-        Payment payment = findPaymentByOrderId(pgOrderId);
+        Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+
+        if (!payment.isAwaitingApproval()) {
+            log.info("승인 대기 상태가 아닌 결제의 실패 콜백 무시: pgOrderId={}, status={}", pgOrderId, payment.getStatus());
+            return;
+        }
 
         payment.abort();
         eventPublisher.publishEvent(new PaymentFailedEvent(payment.getOrder().getOrderId()));
-    }
-
-    private Payment findPaymentByOrderId(String pgOrderId) {
-        return paymentRepository.findByOrderPgOrderId(pgOrderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 }

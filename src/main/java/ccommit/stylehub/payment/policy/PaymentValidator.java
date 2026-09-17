@@ -6,6 +6,7 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
+import ccommit.stylehub.user.enums.UserRole;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -14,10 +15,11 @@ import java.time.LocalDateTime;
  * @author WonJin Bae
  * @created 2026/04/01
  * @modified 2026/04/08 by WonJin - refactor: validateCancel()로 취소 검증 일원화, CancelPolicy 로직 통합
+ * @modified 2026/09/17 by WonJin - fix: validateCancelAuthority 추가 — 주문자 본인/관리자만 결제 취소 허용
  *
  * <p>
  * 결제 승인/취소 전 검증 로직을 담당한다.
- * 상태 검증, 금액 위변조 검증, 배송 상태별 취소 가능 여부, 부분 취소 잔액 검증을 수행한다.
+ * 상태 검증, 금액 위변조 검증, 취소 요청자 권한, 배송 상태별 취소 가능 여부, 부분 취소 잔액 검증을 수행한다.
  * </p>
  */
 @Component
@@ -36,6 +38,16 @@ public class PaymentValidator {
     public void validateAmount(Payment payment, Integer amount) {
         if (!payment.getRequestedAmount().equals(amount)) {
             throw new BusinessException(ErrorCode.PAYMENT_AMOUNT_MISMATCH);
+        }
+    }
+
+    // 결제 취소 요청자 검증 — 주문자 본인 또는 관리자(ADMIN)만 취소할 수 있다.
+    public void validateCancelAuthority(Payment payment, Long requesterId, UserRole requesterRole) {
+        if (requesterRole == UserRole.ADMIN) {
+            return;
+        }
+        if (!payment.getOrder().getUser().getUserId().equals(requesterId)) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS);
         }
     }
 
