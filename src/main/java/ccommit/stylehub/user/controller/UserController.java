@@ -1,6 +1,7 @@
 package ccommit.stylehub.user.controller;
 
 import ccommit.stylehub.common.config.RequiredRole;
+import ccommit.stylehub.common.util.OAuthStateUtils;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.user.dto.request.StoreSignUpRequest;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
@@ -36,6 +37,7 @@ import java.util.Map;
  * @author WonJin Bae
  * @created 2026/03/21 08:17
  * @modified 2026/04/19 by WonJin - refactor: StoreController, StoreAdminController를 UserController로 통합
+ * @modified 2026/09/17 by WonJin - fix: OAuth 인가 요청에 state 발급, 콜백에서 세션 state 를 검증한 뒤에만 로그인 세션 생성(로그인 CSRF 방지)
  *
  * <p>
  * 회원, 스토어, 관리자 API를 제공한다.
@@ -47,10 +49,6 @@ public class UserController {
 
     private final UserService userService;
     private final OAuthService oAuthService;
-
-    // ========================
-    // 회원 API (인증 불필요)
-    // ========================
 
     @PostMapping("/users/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
@@ -74,8 +72,10 @@ public class UserController {
 
     @GetMapping("/users/oauth/{provider}")
     public ResponseEntity<Map<String, String>> authorizationUrl(
-            @PathVariable OAuthProvider provider) {
-        String url = oAuthService.getAuthorizationUrl(provider);
+            @PathVariable OAuthProvider provider,
+            HttpServletRequest httpRequest) {
+        String state = OAuthStateUtils.issue(httpRequest);
+        String url = oAuthService.getAuthorizationUrl(provider, state);
         return ResponseEntity.ok(Map.of("authorizationUrl", url));
     }
 
@@ -83,7 +83,12 @@ public class UserController {
     public ResponseEntity<OAuthLoginResponse> callback(
             @PathVariable OAuthProvider provider,
             @RequestParam String code,
+            // 누락도 불일치와 같은 INVALID_OAUTH_STATE 로 응답하기 위해 필수 파라미터로 두지 않는다.
+            @RequestParam(required = false) String state,
             HttpServletRequest httpRequest) {
+        // createSession 이 기존 세션(state 포함)을 무효화하므로 검증은 그 전에 끝낸다.
+        // 위조된 콜백이 제공자 호출까지 이어지지 않도록 인가 코드 교환보다도 먼저 한다.
+        OAuthStateUtils.verifyAndConsume(httpRequest, state);
         OAuthLoginResponse loginResult = oAuthService.login(provider, code);
         SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
         return ResponseEntity.ok(loginResult);

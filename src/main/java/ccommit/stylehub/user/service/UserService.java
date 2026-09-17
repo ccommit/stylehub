@@ -23,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -35,6 +36,7 @@ import java.util.function.Consumer;
  * @modified 2026/04/19 by WonJin - refactor: StoreService, StoreAdminService, PointRewardService를 UserService로 통합
  * @modified 2026/09/08 by WonJin - fix: rewardLoginPoint 를 TransactionTemplate 으로 전환 — login() 의 self-invocation 으로 @Transactional 이 적용되지 않아 포인트 적립이 DB 에 반영되지 않던 문제 해결
  * @modified 2026/09/15 by WonJin - feat: getUserReference 추가 (선착순 쿠폰 발급에서 사용자 조회 쿼리 제거)
+ * @modified 2026/09/17 by WonJin - fix: 로그인 시 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정을 모두 INVALID_PASSWORD 로 응답하고 더미 해시 검증으로 응답 시간을 맞춤(소셜 계정 NPE 500, 가입 여부 노출 해결)
  *
  * <p>
  * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다.
@@ -106,13 +108,18 @@ public class UserService implements UserPort {
         return StoreSignUpResponse.from(user);
     }
 
+    // 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정도 INVALID_PASSWORD로 응답해 가입 여부와 계정 유형을 숨긴다.
+    // 이때도 더미 해시로 BCrypt 검증을 수행해 응답 시간으로 가입 여부를 추정하지 못하게 한다.
     public UserLoginResponse login(UserLoginRequest request) {
-        User user = Objects.requireNonNull(
-                transactionTemplate.execute(status ->
-                        userRepository.findByEmail(request.email())
-                                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_PASSWORD))
-                )
+        Optional<User> found = Objects.requireNonNull(
+                transactionTemplate.execute(status -> userRepository.findByEmail(request.email()))
         );
+
+        User user = found.filter(this::canLoginWithPassword).orElse(null);
+        if (user == null) {
+            passwordHasher.verifyDummy(request.password());
+            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
+        }
 
         if (!passwordHasher.matches(request.password(), user.getPassword())) {
             throw new BusinessException(ErrorCode.INVALID_PASSWORD);
@@ -123,6 +130,11 @@ public class UserService implements UserPort {
         }
 
         return UserLoginResponse.from(user);
+    }
+
+    // 소셜 가입 계정은 비밀번호가 없고, 비활성 계정은 로그인 대상이 아니다.
+    private boolean canLoginWithPassword(User user) {
+        return user.getPassword() != null && Boolean.TRUE.equals(user.getActive());
     }
 
     @Override
