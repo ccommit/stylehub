@@ -16,6 +16,7 @@ import java.util.Optional;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/09/17 by WonJin - fix: 보정 대상 조회에 정렬 추가 (배치 제한 안에서 오래된 주문부터 처리)
  *
  * <p>
  * Order 엔티티의 데이터 접근을 담당한다.
@@ -27,7 +28,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.orderId = :orderId")
     Optional<Order> findByIdWithLock(@Param("orderId") Long orderId);
 
-    @Query("SELECT o FROM Order o WHERE o.orderStatus = :status AND o.createdAt < :expiredTime")
+    @Query("SELECT o FROM Order o WHERE o.orderStatus = :status AND o.createdAt < :expiredTime ORDER BY o.orderId")
     List<Order> findExpiredOrders(@Param("status") OrderStatus status,
                                  @Param("expiredTime") LocalDateTime expiredTime,
                                  Pageable pageable);
