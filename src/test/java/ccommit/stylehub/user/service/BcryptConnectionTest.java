@@ -24,25 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author WonJin Bae
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/09/17 by WonJin - test: 중복 Javadoc 3개를 헤더 하나로 합치고, 풀 크기·요청 수를 실제 상수와 맞추고, 측정 조건의 한계를 사실대로 정정(테스트 로직은 그대로)
  *
  * <p>
- * BCrypt 해싱 위치에 따른 커넥션 풀 영향을 비교하는 성능 테스트이다.
- * 트랜잭션 분리 설계가 커넥션 풀 고갈을 방지함을 실증한다.
+ * BCrypt 해싱을 커넥션을 잡은 채 할 때와 얻기 전에 할 때의 풀 영향을 Spring 없이 HikariCP·H2로 비교한다.
+ * cost·DB·풀·쿼리가 운영과 달라 수치를 운영 성능으로 읽으면 안 되며, 실제 요청의 점유는 LoginConnectionHoldingOsivOnTest·LoginConnectionHoldingOsivOffTest가 측정한다.
  * </p>
- */
-
-/**
- * @author WonJin Bae
- * @created 2026/03/21 08:17
- * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
- * @summary BCrypt 커넥션 점유 비교 테스트
- */
-
-/**
- * BCrypt 커넥션 점유 문제 — 변경 전/후 비교 테스트
- *
- * HikariCP 커넥션 풀(최대 10개)에 동시 50개 요청을 보내서
- * 커넥션 점유 시간, 타임아웃 발생 여부, 처리량을 비교한다.
  */
 class BcryptConnectionTest {
 
