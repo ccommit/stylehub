@@ -44,7 +44,9 @@ dependencies {
 
  
     // Spring Session — 다중 인스턴스 환경에서 세션을 Redis 에 저장 (Tomcat 메모리 세션의 분산 한계 해결)
-    implementation 'org.springframework.session:spring-session-data-redis'
+    // Boot 4 는 세션 자동 설정을 spring-boot-session 모듈로 분리했다. 스타터를 써야 server.servlet.session.cookie.* 와
+    // spring.session.* 설정이 실제 쿠키·저장소에 반영된다. spring-session-data-redis 만 두면 이 설정들이 조용히 무시된다.
+    implementation 'org.springframework.boot:spring-boot-starter-session-data-redis'
  
     // Spring Cache (Redis 를 CacheManager 로 활용)
     implementation 'org.springframework.boot:spring-boot-starter-cache'
