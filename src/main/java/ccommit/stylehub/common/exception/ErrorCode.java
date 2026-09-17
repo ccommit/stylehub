@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
  * @author WonJin Bae
  * @created 2026/03/22
  * @modified 2026/03/24 by WonJin - refactor: bwj 패키지명 ccommit으로 변경, Auth 에러코드 추가
+ * @modified 2026/09/17 by WonJin - feat: UNAUTHORIZED_PAYMENT_ACCESS 추가 (타인 결제 취소 차단)
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -64,6 +65,7 @@ public enum ErrorCode {
     INVALID_CANCEL_AMOUNT(HttpStatus.BAD_REQUEST, "PM006", "취소 금액이 잔액을 초과합니다"),
     CANCEL_NOT_ALLOWED_SHIPPING(HttpStatus.BAD_REQUEST, "PM007", "배송 중에는 취소할 수 없습니다"),
     REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간이 지났습니다"),
+    UNAUTHORIZED_PAYMENT_ACCESS(HttpStatus.FORBIDDEN, "PM009", "본인 결제만 취소할 수 있습니다"),
 
     // Coupon
     COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "CP001", "존재하지 않는 쿠폰 이벤트입니다"),
