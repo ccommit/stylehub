@@ -238,8 +238,8 @@ class PaymentCancelOrderConsistencyTest {
     void rejectsDeliveryChangeForMultiStoreOrder() {
         // given
         OrderFixtureFactory.Fixture buyer = fixtureFactory.create(INITIAL_STOCK);
-        OrderFixtureFactory.StoreOption storeA = fixtureFactory.createApprovedStoreOption(INITIAL_STOCK);
-        OrderFixtureFactory.StoreOption storeB = fixtureFactory.createApprovedStoreOption(INITIAL_STOCK);
+        OrderFixtureFactory.StoreProduct storeA = fixtureFactory.createStoreProduct(INITIAL_STOCK);
+        OrderFixtureFactory.StoreProduct storeB = fixtureFactory.createStoreProduct(INITIAL_STOCK);
         OrderResponse placed = orderService.placeOrder(buyer.userId(), new OrderCreateRequest(
                 buyer.addressId(),
                 List.of(new OrderDetailRequest(storeA.optionId(), 1), new OrderDetailRequest(storeB.optionId(), 1)),
@@ -260,7 +260,7 @@ class PaymentCancelOrderConsistencyTest {
 
     private PaidOrder placePaidOrder() {
         OrderFixtureFactory.Fixture buyer = fixtureFactory.create(INITIAL_STOCK);
-        OrderFixtureFactory.StoreOption store = fixtureFactory.createApprovedStoreOption(INITIAL_STOCK);
+        OrderFixtureFactory.StoreProduct store = fixtureFactory.createStoreProduct(INITIAL_STOCK);
         OrderResponse placed = orderService.placeOrder(buyer.userId(), new OrderCreateRequest(
                 buyer.addressId(), List.of(new OrderDetailRequest(store.optionId(), 1)), null
         ));
