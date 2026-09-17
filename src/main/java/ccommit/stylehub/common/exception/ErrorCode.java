@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - feat: COUPON_NOT_APPLICABLE 추가 (발행 스토어 상품이 없는 주문의 스토어 쿠폰 사용 거절)
  * @modified 2026/09/17 by WonJin - fix: PRODUCT_NOT_ON_SALE 추가 (승인 상태가 아닌 스토어 상품 주문 거절)
  * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
+ * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -38,6 +39,9 @@ public enum ErrorCode {
     ALREADY_REGISTERED_OTHER_PROVIDER(HttpStatus.CONFLICT, "O002", "이미 다른 소셜 계정으로 가입된 이메일입니다"),
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "O003", "지원하지 않는 OAuth Provider입니다"),
     OAUTH_AUTHENTICATION_FAILED(HttpStatus.UNAUTHORIZED, "O004", "OAuth 인증에 실패했습니다"),
+    INVALID_OAUTH_STATE(HttpStatus.BAD_REQUEST, "O005", "OAuth 로그인 요청이 유효하지 않습니다. 로그인을 다시 시작해주세요"),
+    OAUTH_NICKNAME_CONFLICT(HttpStatus.CONFLICT, "O006", "소셜 가입 닉네임을 정하지 못했습니다. 잠시 후 다시 시도해주세요"),
+    OAUTH_PROVIDER_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "O007", "OAuth 제공자와 통신하지 못했습니다. 잠시 후 다시 시도해주세요"),
 
     // Store
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "존재하지 않는 스토어입니다"),
