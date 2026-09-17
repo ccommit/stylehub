@@ -37,6 +37,7 @@ import java.util.UUID;
  * @modified 2026/04/22 by WonJin - refactor: cancel/cancelPaid 통합 (내부 상태 PENDING/PAID 모두 허용) — 호출자가 상태를 알 필요 없게 함
  * @modified 2026/05/08 by WonJin - feat: applyDiscount 추가 (쿠폰 사용 주문 시 할인 금액 반영)
  * @modified 2026/09/17 by WonJin - fix: 결제 대기 여부 조회 추가 (만료 처리는 결제 대기 주문만 취소)
+ * @modified 2026/09/17 by WonJin - fix: 취소를 결제 전(cancelUnpaid)·결제 후 환불(cancelPaid)로 나누고 결제 후 취소 허용 상태를 한 곳에서 정의, 미사용 startDelivery 제거
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -110,17 +111,28 @@ public class Order extends BaseEntity {
         return this.orderStatus == OrderStatus.PENDING;
     }
 
-    // 주문 취소 — PENDING(결제 전) 또는 PAID(결제 완료) 상태에서만 전환 가능
-    public void cancel() {
-        if (this.orderStatus != OrderStatus.PENDING && this.orderStatus != OrderStatus.PAID) {
+    // 결제 전 취소 — 결제 대기(PENDING) 주문만 가능하다. 결제 만료·실패 처리가 사용한다.
+    public void cancelUnpaid() {
+        if (!isAwaitingPayment()) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.CANCELLED;
     }
 
-    // 결제 완료 시 배송 준비 상태로 전환
-    public void startDelivery() {
-        this.orderStatus = OrderStatus.PREPARING;
+    // 결제 검증과 주문 취소의 허용 상태가 다르면 PG 환불 뒤 주문 취소가 거절돼 어긋나므로 둘이 이 규칙을 함께 쓴다.
+    // 배송 완료(DELIVERED) 주문의 환불 기한은 결제 검증기가 따로 확인한다.
+    public boolean isCancelableAfterPayment() {
+        return this.orderStatus == OrderStatus.PAID
+                || this.orderStatus == OrderStatus.PREPARING
+                || this.orderStatus == OrderStatus.DELIVERED;
+    }
+
+    // 결제 후 취소(환불) — 결제 완료·배송 준비·배송 완료 주문만 가능하다. 배송 중에는 취소할 수 없다.
+    public void cancelPaid() {
+        if (!isCancelableAfterPayment()) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+        this.orderStatus = OrderStatus.CANCELLED;
     }
 
     // 주문 상태를 변경한다. 검증은 DeliveryValidator에서 처리.
@@ -128,7 +140,7 @@ public class Order extends BaseEntity {
         this.orderStatus = newStatus;
     }
 
-    // 결제 완료 처리 — PENDING → PAID + 배송 준비(PREPARING) 자동 설정
+    // 결제 완료 처리 — PENDING → PAID. 배송 준비(PREPARING)는 스토어가 주문을 확인하고 배송 상태 API 로 전환한다.
     public void markPaid() {
         if (this.orderStatus != OrderStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
