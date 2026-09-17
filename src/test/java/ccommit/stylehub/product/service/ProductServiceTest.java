@@ -3,6 +3,8 @@ package ccommit.stylehub.product.service;
 import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.product.dto.request.ProductCreateRequest;
+import ccommit.stylehub.product.dto.request.ProductOptionRequest;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductOptionResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
@@ -10,6 +12,7 @@ import ccommit.stylehub.product.entity.Product;
 import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
+import ccommit.stylehub.product.repository.OptionStock;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
@@ -31,6 +34,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -41,6 +46,7 @@ import static org.mockito.Mockito.never;
  * @author WonJin Bae
  * @created 2026/04/24
  * @modified 2026/09/17 by WonJin - test: 재고 변경 옵션 소속 검증(IDOR), 스토어 승인 조건 재고 차감의 실패 원인 구분, 상세 조회 승인 상태 조건 테스트 추가
+ * @modified 2026/09/17 by WonJin - test: 재고 변경·품절 전환·재고 복구·상품 등록 시 캐시 무효화 요청 검증, 목록 조회가 정규화된 페이지 크기를 받도록 갱신
  *
  * <p>
  * ProductService 의 단위 테스트이다.
@@ -61,6 +67,9 @@ class ProductServiceTest {
     @Mock
     private ProductOptionRepository productOptionRepository;
 
+    @Mock
+    private ProductCacheEvictor productCacheEvictor;
+
     @InjectMocks
     private ProductService productService;
 
@@ -78,8 +87,8 @@ class ProductServiceTest {
     class GetProducts {
 
         @Test
-        @DisplayName("필터 없이 호출하면 기본 페이지 크기만큼 조회 쿼리가 실행된다")
-        void callsQueryWithDefaultPageSize_whenNoFilter() {
+        @DisplayName("필터 없이 호출하면 전달받은 페이지 크기 + 1건으로 조회 쿼리가 실행된다")
+        void callsQueryWithPageSizePlusOne_whenNoFilter() {
             // given
             Product product = createMockProduct(1L);
             ProductListResponse dto = ProductListResponse.from(product);
@@ -88,7 +97,7 @@ class ProductServiceTest {
 
             // when
             CursorResponse<ProductListResponse> response =
-                    productService.getProducts(null, null, null, null, null);
+                    productService.getProducts(null, null, null, null, ProductPageSizePolicy.DEFAULT_PAGE_SIZE);
 
             // then
             assertThat(response.items()).hasSize(1);
@@ -108,7 +117,7 @@ class ProductServiceTest {
                     .willReturn(List.of());
 
             // when
-            productService.getProducts(null, storeId, mainCategory, subCategory, null);
+            productService.getProducts(null, storeId, mainCategory, subCategory, ProductPageSizePolicy.DEFAULT_PAGE_SIZE);
 
             // then
             then(productQueryRepository).should()
@@ -196,9 +205,10 @@ class ProductServiceTest {
             // when
             ProductOptionResponse response = productService.updateStock(STORE_ID, PRODUCT_ID, OPTION_ID, 3);
 
-            // then
+            // then — 수동 변경은 판매 가능 여부와 무관하게 커밋 후 상세 캐시 무효화를 요청한다
             assertThat(response.stockQuantity()).isEqualTo(3);
             assertThat(option.getStockQuantity()).isEqualTo(3);
+            then(productCacheEvictor).should().evictDetailAfterCommit(PRODUCT_ID);
         }
 
         @Test
@@ -213,6 +223,7 @@ class ProductServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
             assertThat(option.getStockQuantity()).isEqualTo(10);
+            then(productCacheEvictor).should(never()).evictDetailAfterCommit(anyLong());
         }
 
         @Test
@@ -249,9 +260,9 @@ class ProductServiceTest {
         private static final Long OPTION_ID = 100L;
 
         @Test
-        @DisplayName("승인 스토어 조건의 원자 UPDATE 가 1건이면 옵션을 반환하고 원인 조회는 하지 않는다")
-        void returnsOption_whenDecreased() {
-            // given
+        @DisplayName("승인 스토어 조건의 원자 UPDATE 가 1건이면 옵션을 반환하고, 재고가 남아 있으면 상세 캐시를 유지한다")
+        void returnsOption_andKeepsDetailCache_whenStockRemains() {
+            // given — 차감 후 재고 9
             ProductOption option = createOption(createMockProduct(1L), OPTION_ID, 9);
             given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(1);
             given(productOptionRepository.findById(OPTION_ID)).willReturn(Optional.of(option));
@@ -262,6 +273,22 @@ class ProductServiceTest {
             // then
             assertThat(result).isSameAs(option);
             then(productOptionRepository).should(never()).findByIdWithProductAndStore(anyLong());
+            then(productCacheEvictor).should(never()).evictDetailAfterCommit(anyLong());
+        }
+
+        @Test
+        @DisplayName("차감으로 재고가 0 이 되면 판매 가능 여부가 바뀌었으므로 상세 캐시 무효화를 요청한다")
+        void evictsDetailCache_whenSoldOut() {
+            // given — 차감 후 재고 0
+            ProductOption option = createOption(createMockProduct(1L), OPTION_ID, 0);
+            given(productOptionRepository.decreaseStockAtomic(OPTION_ID, 1, StoreStatus.APPROVED)).willReturn(1);
+            given(productOptionRepository.findById(OPTION_ID)).willReturn(Optional.of(option));
+
+            // when
+            productService.decreaseStockWithLock(OPTION_ID, 1);
+
+            // then
+            then(productCacheEvictor).should().evictDetailAfterCommit(1L);
         }
 
         @Test
@@ -308,6 +335,78 @@ class ProductServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INSUFFICIENT_STOCK);
             then(productOptionRepository).should(never()).findById(anyLong());
+            then(productCacheEvictor).should(never()).evictDetailAfterCommit(anyLong());
+        }
+    }
+
+    @Nested
+    @DisplayName("increaseStock (주문 취소 재고 복구)")
+    class IncreaseStock {
+
+        private static final Long OPTION_ID = 100L;
+
+        @Test
+        @DisplayName("품절(0)에서 복구되면 상세 캐시 무효화를 요청한다")
+        void evictsDetailCache_whenRestoredFromSoldOut() {
+            // given: 복구 후 DB 재고 2 = 복구 수량 2 → 복구 전 0
+            given(productOptionRepository.increaseStockAtomic(OPTION_ID, 2)).willReturn(1);
+            given(productOptionRepository.findOptionStock(OPTION_ID)).willReturn(new OptionStock(1L, 2));
+
+            // when
+            productService.increaseStock(OPTION_ID, 2);
+
+            // then
+            then(productCacheEvictor).should().evictDetailAfterCommit(1L);
+        }
+
+        @Test
+        @DisplayName("재고가 남아 있던 옵션을 복구하면 판매 가능 여부가 그대로라 상세 캐시를 유지한다")
+        void keepsDetailCache_whenStockRemained() {
+            // given: 복구 후 DB 재고 5 ≠ 복구 수량 2 → 복구 전 3
+            given(productOptionRepository.increaseStockAtomic(OPTION_ID, 2)).willReturn(1);
+            given(productOptionRepository.findOptionStock(OPTION_ID)).willReturn(new OptionStock(1L, 5));
+
+            // when
+            productService.increaseStock(OPTION_ID, 2);
+
+            // then
+            then(productCacheEvictor).should(never()).evictDetailAfterCommit(anyLong());
+        }
+
+        @Test
+        @DisplayName("옵션이 없으면 PRODUCT_OPTION_NOT_FOUND 이고 재고 조회·캐시 무효화를 하지 않는다")
+        void throws_whenOptionMissing() {
+            // given
+            given(productOptionRepository.increaseStockAtomic(OPTION_ID, 2)).willReturn(0);
+
+            // when / then
+            assertThatThrownBy(() -> productService.increaseStock(OPTION_ID, 2))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+            then(productOptionRepository).should(never()).findOptionStock(anyLong());
+            then(productCacheEvictor).should(never()).evictDetailAfterCommit(anyLong());
+        }
+    }
+
+    @Nested
+    @DisplayName("registerProduct (상품 등록)")
+    class RegisterProduct {
+
+        @Test
+        @DisplayName("상품을 등록하면 첫 페이지 캐시 전체 무효화를 요청한다")
+        void clearsFirstPageCache_whenRegistered() {
+            // given
+            Product saved = createMockProduct(1L);
+            given(productRepository.save(any(Product.class))).willReturn(saved);
+            given(productOptionRepository.saveAll(anyList())).willReturn(List.of());
+            ProductCreateRequest request = new ProductCreateRequest("신상품", MainCategory.TOP, SubCategory.T_SHIRT,
+                    "설명", 10000, "https://img/1", List.of(new ProductOptionRequest("black", "M", 5, 0)));
+
+            // when
+            productService.registerProduct(storeUser, request);
+
+            // then
+            then(productCacheEvictor).should().clearFirstPageAfterCommit();
         }
     }
 

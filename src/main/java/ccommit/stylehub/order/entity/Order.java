@@ -14,6 +14,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -39,6 +40,7 @@ import java.util.UUID;
  * @modified 2026/09/17 by WonJin - fix: 결제 대기 여부 조회 추가 (만료 처리는 결제 대기 주문만 취소)
  * @modified 2026/09/17 by WonJin - fix: 취소를 결제 전(cancelUnpaid)·결제 후 환불(cancelPaid)로 나누고 결제 후 취소 허용 상태를 한 곳에서 정의, 미사용 startDelivery 제거
  * @modified 2026/09/17 by WonJin - fix: 주문번호 난수를 UUID 8자리(32비트)에서 전체 122비트로 확장 (대량 주문 시 유니크 충돌 방지)
+ * @modified 2026/09/17 by WonJin - fix: 내 주문 커서 페이징이 전제하는 (user_id, order_id) 인덱스를 @Table(indexes) 로 선언
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -46,7 +48,11 @@ import java.util.UUID;
  * </p>
  */
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", indexes = {
+        // OrderQueryRepository.findMyOrdersWithCursor(user_id = ? AND order_id < ? ORDER BY order_id DESC)가 전제하는 인덱스다.
+        // 운영 DB 는 ddl-auto=validate 라 이 선언으로 만들어지지 않는다. 운영 반영 DDL: scripts/db/create-cursor-paging-indexes.sql
+        @Index(name = "idx_orders_user_order_id", columnList = "user_id, order_id")
+})
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

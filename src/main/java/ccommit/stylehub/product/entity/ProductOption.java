@@ -27,6 +27,7 @@ import java.util.Objects;
  * @modified 2026/03/25 by WonJin - feat: 재고 수량 변경 메서드 추가
  * @modified 2026/03/27 by WonJin - feat: 주문 시 재고 차감/복구 메서드 추가
  * @modified 2026/09/17 by WonJin - fix: isOwnedBy 추가 (재고 변경 요청의 옵션이 요청 상품·스토어에 속하는지 검증)
+ * @modified 2026/09/17 by WonJin - fix: isSoldOut 추가 (판매 가능 여부가 바뀌는 순간에만 상품 상세 캐시를 무효화하기 위한 판단)
  *
  * <p>
  * 상품의 색상/사이즈별 옵션과 재고를 관리한다.
@@ -76,6 +77,10 @@ public class ProductOption {
 
     public void increaseStock(int quantity) {
         this.stockQuantity += quantity;
+    }
+
+    public boolean isSoldOut() {
+        return stockQuantity <= 0;
     }
 
     // 옵션이 지정한 상품에 속하고, 그 상품이 지정한 스토어의 것인지 확인한다. 경로 식별자 조작(IDOR) 방어용.

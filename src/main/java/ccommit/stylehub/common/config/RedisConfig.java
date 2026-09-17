@@ -3,10 +3,13 @@ package ccommit.stylehub.common.config;
 import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.product.dto.response.ProductListResponse;
 import ccommit.stylehub.product.dto.response.ProductResponse;
+import ccommit.stylehub.product.service.ProductCacheEvictor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.cache.BatchStrategies;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
+import org.springframework.data.redis.cache.RedisCacheWriter;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
@@ -26,6 +29,7 @@ import java.util.Map;
  * @modified 2026/04/01 by WonJin - docs: Lettuce vs Jedis 비교 및 선택 이유 추가
  * @modified 2026/04/24 by WonJin - feat: Spring Cache 용 RedisCacheManager 추가 (first page 캐싱)
  * @modified 2026/04/24 by WonJin - feat: 캐시 범위 확대 + 상세 조회 캐시 추가 (Step 5 — 1,000/2,000 users 대응)
+ * @modified 2026/09/17 by WonJin - fix: 캐시 전체 무효화를 KEYS 대신 SCAN 으로 수행, 캐시 이름을 ProductCacheEvictor 상수로 통일
  *
  * Redis 설정을 담당한다. 분산 락/타임아웃에는 StringRedisTemplate, 응답 캐싱에는 RedisCacheManager 를 사용한다.
  *
@@ -37,23 +41,19 @@ import java.util.Map;
 @Configuration
 public class RedisConfig {
 
-    private static final String LIST_CACHE = "products:firstPage";
-    private static final String DETAIL_CACHE = "products:detail";
+    private static final String LIST_CACHE = ProductCacheEvictor.FIRST_PAGE_CACHE;
+    private static final String DETAIL_CACHE = ProductCacheEvictor.DETAIL_CACHE;
+
+    // SCAN 한 번에 훑을 키 개수 힌트(COUNT). 측정으로 정한 값이 아니며, 한 번의 명령이 Redis 를 오래 붙잡지 않게 하려는 크기다.
+    private static final int CACHE_CLEAR_SCAN_BATCH_SIZE = 1000;
 
     @Bean
     public StringRedisTemplate stringRedisTemplate(RedisConnectionFactory connectionFactory) {
         return new StringRedisTemplate(connectionFactory);
     }
 
-    /**
-     * Spring Cache 전용 CacheManager.
-     * - 키: String (사람이 읽기 쉬운 형태, 예: products:firstPage::size=20|store=null|main=TOP|sub=T_SHIRT)
-     * - 값: 캐시별 고정 JavaType JSON 직렬화 (Jackson 3.x, default typing 미사용 — record 와 안전 호환)
-     * - 캐시별 설정:
-     *     products:firstPage (목록 조회)   → CursorResponse&lt;ProductListResponse&gt;, TTL 60초
-     *     products:detail    (단건 상세)   → ProductResponse, TTL 60초
-     * - null 값은 캐시하지 않음
-     */
+    // default typing 없이 캐시별 고정 JavaType으로 직렬화해 record와 안전하게 호환된다.
+    // 전체 무효화는 SCAN으로 키를 찾는다. KEYS는 세션·주문 타임아웃 키도 있는 이 Redis를 훑는 동안 막아 다른 요청을 지연시킨다.
     @Bean
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
         ObjectMapper mapper = JsonMapper.builder().build();
@@ -65,7 +65,10 @@ public class RedisConfig {
         RedisCacheConfiguration listConfig = cacheConfig(typedJsonSerializer(mapper, listType));
         RedisCacheConfiguration detailConfig = cacheConfig(typedJsonSerializer(mapper, detailType));
 
-        return RedisCacheManager.builder(connectionFactory)
+        RedisCacheWriter cacheWriter = RedisCacheWriter.nonLockingRedisCacheWriter(
+                connectionFactory, BatchStrategies.scan(CACHE_CLEAR_SCAN_BATCH_SIZE));
+
+        return RedisCacheManager.builder(cacheWriter)
                 .withInitialCacheConfigurations(Map.of(
                         LIST_CACHE, listConfig,
                         DETAIL_CACHE, detailConfig

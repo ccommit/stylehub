@@ -19,6 +19,7 @@ import java.util.Optional;
  * @modified 2026/05/03 by WonJin - perf: decreaseStockAtomic 추가 — SELECT FOR UPDATE 대신 단일 atomic UPDATE (쿼리 2번 → 1번, 락 획득 시점을 트랜잭션 뒤로 이동)
  * @modified 2026/09/17 by WonJin - fix: increaseStockAtomic 추가 — 재고 복구가 먼저 읽어 둔 엔티티 값으로 덮어써 동시 차감을 잃던 문제 해결
  * @modified 2026/09/17 by WonJin - fix: decreaseStockAtomic 에 스토어 승인 조건(EXISTS 서브쿼리) 추가, 차감 실패 원인 판별용 findByIdWithProductAndStore 추가
+ * @modified 2026/09/17 by WonJin - fix: 복구 후 재고를 DTO 로 읽는 findOptionStock 추가 (품절 해제 시 캐시 무효화 판단)
  *
  * <p>
  * ProductOption 엔티티의 데이터 접근을 담당한다.
@@ -53,5 +54,10 @@ public interface ProductOptionRepository extends JpaRepository<ProductOption, Lo
     @Modifying
     @Query("UPDATE ProductOption po SET po.stockQuantity = po.stockQuantity + :qty WHERE po.productOptionId = :optionId")
     int increaseStockAtomic(@Param("optionId") Long optionId, @Param("qty") int qty);
+
+    // 복구 후 현재 재고를 DB 에서 바로 읽는다. 생성자 표현식이라 영속성 컨텍스트의 엔티티 값을 거치지 않는다.
+    @Query("SELECT new ccommit.stylehub.product.repository.OptionStock(po.product.productId, po.stockQuantity) " +
+           "FROM ProductOption po WHERE po.productOptionId = :optionId")
+    OptionStock findOptionStock(@Param("optionId") Long optionId);
 
 }
