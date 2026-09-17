@@ -1,7 +1,15 @@
 package ccommit.stylehub.user.entity;
 
 import ccommit.stylehub.common.entity.BaseEntity;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,10 +21,11 @@ import lombok.experimental.SuperBuilder;
  * @created 2026/03/21 08:17
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/09/17 by WonJin - feat: 기본 배송지 지정/해제 메서드 추가, 남아 있던 jakarta.persistence 와일드카드 import 를 개별 import 로 교체
  *
  * <p>
- * 사용자의 배송지 주소를 관리한다.
- * 한 사용자가 여러 배송지를 등록할 수 있다.
+ * 사용자의 배송지 주소를 관리하며, 한 사용자가 여러 배송지를 등록할 수 있다.
+ * 기본 배송지 여부는 엔티티가 스스로 바꾸고, 사용자당 정확히 1개 규칙은 여러 배송지를 함께 보는 AddressService가 지킨다.
  * </p>
  */
 
@@ -70,5 +79,18 @@ public class Address extends BaseEntity {
                 .streetAddress(streetAddress)
                 .detailAddress(detailAddress)
                 .build();
+    }
+
+    // 컬럼이 Boolean 래퍼라 호출부마다 null 비교를 반복하지 않도록 판단을 엔티티에 모은다.
+    public boolean isDefault() {
+        return Boolean.TRUE.equals(defaultAddress);
+    }
+
+    public void markAsDefault() {
+        this.defaultAddress = true;
+    }
+
+    public void unmarkDefault() {
+        this.defaultAddress = false;
     }
 }
