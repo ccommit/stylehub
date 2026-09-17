@@ -34,6 +34,7 @@ import java.util.Map;
  * @modified 2026/04/09 by WonJin - feat: issuedCount 필드 추가, 선착순 발급 검증 메서드 추가
  * @modified 2026/04/16 by WonJin - refactor: couponType 필드 추가, PLATFORM/STORE 명시적 구분
  * @modified 2026/05/08 by WonJin - feat: calculateDiscount 에 minOrderAmount 검증 추가 (쿠폰 사용 주문 시 최소 주문 금액 미달 거절)
+ * @modified 2026/09/15 by WonJin - refactor: increaseIssuedCount 를 조건부 UPDATE 로 이관하고 남은 수량 계산 메서드 추가
  * @modified 2026/09/17 by WonJin - fix: 쿠폰 유형에 따라 할인 기준 금액을 고르는 discountBaseAmount 추가 (스토어 쿠폰은 발행 스토어 상품 금액만)
  *
  * <p>
@@ -132,11 +133,8 @@ public class CouponEvent extends BaseEntity {
                 .build();
     }
 
-    public void increaseIssuedCount() {
-        if (this.issuedCount >= this.issueCount) {
-            throw new BusinessException(ErrorCode.COUPON_SOLD_OUT);
-        }
-        this.issuedCount++;
+    public int remainingIssueCount() {
+        return Math.max(this.issueCount - this.issuedCount, 0);
     }
 
     public void update(Integer issueCount, Integer minOrderAmount,
