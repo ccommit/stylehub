@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author WonJin Bae
@@ -32,6 +33,7 @@ import java.util.List;
  * @modified 2026/04/16 by WonJin - refactor: 검증 로직을 CouponValidator로 분리
  * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증·User 조회는 CouponApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
  * @modified 2026/05/06 by WonJin - perf: 선착순 발급 동시성 메커니즘 진화 — 비관적 락 → @DistributedLock (SETNX 폴링, 측정 결과 더 나쁨) → Redis DECR + Lua atomic 채택 (락 자체 제거, 정합성 + 처리량 모두 우월). UserCoupon INSERT 는 CouponIssu
+ * @modified 2026/09/17 by WonJin - fix: 쿠폰 사용 시 할인 기준 금액을 쿠폰 유형별로 선택 (스토어 쿠폰은 발행 스토어 상품 금액만)
  *
  * <p>
  * 쿠폰 이벤트 생성과 선착순 쿠폰 발급을 담당하는 순수 도메인 서비스이다.
@@ -50,20 +52,8 @@ public class CouponService implements CouponPort {
     private final StringRedisTemplate stringRedisTemplate;
     private final ApplicationEventPublisher eventPublisher;
 
-    /**
-     * 선착순 발급 atomic Lua script — 카운터 차감 + 중복 발급 검증을 *Redis 단일 atomic 작업* 으로 묶음.
-     * 비관적 락 / 분산 락 없이도 정합성 보장.
-     *
-     * KEYS[1] = coupon:counter:{couponEventId}        (남은 수량 카운터)
-     * KEYS[2] = coupon:issued_users:{couponEventId}   (발급된 user_id Set)
-     * ARGV[1] = userId
-     * ARGV[2] = max issue count (lazy init 용)
-     *
-     * Return:
-     *   >= 0  → 발급 성공, 남은 수량
-     *   -1    → SOLD_OUT (카운터 0 도달)
-     *   -2    → ALREADY_ISSUED (Set 에 이미 존재)
-     */
+    // 카운터 차감과 중복 발급 검증을 Redis 단일 atomic 작업으로 묶어 락 없이 정합성을 보장한다.
+    // 반환값: 0 이상은 남은 수량, -1은 SOLD_OUT, -2는 ALREADY_ISSUED
     private static final RedisScript<Long> ISSUE_COUPON_SCRIPT = new DefaultRedisScript<>(
             "local counterKey = KEYS[1]\n" +
             "local issuedSetKey = KEYS[2]\n" +
@@ -89,9 +79,7 @@ public class CouponService implements CouponPort {
             Long.class
     );
 
-    /**
-     * 스토어 쿠폰 이벤트를 생성한다. 스토어 소유권 검증은 상위 계층에서 수행된 상태라고 가정한다.
-     */
+    // 스토어 소유권 검증은 상위 계층에서 끝난 상태라고 가정한다.
     @Transactional
     public CouponEventResponse createStoreCouponEvent(User storeOwner, CouponEventCreateRequest request) {
         couponValidator.validateCreate(request);
@@ -104,9 +92,6 @@ public class CouponService implements CouponPort {
         return CouponEventResponse.from(event);
     }
 
-    /**
-     * 플랫폼(관리자) 쿠폰 이벤트를 생성한다.
-     */
     @Transactional
     public CouponEventResponse createPlatformCouponEvent(CouponEventCreateRequest request) {
         couponValidator.validateCreate(request);
@@ -119,19 +104,10 @@ public class CouponService implements CouponPort {
         return CouponEventResponse.from(event);
     }
 
-    /**
-     * UserCoupon 사용 처리 — 비관적 락으로 동시 사용 차단 + 검증 + 상태 전이 + 할인 계산.
-     *
-     * <p>실패 케이스:
-     * <br>- USER_COUPON_NOT_FOUND: 존재하지 않는 UserCoupon
-     * <br>- UNAUTHORIZED_USER_COUPON: 본인 소유 X
-     * <br>- COUPON_NOT_AVAILABLE: 이미 USED (재사용 / 동시 사용 차단)
-     * <br>- COUPON_NOT_ACTIVE / NOT_STARTED / EXPIRED: 쿠폰 이벤트 상태
-     * <br>- MIN_ORDER_AMOUNT_NOT_MET: 최소 주문 금액 미달
-     */
+    // 같은 쿠폰의 동시 사용을 막기 위해 UserCoupon을 비관적 락으로 읽는다.
     @Override
     @Transactional
-    public CouponUsageResult useUserCoupon(Long userId, Long userCouponId, int totalAmount) {
+    public CouponUsageResult useUserCoupon(Long userId, Long userCouponId, Map<Long, Integer> amountByStore) {
         UserCoupon userCoupon = userCouponRepository.findByIdWithLock(userCouponId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_COUPON_NOT_FOUND));
 
@@ -140,16 +116,14 @@ public class CouponService implements CouponPort {
         }
 
         couponValidator.validateUsable(userCoupon);
-        int discount = userCoupon.getCouponEvent().calculateDiscount(totalAmount);
+        CouponEvent event = userCoupon.getCouponEvent();
+        int discount = event.calculateDiscount(event.discountBaseAmount(amountByStore));
         userCoupon.markUsed();
 
         return new CouponUsageResult(userCoupon, discount);
     }
 
-    /**
-     * UserCoupon 복구 (보상 트랜잭션) — 결제 실패 / 주문 취소 시 호출.
-     * 멱등 — 이미 UNUSED 면 그대로.
-     */
+    // 결제 실패·주문 취소 시 보상 트랜잭션에서 호출한다. 이미 UNUSED면 그대로 둔다(멱등).
     @Override
     @Transactional
     public void restoreUserCoupon(Long userCouponId) {
@@ -158,28 +132,8 @@ public class CouponService implements CouponPort {
         userCoupon.markUnused();
     }
 
-    /**
-     * 선착순 쿠폰을 발급한다 — Redis DECR + Lua script (atomic) + 비동기 DB 저장.
-     *
-     * <p>설계 변경 이력:
-     * <br>v1: SELECT FOR UPDATE 비관적 락 (DB row lock)
-     * <br>v2: @DistributedLock (Redis SETNX 폴링) — 측정 결과 v1 보다 나쁨
-     * <br>v3: Redis DECR + Lua atomic — 락 제거, 동기 INSERT. 안정 RPS 640
-     * <br>v4: <strong>Redis DECR + Lua + 비동기 INSERT (Spring Event)</strong> — 응답 경로에서 DB 분리. 안정 RPS 632
-     *
-     * <p>v3 → v4 에서 처리량은 오르지 않았다. DB INSERT 가 천장일 것이라 보고 비동기로 뺐지만
-     * 640 에서 632 로 사실상 동일했고, 실제 천장은 부하 클라이언트의 대기 시간 설정과 단일 머신의
-     * CPU 경합이었다. v4 를 유지하는 이유는 처리량이 아니라 피크 흡수와 DB 자원 분리다.
-     * 자세한 내용은 CouponIssuedEventListener 주석 참고.
-     *
-     * <p>처리 흐름:
-     * <br>1) Redis Lua atomic: 카운터 차감 + 중복 검증 (수 ms)
-     * <br>2) Spring Event 발행: CouponIssuedEvent (즉시)
-     * <br>3) 응답 즉시 반환 (~Redis RTT + 이벤트 발행 비용)
-     * <br>4) 백그라운드: CouponIssuedEventListener 가 @Async 로 UserCoupon INSERT
-     *
-     * <p>Redis 가 single source of truth. DB 는 발급 이력 기록 (eventual consistency).
-     */
+    // 발급 판단은 Redis Lua가 하고, UserCoupon 저장은 CouponIssuedEventListener가 비동기로 한다(eventual consistency).
+    // 비동기 저장은 처리량 이득이 크지 않았지만 피크 흡수와 DB 자원 분리를 위해 유지한다.
     public void issueCoupon(User user, Long couponEventId) {
         CouponEvent event = couponEventRepository.findById(couponEventId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.COUPON_NOT_FOUND));
@@ -210,9 +164,6 @@ public class CouponService implements CouponPort {
         eventPublisher.publishEvent(new CouponIssuedEvent(user.getUserId(), couponEventId));
     }
 
-    /**
-     * 쿠폰 이벤트를 수정한다. 이미 발급된 수량보다 적게 변경할 수 없다.
-     */
     @Transactional
     public CouponEventResponse updateCouponEvent(Long couponEventId, CouponEventUpdateRequest request) {
         CouponEvent event = couponEventRepository.findById(couponEventId)
@@ -251,9 +202,6 @@ public class CouponService implements CouponPort {
                 .toList();
     }
 
-    /**
-     * 현재 발급 가능한 쿠폰 이벤트 목록을 조회한다.
-     */
     @Transactional(readOnly = true)
     public List<CouponEventResponse> getActiveCouponEvents() {
         return couponEventRepository
