@@ -1,0 +1,64 @@
+{
+  "uid": "stylehub-host",
+  "title": "StyleHub 호스트",
+  "tags": ["stylehub"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "CPU 사용률",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "used", "expr": "1 - avg(rate(node_cpu_seconds_total{job=\"node\", mode=\"idle\"}[5m]))"},
+        {"refId": "B", "legendFormat": "steal", "expr": "avg(rate(node_cpu_seconds_total{job=\"node\", mode=\"steal\"}[5m]))"}
+      ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "CPU 크레딧 잔량 (CloudWatch)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "cloudwatch", "uid": "cloudwatch"},
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "queryMode": "Metrics", "region": "default", "namespace": "AWS/EC2",
+         "metricName": "CPUCreditBalance", "dimensions": {"InstanceId": "*"}, "matchExact": false,
+         "statistic": "Average", "period": "300", "metricQueryType": 0, "metricEditorMode": 0,
+         "id": "", "expression": ""}
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "메모리",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "available", "expr": "node_memory_MemAvailable_bytes{job=\"node\"}"},
+        {"refId": "B", "legendFormat": "total", "expr": "node_memory_MemTotal_bytes{job=\"node\"}"},
+        {"refId": "C", "legendFormat": "swap used", "expr": "node_memory_SwapTotal_bytes{job=\"node\"} - node_memory_SwapFree_bytes{job=\"node\"}"}
+      ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "디스크 사용률 (/)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "/", "expr": "1 - node_filesystem_avail_bytes{job=\"node\", mountpoint=\"/\"} / node_filesystem_size_bytes{job=\"node\", mountpoint=\"/\"}"}
+      ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "네트워크",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "Bps"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "rx {{device}}", "expr": "rate(node_network_receive_bytes_total{job=\"node\", device!=\"lo\"}[5m])"},
+        {"refId": "B", "legendFormat": "tx {{device}}", "expr": "rate(node_network_transmit_bytes_total{job=\"node\", device!=\"lo\"}[5m])"}
+      ]
+    }
+  ]
+}
