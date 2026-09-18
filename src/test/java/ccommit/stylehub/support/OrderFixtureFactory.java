@@ -20,6 +20,7 @@ import java.util.UUID;
 /**
  * @author WonJin Bae
  * @created 2026/09/04
+ * @modified 2026/09/17 by WonJin - test: 입점 승인된 스토어 상품 픽스처 추가 (배송 상태 전이·다중 스토어 주문 검증용)
  *
  * <p>
  * 주문 관련 @SpringBootTest 통합 테스트가 매번 존재를 가정해온 User/Address/Product/ProductOption을
@@ -46,6 +47,9 @@ public class OrderFixtureFactory {
     }
 
     public record Fixture(Long userId, Long addressId, Long optionId) {
+    }
+
+    public record StoreOption(Long storeId, Long optionId) {
     }
 
     @Transactional
@@ -85,5 +89,31 @@ public class OrderFixtureFactory {
         entityManager.flush();
 
         return new Fixture(user.getUserId(), address.getAddressId(), option.getProductOptionId());
+    }
+
+    // 기본 픽스처(create)는 구매자가 상품 소유자를 겸해 스토어 권한 검증이 필요한 배송 흐름을 재현할 수 없다
+    @Transactional
+    public StoreOption createApprovedStoreOption(int initialStock) {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+
+        User store = userRepository.save(User.create(
+                "s" + suffix, "s" + suffix + "@test.com", "password", null, UserRole.STORE
+        ));
+        store.registerStore("스토어" + suffix, "테스트 스토어");
+        store.approveStore();
+
+        Product product = productRepository.save(Product.create(
+                store, "스토어상품-" + suffix, MainCategory.TOP, SubCategory.T_SHIRT,
+                "테스트 설명", 10000, "https://img/test"
+        ));
+        ProductOption option = productOptionRepository.save(ProductOption.builder()
+                .product(product)
+                .color("white")
+                .size("L")
+                .stockQuantity(initialStock)
+                .build());
+
+        entityManager.flush();
+        return new StoreOption(store.getUserId(), option.getProductOptionId());
     }
 }
