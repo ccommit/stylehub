@@ -18,7 +18,6 @@ public record PaymentCancelRequest(
         @NotBlank(message = "취소 사유는 필수입니다")
         String cancelReason,
 
-        // 0·음수는 잔액 초과 검증(cancelAmount > balance)을 그대로 통과해 PG 거절에만 의존하게 되므로 입력 단계에서 막는다.
         @Positive(message = "취소 금액은 1원 이상이어야 합니다")
         Integer cancelAmount
 ) {

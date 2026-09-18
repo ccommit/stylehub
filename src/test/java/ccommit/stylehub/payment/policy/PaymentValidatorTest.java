@@ -26,8 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @modified 2026/09/17 by WonJin - test: validateCancelAuthority(주문자 본인/타인/관리자) 검증 추가
  *
  * <p>
- * PaymentValidator의 결제 승인/취소 가능 여부, 금액 위변조, 취소 요청자 권한, 배송 상태별 취소·환불 기한
- * 검증 로직을 검증하는 단위테스트이다. 외부 의존성이 없어 Mock 없이 실제 객체로 검증한다.
+ * PaymentValidator의 승인·취소 가능 여부, 금액 위변조, 취소 권한, 배송 상태별 취소 기한을 검증하는 단위 테스트이다.
  * </p>
  */
 class PaymentValidatorTest {

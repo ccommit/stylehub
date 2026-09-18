@@ -18,8 +18,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @created 2026/09/17
  *
  * <p>
- * Payment 엔티티의 상태 전이 불변식을 검증하는 단위 테스트이다.
- * 서비스가 상태 확인을 빠뜨려도 승인된 결제가 실패 처리되지 않는지를 엔티티 수준에서 고정한다.
+ * Payment 엔티티의 상태 전이를 검증하는 단위 테스트이다.
  * </p>
  */
 class PaymentTest {

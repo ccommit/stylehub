@@ -106,17 +106,11 @@ public class Payment {
                 .build();
     }
 
-    // 결제창 인증 전후로 PG 승인을 아직 받지 않은 상태인지 확인한다.
     public boolean isAwaitingApproval() {
         return this.status == PaymentStatus.READY || this.status == PaymentStatus.IN_PROGRESS;
     }
 
-    /**
-     * 결제 실패 처리. 승인 대기 상태에서만 허용한다.
-     *
-     * <p>이미 승인(DONE)된 결제를 ABORTED 로 덮어쓰면 PG 에는 돈이 결제된 채 취소 API 로도 환불할 수 없는 상태가 된다.
-     * 호출자가 상태를 확인하지 않아도 엔티티가 마지막으로 막는다.
-     */
+    // 승인된 결제를 ABORTED로 덮으면 환불할 방법이 사라지므로 승인 전에만 허용한다
     public void abort() {
         if (!isAwaitingApproval()) {
             throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED);

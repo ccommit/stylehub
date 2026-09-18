@@ -51,10 +51,7 @@ import static org.mockito.Mockito.mock;
  * @modified 2026/09/17 by WonJin - test: 실패 콜백이 락 조회를 쓰고 승인 대기 결제에만 반영되는지 검증
  *
  * <p>
- * PaymentService 의 단위 테스트이다.
- * 승인은 정상 / 미존재 결제 / 이미 처리된 결제 / 금액 불일치 / PG 호출 실패 경로를,
- * 취소는 전액·부분 취소 / 권한 없는 요청자 / 검증 실패 / PG 취소 실패 경로를,
- * 만료 직전 PG 대조(reconcileIfApproved)는 승인 응답 유실 복구와 오탐 방지 경로를 검증한다.
+ * PaymentService의 승인·취소·실패 콜백·만료 직전 PG 대조를 검증하는 단위 테스트이다.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -134,8 +131,6 @@ class PaymentServiceTest {
 
         private static final Long REQUESTER_ID = 1L;
 
-        // 권한이 없는 요청자에게 배송·결제 상태 같은 검증 결과가 먼저 응답되면 남의 주문 상태가 노출된다.
-        // 권한 검증이 가장 먼저 실행되고, 실패하면 이후 검증과 PG 호출이 일어나지 않아야 한다.
         @Test
         @DisplayName("요청자 권한 검증에 실패하면 상태 검증과 PG 호출 없이 예외가 전파된다")
         void 권한검증_실패시_상태검증과_PG를_호출하지_않는다() {
@@ -264,8 +259,6 @@ class PaymentServiceTest {
             verify(eventPublisher).publishEvent(new PaymentFailedEvent(1L));
         }
 
-        // 실패 콜백은 인증 없이 열려 있어 누구나 pgOrderId 로 호출할 수 있다.
-        // 승인이 끝난 결제에 반영되면 환불 없이 결제가 ABORTED 되고 주문 취소 이벤트까지 이어진다.
         @Test
         @DisplayName("이미 승인된 결제에 실패 콜백이 오면 상태를 바꾸지 않고 이벤트도 발행하지 않는다")
         void 승인된_결제는_실패처리하지_않는다() {
@@ -404,8 +397,6 @@ class PaymentServiceTest {
     @DisplayName("reconcileIfApproved")
     class ReconcileIfApproved {
 
-        // 승인 요청이 PG 에 도달했는데 응답만 유실된 상황이다.
-        // 우리 DB 는 결제 대기인데 PG 는 승인 완료라, 이대로 만료시키면 결제한 주문이 취소된다.
         @Test
         @DisplayName("PG 기준 승인 완료면 우리 결제를 승인 처리하고 취소하지 말라고 알린다")
         void PG가_승인상태면_우리상태를_맞춘다() {
@@ -462,8 +453,6 @@ class PaymentServiceTest {
             then(paymentClientFactory).should(never()).getClient(anyString());
         }
 
-        // 이미 승인·취소로 끝난 건은 대조 대상이 아니다. 만료 배치가 돌 때마다
-        // 종료된 결제까지 PG 에 물어보면 외부 호출만 늘어난다.
         @Test
         @DisplayName("이미 승인이 끝난 결제는 PG 를 조회하지 않는다")
         void 이미_처리된_결제는_PG를_조회하지_않는다() {
@@ -480,8 +469,6 @@ class PaymentServiceTest {
             then(paymentClientFactory).should(never()).getClient(anyString());
         }
 
-        // PG 를 거쳐 들어온 값이라도 우리가 저장해둔 요청 금액과 다르면 승인하지 않는다.
-        // 승인 콜백과 같은 기준을 적용해, 대조 경로가 금액 검증의 우회로가 되지 않게 한다.
         @Test
         @DisplayName("PG 금액이 요청 금액과 다르면 승인하지 않고 예외를 던진다")
         void 금액이_다르면_승인하지_않는다() {
@@ -503,8 +490,6 @@ class PaymentServiceTest {
             then(eventPublisher).should(never()).publishEvent(any());
         }
 
-        // 조회에 실패한 것과 승인되지 않은 것은 다르다. 실패를 false 로 뭉개면
-        // 알 수 없는 상태에서 취소해버려 막으려던 문제가 그대로 발생한다.
         @Test
         @DisplayName("PG 조회가 실패하면 삼키지 않고 예외를 전파한다")
         void PG_조회_실패는_전파한다() {

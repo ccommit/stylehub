@@ -38,11 +38,7 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addConverter(new StringToOAuthProviderConverter());
     }
 
-    /**
-     * 모든 @RestController 클래스의 요청 매핑 앞에 "/api/v1" 프리픽스를 자동으로 붙인다.
-     * 각 컨트롤러의 @RequestMapping에서 /api/v1을 중복 작성할 필요가 없어진다.
-     * API 버전 변경 시 이 설정 한 곳만 수정하면 된다.
-     */
+    // 모든 @RestController 요청 매핑 앞에 /api/v1을 붙인다
     @Override
     public void configurePathMatch(PathMatchConfigurer configurer) {
         configurer.addPathPrefix("/api/v1",
@@ -59,10 +55,8 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
                         "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
                         "/api/v1/products/**",     // 상품 조회 — 비인증 공개 API
-                        // 토스 결제 콜백 — 토스 결제창에서 리다이렉트. 취소(/payments/{id}/cancel)는 로그인 필요하므로
-                        // /payments/** 로 넓게 열지 않고 콜백 경로만 명시한다.
-                        "/api/v1/payments/success",
-                        "/api/v1/payments/fail",
+                        "/api/v1/payments/success", // 토스 결제 콜백 — 결제 취소 API는 로그인 필요
+                        "/api/v1/payments/fail",    // 토스 결제 콜백
                         "/v3/api-docs/**",         // Swagger API 문서
                         "/swagger-ui/**",          // Swagger UI 웹 화면
                         "/actuator/**"             // Spring Boot Actuator 모니터링
