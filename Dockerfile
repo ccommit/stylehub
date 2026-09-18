@@ -48,6 +48,6 @@ ENV SPRING_PROFILES_ACTIVE=prod
 
 # 애플리케이션 자체 헬스 (actuator) 로 컨테이너 상태를 판단
 HEALTHCHECK --interval=15s --timeout=3s --start-period=60s --retries=5 \
-    CMD curl -fsS http://localhost:8080/actuator/health || exit 1
+    CMD curl -fsS http://127.0.0.1:9081/actuator/health || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]
