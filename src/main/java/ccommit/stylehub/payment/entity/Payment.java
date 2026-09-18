@@ -1,5 +1,7 @@
 package ccommit.stylehub.payment.entity;
 
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import jakarta.persistence.Column;
@@ -26,6 +28,7 @@ import java.time.LocalDateTime;
  * @created 2026/03/21 08:17
  * @modified 2026/03/14 19:00 by WonJin - refactor: 모든 엔티티 클래스의 JPA 와일드카드 import를 명시적 import로 교체
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
+ * @modified 2026/09/17 by WonJin - fix: 승인 대기 상태에서만 실패 처리(abort)되도록 불변식 추가
  *
  * <p>
  * 주문에 대한 결제 정보를 관리한다.
@@ -103,8 +106,15 @@ public class Payment {
                 .build();
     }
 
-    // 결제 실패 처리
+    public boolean isAwaitingApproval() {
+        return this.status == PaymentStatus.READY || this.status == PaymentStatus.IN_PROGRESS;
+    }
+
+    // 승인된 결제를 ABORTED로 덮으면 환불할 방법이 사라지므로 승인 전에만 허용한다
     public void abort() {
+        if (!isAwaitingApproval()) {
+            throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED);
+        }
         this.status = PaymentStatus.ABORTED;
         this.updatedAt = LocalDateTime.now();
     }
