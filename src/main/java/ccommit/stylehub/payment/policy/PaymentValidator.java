@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
  * @created 2026/04/01
  * @modified 2026/04/08 by WonJin - refactor: validateCancel()로 취소 검증 일원화, CancelPolicy 로직 통합
  * @modified 2026/09/17 by WonJin - fix: validateCancelAuthority 추가 — 주문자 본인/관리자만 결제 취소 허용
+ * @modified 2026/09/17 by WonJin - fix: 승인 시작은 READY 결제·결제 대기 주문에서만 허용 (만료·취소된 주문 승인 차단)
  *
  * <p>
  * 결제 승인/취소 전 검증 로직을 담당한다.
@@ -27,10 +28,23 @@ public class PaymentValidator {
 
     private static final int REFUND_DAYS = 7;
 
-    // 결제 승인 가능 여부를 검증한다. (READY 또는 IN_PROGRESS만 승인 가능)
+    // IN_PROGRESS는 다른 요청이 이미 PG에 승인을 요청한 상태라 중복 승인으로 본다.
+    // 만료·실패된 결제는 주문도 취소됐으므로 이미 처리됨이 아니라 결제할 수 없는 주문으로 응답한다.
     public void validateApprovable(Payment payment) {
-        if (payment.getStatus() != PaymentStatus.READY && payment.getStatus() != PaymentStatus.IN_PROGRESS) {
-            throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED);
+        PaymentStatus status = payment.getStatus();
+        if (status == PaymentStatus.READY) {
+            return;
+        }
+        if (status == PaymentStatus.EXPIRED || status == PaymentStatus.ABORTED) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+        }
+        throw new BusinessException(ErrorCode.PAYMENT_ALREADY_PROCESSED);
+    }
+
+    // 주문이 아직 결제 대기(PENDING)인지 검증한다. 만료 처리로 취소된 주문에 PG 승인을 요청하지 않기 위함이다.
+    public void validateOrderPayable(Order order) {
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
         }
     }
 

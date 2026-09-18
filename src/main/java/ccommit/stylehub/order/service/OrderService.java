@@ -48,6 +48,7 @@ import java.util.TreeMap;
  * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
  * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
  * @modified 2026/05/08 by WonJin - feat: 쿠폰 사용 주문 + 보상 트랜잭션 — placeOrder 가 CouponPort.useUserCoupon (비관적 락 + 검증 + 할인 + USED 전이) 호출, cancelOrder 에 restoreUserCoupon 추가 (결제 실패 시 UNUSED 복구). 시나리오 2-2 측정 위한 구현.
+ * @modified 2026/09/17 by WonJin - fix: cancelUnpaidOrder 추가 — 만료·결제 실패 처리는 결제 대기 주문만 취소 (이미 결제된 주문을 환불 없이 취소하던 경로 차단)
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -71,13 +72,7 @@ public class OrderService {
     private final CouponPort couponPort;
     private final ApplicationEventPublisher eventPublisher;
 
-    /**
-     * 주문을 접수한다.
-     * Order.create()는 엔티티 객체 생성, placeOrder()는 주문 접수 비즈니스 흐름을 담당한다.
-     * 1. 주문 생성 + 재고 차감 + Payment READY 상태로 저장
-     * 2. 트랜잭션 커밋 후: Redis 타임아웃 등록 (10분)
-     * 3. 프론트(샌드박스)에서 pgOrderId + totalAmount로 토스 결제창 진입
-     */
+    // 주문 생성·재고 차감·결제 READY 저장은 한 트랜잭션에서 하고, 커밋 후 Redis 타임아웃(10분)이 등록된다
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
@@ -112,26 +107,35 @@ public class OrderService {
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    /**
-     * 주문을 취소하고 재고를 복구한다.
-     * PENDING/PAID 상태 모두 허용되며, 상태 검증은 Order.cancel() 내부에서 수행한다.
-     * 호출자는 주문 상태를 몰라도 되도록 단일 메서드로 통합됐다.
-     */
+    // 호출자가 주문 상태를 몰라도 되도록 PENDING/PAID 모두 받고, 상태 검증은 Order.cancel()에 맡긴다
     @Transactional
     public void cancelOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
-        order.cancel();
-        restoreStock(orderId);
-        restoreUserCoupon(orderId);  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+        cancelAndRestore(order);
     }
 
-    /**
-     * 주문 취소 시 사용된 UserCoupon 을 UNUSED 로 복구 (보상 트랜잭션).
-     * OrderDetail 의 첫 항목에서 userCoupon 추출 (placeOrder 시 첫 항목에만 attach).
-     * 쿠폰 미사용 주문이면 noop.
-     */
+    // 주문 행을 잠근 뒤 상태를 보므로, 승인 반영이 먼저 커밋됐으면 PAID를 보고 아무것도 하지 않는다. 중복 호출에도 멱등하다.
+    @Transactional
+    public boolean cancelUnpaidOrder(Long orderId) {
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+
+        if (!order.isAwaitingPayment()) {
+            return false;
+        }
+        cancelAndRestore(order);
+        return true;
+    }
+
+    private void cancelAndRestore(Order order) {
+        order.cancel();
+        restoreStock(order.getOrderId());
+        restoreUserCoupon(order.getOrderId());  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+    }
+
+    // placeOrder가 쿠폰을 첫 주문 항목에만 연결하므로, 거기서 찾아 UNUSED로 복구한다
     private void restoreUserCoupon(Long orderId) {
         List<OrderDetail> details = orderDetailRepository.findByOrderIdWithDetails(orderId);
         details.stream()
@@ -167,9 +171,6 @@ public class OrderService {
         order.updateOrderStatus(request.newStatus());
     }
 
-    /**
-     * 내 주문 내역을 커서 기반으로 조회한다. (무한 스크롤)
-     */
     @Transactional(readOnly = true)
     public CursorResponse<OrderListResponse> getMyOrders(Long userId, Long cursor, Integer size) {
         int pageSize = resolvePageSize(size);
@@ -196,9 +197,6 @@ public class OrderService {
         return orderList;
     }
 
-    /**
-     * 주문 상세 정보를 조회한다. 본인 주문만 접근 가능.
-     */
     @Transactional(readOnly = true)
     public OrderResponse getOrder(Long userId, Long orderId) {
         Order order = findOrderByOwner(userId, orderId);
@@ -216,10 +214,7 @@ public class OrderService {
         return order;
     }
 
-    /**
-     * 같은 옵션 ID의 수량을 합산한 뒤, 재고를 차감하고 주문 항목을 생성한다.
-     * deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
-     */
+    // deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
     private List<OrderDetail> decreaseStockAndCreateDetails(Order order, List<OrderDetailRequest> detailRequests, UserCoupon userCoupon) {
         List<OrderDetailRequest> merged = mergeAndSort(detailRequests);
 
