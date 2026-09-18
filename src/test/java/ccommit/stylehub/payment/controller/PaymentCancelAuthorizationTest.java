@@ -57,18 +57,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @modified 2026/09/17 by WonJin - test: 실패 콜백의 승인 결제 보호·응답 반사 제거, 취소 금액 검증, 테스트 데이터 정리 추가
  *
  * <p>
- * 결제 취소 API의 인증·인가 통합 테스트이다.
- * 결제 경로 전체(/api/v1/payments/**)가 인증 인터셉터에서 제외돼 있어 세션 없이도,
- * 남의 결제여도 취소가 실행되던 문제를 재현하고 막혔는지 검증한다.
- * 토스 콜백(success/fail)은 인증 제외 범위를 좁힌 뒤에도 세션 없이 호출돼야 하므로 함께 확인한다.
- *
- *
- * <b>@SpringBootTest + MockMvc 사용 이유</b>
- * 인증 제외 경로(WebConfig)와 역할 검사(@RequiredRole)는 DispatcherServlet 을 거쳐야만 동작한다.
- * 서비스 단위 테스트로는 인터셉터 설정 실수를 잡을 수 없다.
- * 스프링 부트 4 에서 MockMvc 자동 구성은 별도 모듈로 분리됐고 이 프로젝트엔 없어,
- * 애플리케이션 컨텍스트로 MockMvc 를 직접 구성한다. 인터셉터와 예외 핸들러는 그대로 적용된다.
- * PG(토스) 호출은 외부 경계이므로 PaymentClientFactory 만 @MockitoBean 으로 차단한다.
+ * 결제 취소 API와 토스 콜백의 인증·인가 통합 테스트이다.
+ * 인터셉터 설정까지 검증하려고 MockMvc로 호출하고, PG 호출만 목으로 대체한다.
  * </p>
  */
 @SpringBootTest
@@ -118,7 +108,7 @@ class PaymentCancelAuthorizationTest {
         given(paymentClientFactory.getClient("TOSS")).willReturn(paymentClient);
     }
 
-    // 결제·주문은 커밋되므로 같은 컨텍스트를 쓰는 다른 통합 테스트에 쌓이지 않게 외래키 순서대로 지운다.
+    // 커밋된 데이터가 다른 통합 테스트에 남지 않게 외래키 순서대로 지운다
     @AfterEach
     void cleanUp() {
         redisTemplate.delete(OrderTimeoutScheduler.ORDER_TIMEOUT_KEY);
@@ -205,8 +195,7 @@ class PaymentCancelAuthorizationTest {
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
     }
 
-    // 인증 제외 범위를 좁히면서 콜백까지 막히면 토스 리다이렉트가 전부 401 로 끝난다.
-    // 존재하지 않는 주문으로 호출해 인증 단계를 통과해 서비스까지 도달했는지(404)만 본다.
+    // 없는 주문으로 호출해 인증을 통과해 서비스까지 도달했는지(404)만 본다
     @Test
     @DisplayName("토스 승인 콜백(success)은 세션 없이 호출해도 인증 단계에서 막히지 않는다")
     void 토스_승인콜백은_세션없이_호출된다() throws Exception {
@@ -247,8 +236,6 @@ class PaymentCancelAuthorizationTest {
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
     }
 
-    // 실패 콜백은 인증 없이 열려 있어 pgOrderId 를 아는 사람은 누구나 호출할 수 있다.
-    // 승인이 끝난 결제에 반영되면 PG 환불 없이 주문이 취소되고 재고·쿠폰이 복구된다.
     @Test
     @DisplayName("승인된 결제에 실패 콜백을 호출해도 결제·주문·재고가 바뀌지 않고, 요청 message 는 응답에 반사되지 않는다")
     void 승인된_결제의_실패콜백은_아무것도_바꾸지_않는다() throws Exception {
@@ -302,7 +289,7 @@ class PaymentCancelAuthorizationTest {
     private record PaidPayment(Long paymentId, Long ownerId, String paymentKey) {
     }
 
-    // 주문 생성 → 결제 승인까지 마쳐 취소 가능한 DONE 상태의 결제를 만든다.
+    // 주문 생성부터 결제 승인까지 마친 DONE 상태의 결제를 만든다
     private PaidPayment setupPaidPayment() {
         OrderFixtureFactory.Fixture owner = fixtureFactory.create(100);
         OrderResponse placed = orderService.placeOrder(owner.userId(), new OrderCreateRequest(

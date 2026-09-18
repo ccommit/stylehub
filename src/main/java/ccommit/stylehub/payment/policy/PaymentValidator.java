@@ -41,7 +41,7 @@ public class PaymentValidator {
         }
     }
 
-    // 결제 취소 요청자 검증 — 주문자 본인 또는 관리자(ADMIN)만 취소할 수 있다.
+    // 주문자 본인 또는 관리자만 결제를 취소할 수 있다
     public void validateCancelAuthority(Payment payment, Long requesterId, UserRole requesterRole) {
         if (requesterRole == UserRole.ADMIN) {
             return;
@@ -58,12 +58,7 @@ public class PaymentValidator {
         validateCancelAmount(payment, cancelAmount);
     }
 
-    /**
-     * 배송 상태별 취소/환불 가능 여부를 검증한다.
-     * - 배송 전(PREPARING, null): 취소 가능
-     * - 배송 중(SHIPPING): 취소 불가
-     * - 배송 완료(DELIVERED): 7일 이내만 환불 가능
-     */
+    // 배송 전 취소 가능, 배송 중 취소 불가, 배송 완료 후 7일 이내만 환불 가능
     private void validateDeliveryStatus(Order order) {
         OrderStatus orderStatus = order.getOrderStatus();
 

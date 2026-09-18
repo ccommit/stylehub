@@ -61,20 +61,8 @@ public class PaymentService implements PaymentPort {
         ));
     }
 
-    /**
-     * 만료 처리 직전에 PG 쪽 결제 상태를 대조한다.
-     *
-     * <p>승인 요청이 PG 에 도달했는데 응답만 유실되면 우리 DB 에는 결제 대기로 남는다.
-     * 그대로 만료 시간이 지나면 사용자는 결제했는데 주문은 취소되고 재고까지 복구된다.
-     * 취소하기 전에 한 번 확인해 그 경우를 걸러낸다.
-     *
-     * <p>조회 실패는 삼키지 않고 그대로 던진다. 조회에 실패한 것과 승인되지 않은 것은 다르다.
-     * 알 수 없는 상태에서 취소해버리면 막으려던 문제가 그대로 발생하므로,
-     * 호출자가 이번 회차를 건너뛰고 다음에 다시 시도하도록 한다.
-     *
-     * <p>금액은 승인 콜백과 동일하게 검증한다. PG 를 통해 들어온 값이라도 저장해둔 요청 금액과
-     * 다르면 승인 처리하지 않는다.
-     */
+    // 만료 직전 PG 결제 상태를 대조해, 응답만 유실된 승인 결제가 취소되지 않게 한다.
+    // 조회 실패는 그대로 던져 호출자가 다음 회차에 다시 시도하게 한다.
     @Override
     @Transactional
     public boolean reconcileIfApproved(Long orderId) {
@@ -126,8 +114,7 @@ public class PaymentService implements PaymentPort {
     }
 
     // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
-    // 권한 검증을 상태 검증보다 먼저 수행해, 권한 없는 요청자에게 남의 주문·배송·결제 상태가 응답으로 노출되지 않게 한다.
-    // 결제 존재 여부는 404(없음)와 403(타인)의 차이로 드러나는데, 주문 조회 API 와 같은 기준을 유지했다.
+    // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
                                          String cancelReason, Integer cancelAmount) {
@@ -153,13 +140,7 @@ public class PaymentService implements PaymentPort {
         return PaymentResponse.from(payment);
     }
 
-    /**
-     * 토스 결제창에서 사용자가 취소하거나 인증에 실패하면 failUrl(/fail)로 리다이렉트되어 호출된다.
-     *
-     * <p>이 경로는 인증 없이 열려 있고 누구나 pgOrderId 로 호출할 수 있다. 그래서 승인 대기(READY, IN_PROGRESS)
-     * 결제에만 반영하고, 이미 승인·취소된 결제에 대한 호출은 아무것도 바꾸지 않고 끝낸다(멱등).
-     * 승인 콜백과 동시에 들어와도 한쪽만 반영되도록 승인 경로와 같은 비관적 락으로 조회한다.
-     */
+    // 인증 없이 열린 콜백이라 승인 전 결제에만 반영한다. 승인 콜백과 같은 락으로 조회해 둘 중 하나만 반영된다.
     @Transactional
     public void handlePaymentFailure(String pgOrderId) {
         Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
