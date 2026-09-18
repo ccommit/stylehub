@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
  * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
  * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
+ * @modified 2026/09/18 by WonJin - feat: Idempotency-Key 형식 오류(C005)·다른 요청에 키 재사용(C006, 422)·같은 키 처리 중(C007) 코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -27,6 +28,9 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C002", "서버 내부 오류가 발생했습니다"),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C003", "지원하지 않는 HTTP 메서드입니다"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C004", "요청한 리소스를 찾을 수 없습니다"),
+    INVALID_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST, "C005", "Idempotency-Key 는 영문·숫자·-·_ 로 된 64자 이하 값이어야 합니다"),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_CONTENT, "C006", "이미 다른 요청에 사용한 Idempotency-Key 입니다"),
+    IDEMPOTENT_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "C007", "같은 Idempotency-Key 요청을 처리하고 있습니다. 잠시 후 다시 시도해주세요"),
 
     // User
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 사용 중인 이메일입니다"),
