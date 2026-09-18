@@ -1,6 +1,7 @@
 package ccommit.stylehub.order.controller;
 
 import ccommit.stylehub.common.config.RequiredRole;
+import ccommit.stylehub.common.idempotency.IdempotencyRequest;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.order.dto.request.DeliveryStatusRequest;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
@@ -8,6 +9,7 @@ import ccommit.stylehub.order.dto.request.UpdateDeliveryStatusRequest;
 import ccommit.stylehub.order.dto.response.OrderListResponse;
 import ccommit.stylehub.order.dto.response.OrderResponse;
 import ccommit.stylehub.common.dto.CursorResponse;
+import ccommit.stylehub.order.service.OrderApplicationService;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @created 2026/03/27
  * @modified 2026/04/02 by WonJin - refactor: 배송상태 API 추가
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
+ * @modified 2026/09/18 by WonJin - feat: 주문 생성에 Idempotency-Key 헤더 지원 (OrderApplicationService 경유)
  *
  * <p>
  * 주문 관련 API를 제공한다.
@@ -41,16 +45,19 @@ import org.springframework.web.bind.annotation.RestController;
 public class OrderController {
 
     private final OrderService orderService;
+    private final OrderApplicationService orderApplicationService;
 
     //USER API
+    // Idempotency-Key 를 보내면 같은 키의 재요청에 새 주문을 만들지 않고 처음 주문을 돌려준다
     @PostMapping("/orders")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> createOrder(
+            @RequestHeader(value = IdempotencyRequest.HEADER, required = false) String idempotencyKey,
             @Valid @RequestBody OrderCreateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(orderService.placeOrder(userId, request));
+                .body(orderApplicationService.placeOrder(userId, idempotencyKey, request));
     }
 
     @GetMapping("/orders")
