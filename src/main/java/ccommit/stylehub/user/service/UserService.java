@@ -37,10 +37,11 @@ import java.util.function.Consumer;
  * @modified 2026/09/08 by WonJin - fix: rewardLoginPoint 를 TransactionTemplate 으로 전환 — login() 의 self-invocation 으로 @Transactional 이 적용되지 않아 포인트 적립이 DB 에 반영되지 않던 문제 해결
  * @modified 2026/09/15 by WonJin - feat: getUserReference 추가 (선착순 쿠폰 발급에서 사용자 조회 쿼리 제거)
  * @modified 2026/09/17 by WonJin - fix: 로그인 시 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정을 모두 INVALID_PASSWORD 로 응답하고 더미 해시 검증으로 응답 시간을 맞춤(소셜 계정 NPE 500, 가입 여부 노출 해결)
+ * @modified 2026/09/17 by WonJin - refactor: "BCrypt 를 트랜잭션 밖에서 실행해 커넥션 점유를 최소화한다" 주석을 실제 동작(회원가입/로그인 차이, OSIV 전제)에 맞게 정정
  *
  * <p>
- * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다.
- * BCrypt 해싱을 트랜잭션 밖에서 실행하여 커넥션 점유를 최소화한다.
+ * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다. 회원가입의 BCrypt 해싱은 DB 접근 전이라 OSIV와 무관하게 커넥션을 쥐지 않는다.
+ * 로그인 BCrypt 검증 중 커넥션이 풀로 돌아가는 것은 OSIV가 꺼져 있을 때뿐이다(운영 프로파일). 켜져 있으면 요청이 끝날 때까지 쥔다.
  * </p>
  */
 @Service
