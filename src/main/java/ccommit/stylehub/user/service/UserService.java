@@ -34,6 +34,7 @@ import java.util.function.Consumer;
  * @modified 2026/03/27 by WonJin - feat: findUserById, findAddressByOwner 추가
  * @modified 2026/04/19 by WonJin - refactor: StoreService, StoreAdminService, PointRewardService를 UserService로 통합
  * @modified 2026/09/08 by WonJin - fix: rewardLoginPoint 를 TransactionTemplate 으로 전환 — login() 의 self-invocation 으로 @Transactional 이 적용되지 않아 포인트 적립이 DB 에 반영되지 않던 문제 해결
+ * @modified 2026/09/15 by WonJin - feat: getUserReference 추가 (선착순 쿠폰 발급에서 사용자 조회 쿼리 제거)
  *
  * <p>
  * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다.
@@ -50,10 +51,6 @@ public class UserService implements UserPort {
     private final UserRepository userRepository;
     private final PasswordHasher passwordHasher;
     private final TransactionTemplate transactionTemplate;
-
-    // ========================
-    // 회원가입 / 로그인
-    // ========================
 
     public User signUp(String name, String email, String password, LocalDate birthDate, UserRole role) {
         String hashedPassword = hashPassword(password);
@@ -128,14 +125,15 @@ public class UserService implements UserPort {
         return UserLoginResponse.from(user);
     }
 
-    // ========================
-    // 조회
-    // ========================
-
     @Override
     public User findUserById(Long userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    @Override
+    public User getUserReference(Long userId) {
+        return userRepository.getReferenceById(userId);
     }
 
     @Override
@@ -149,10 +147,6 @@ public class UserService implements UserPort {
 
         return address;
     }
-
-    // ========================
-    // 스토어 (STORE 역할)
-    // ========================
 
     @Transactional
     public void registerStore(User user, String storeName, String storeDescription) {
@@ -194,10 +188,6 @@ public class UserService implements UserPort {
 
         return StoreResponse.from(user);
     }
-
-    // ========================
-    // 스토어 관리 (ADMIN 역할)
-    // ========================
 
     @Transactional(readOnly = true)
     public List<StoreResponse> getStoresByStatus(StoreStatus status) {
@@ -250,21 +240,8 @@ public class UserService implements UserPort {
         return user;
     }
 
-    // ========================
-    // 포인트
-    // ========================
-
-    /**
-     * 로그인 포인트를 적립한다.
-     *
-     * <p>@Transactional 대신 TransactionTemplate 을 쓴다. login() 이 같은 클래스에서 이 메서드를
-     * 호출하는데(self-invocation), 그 경우 프록시를 거치지 않아 @Transactional 이 적용되지 않는다.
-     * 트랜잭션이 열리지 않으면 findById 로 얻은 엔티티가 영속 상태로 유지되지 않아 변경 감지가
-     * 동작하지 않고, 포인트가 예외나 로그 없이 조용히 유실된다.
-     *
-     * <p>TransactionTemplate 은 프록시가 아니라 블록 자체가 트랜잭션 경계이므로 호출 경로와 무관하게
-     * 동작한다. login() 과 OAuthService 양쪽에서 동일하게 적립된다.
-     */
+    // login()이 self-invocation으로 호출해 @Transactional이 적용되지 않으므로 TransactionTemplate을 쓴다.
+    // 트랜잭션이 없으면 변경 감지가 동작하지 않아 포인트가 예외나 로그 없이 유실된다.
     public void rewardLoginPoint(Long userId, LocalDate today) {
         transactionTemplate.executeWithoutResult(status -> {
             User user = userRepository.findById(userId)
