@@ -38,6 +38,7 @@ import java.util.UUID;
  * @modified 2026/05/08 by WonJin - feat: applyDiscount 추가 (쿠폰 사용 주문 시 할인 금액 반영)
  * @modified 2026/09/17 by WonJin - fix: 결제 대기 여부 조회 추가 (만료 처리는 결제 대기 주문만 취소)
  * @modified 2026/09/17 by WonJin - fix: 취소를 결제 전(cancelUnpaid)·결제 후 환불(cancelPaid)로 나누고 결제 후 취소 허용 상태를 한 곳에서 정의, 미사용 startDelivery 제거
+ * @modified 2026/09/17 by WonJin - fix: 주문번호 난수를 UUID 8자리(32비트)에서 전체 122비트로 확장 (대량 주문 시 유니크 충돌 방지)
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -92,10 +93,12 @@ public class Order extends BaseEntity {
                 .build();
     }
 
+    // 충돌하면 pg_order_id 유니크 제약 위반으로 주문 생성이 실패하므로 UUID 난수 전체(122비트)를 쓴다.
+    // ORD-yyyyMMdd-32자리 16진수(45자)로 토스 orderId 규칙(영문·숫자·'-'·'_', 6~64자)과 컬럼 길이 64를 지킨다.
     private static String generatePgOrderId() {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String uuid = UUID.randomUUID().toString().substring(0, 8);
-        return "ORD-" + date + "-" + uuid;
+        String random = UUID.randomUUID().toString().replace("-", "");
+        return "ORD-" + date + "-" + random;
     }
 
     public int calculateFinalAmount(int totalAmount) {
