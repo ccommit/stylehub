@@ -20,7 +20,8 @@ JAR="$DEPLOY_DIR/$JAR_NAME"
 NEW_JAR="$JAR.new"
 PREV_JAR="$JAR.prev"
 
-HEALTH_URL=http://localhost:8080/actuator/health
+# 관리 포트 전환 배포에서 롤백하면 이전 jar 는 actuator 를 8080 에서 연다. 전환 배포가 한 번 성공하면 8080 항목은 지운다.
+HEALTH_URLS="http://127.0.0.1:9081/actuator/health http://localhost:8080/actuator/health"
 HEALTH_RETRIES=20
 HEALTH_INTERVAL=3
 
@@ -29,9 +30,11 @@ HEALTH_INTERVAL=3
 # 기동 완료 판정은 systemctl 이 아니라 이 헬스체크가 담당한다.
 wait_for_health() {
     for _ in $(seq 1 "$HEALTH_RETRIES"); do
-        if curl -fsS "$HEALTH_URL" > /dev/null 2>&1; then
-            return 0
-        fi
+        for url in $HEALTH_URLS; do
+            if curl -fsS "$url" > /dev/null 2>&1; then
+                return 0
+            fi
+        done
         sleep "$HEALTH_INTERVAL"
     done
     return 1
