@@ -14,8 +14,11 @@ import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
+import ccommit.stylehub.user.enums.UserRole;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
  * @modified 2026/04/22 by WonJin - refactor: createReady 시그니처 primitives로 변경, Order FK는 EntityManager.getReference 프록시로 처리 (도메인 경계 누수 해소)
  * @modified 2026/09/08 by WonJin - feat: reconcileIfApproved 구현 — 만료 처리 직전 PG 결제 상태 대조로 승인 응답 유실 구간 축소
  * @modified 2026/05/01 by WonJin - fix: confirmPayment 동시 호출 멱등성 보장 — findByOrderPgOrderIdWithLock 으로 비관적 락 조회 도입 (PaymentIdempotencyTest.concurrentIdempotency 노출 버그 해소)
+ * @modified 2026/09/17 by WonJin - fix: cancelPayment 에 요청자 권한 검증 추가 — 주문자 본인/관리자만 취소 가능 (타인 결제 취소 차단)
+ * @modified 2026/09/17 by WonJin - fix: 실패 콜백을 승인 대기 결제에만 반영 — 승인된 결제가 환불 없이 ABORTED·주문 취소되던 문제 해결
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -39,6 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class PaymentService implements PaymentPort {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
@@ -54,20 +61,8 @@ public class PaymentService implements PaymentPort {
         ));
     }
 
-    /**
-     * 만료 처리 직전에 PG 쪽 결제 상태를 대조한다.
-     *
-     * <p>승인 요청이 PG 에 도달했는데 응답만 유실되면 우리 DB 에는 결제 대기로 남는다.
-     * 그대로 만료 시간이 지나면 사용자는 결제했는데 주문은 취소되고 재고까지 복구된다.
-     * 취소하기 전에 한 번 확인해 그 경우를 걸러낸다.
-     *
-     * <p>조회 실패는 삼키지 않고 그대로 던진다. 조회에 실패한 것과 승인되지 않은 것은 다르다.
-     * 알 수 없는 상태에서 취소해버리면 막으려던 문제가 그대로 발생하므로,
-     * 호출자가 이번 회차를 건너뛰고 다음에 다시 시도하도록 한다.
-     *
-     * <p>금액은 승인 콜백과 동일하게 검증한다. PG 를 통해 들어온 값이라도 저장해둔 요청 금액과
-     * 다르면 승인 처리하지 않는다.
-     */
+    // 만료 직전 PG 결제 상태를 대조해, 응답만 유실된 승인 결제가 취소되지 않게 한다.
+    // 조회 실패는 그대로 던져 호출자가 다음 회차에 다시 시도하게 한다.
     @Override
     @Transactional
     public boolean reconcileIfApproved(Long orderId) {
@@ -119,11 +114,14 @@ public class PaymentService implements PaymentPort {
     }
 
     // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
+    // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
     @Transactional
-    public PaymentResponse cancelPayment(Long paymentId, String cancelReason, Integer cancelAmount) {
+    public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
+                                         String cancelReason, Integer cancelAmount) {
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 
+        paymentValidator.validateCancelAuthority(payment, requesterId, requesterRole);
         paymentValidator.validateCancel(payment, cancelAmount);
 
         paymentClientFactory.getClient("TOSS")
@@ -142,18 +140,18 @@ public class PaymentService implements PaymentPort {
         return PaymentResponse.from(payment);
     }
 
-    // 토스 결제창에서 사용자가 취소/실패 시 failUrl(/fail)로 리다이렉트되어 호출된다.
-    // confirmPayment()와 별도 요청이므로 독립 메서드로 존재한다.
+    // 인증 없이 열린 콜백이라 승인 전 결제에만 반영한다. 승인 콜백과 같은 락으로 조회해 둘 중 하나만 반영된다.
     @Transactional
     public void handlePaymentFailure(String pgOrderId) {
-        Payment payment = findPaymentByOrderId(pgOrderId);
+        Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+
+        if (!payment.isAwaitingApproval()) {
+            log.info("승인 대기 상태가 아닌 결제의 실패 콜백 무시: pgOrderId={}, status={}", pgOrderId, payment.getStatus());
+            return;
+        }
 
         payment.abort();
         eventPublisher.publishEvent(new PaymentFailedEvent(payment.getOrder().getOrderId()));
-    }
-
-    private Payment findPaymentByOrderId(String pgOrderId) {
-        return paymentRepository.findByOrderPgOrderId(pgOrderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 }

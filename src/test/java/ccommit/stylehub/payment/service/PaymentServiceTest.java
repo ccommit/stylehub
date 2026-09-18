@@ -15,6 +15,7 @@ import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
 import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
+import ccommit.stylehub.user.enums.UserRole;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -46,11 +47,11 @@ import static org.mockito.Mockito.mock;
 /**
  * @author WonJin Bae
  * @created 2026/04/24
+ * @modified 2026/09/17 by WonJin - test: cancelPayment 요청자(ID·역할) 파라미터 반영, 권한 검증 실패 시 PG 미호출 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 실패 콜백이 락 조회를 쓰고 승인 대기 결제에만 반영되는지 검증
  *
  * <p>
- * PaymentService 의 단위 테스트이다.
- * 승인은 정상 / 미존재 결제 / 이미 처리된 결제 / 금액 불일치 / PG 호출 실패 경로를,
- * 만료 직전 PG 대조(reconcileIfApproved)는 승인 응답 유실 복구와 오탐 방지 경로를 검증한다.
+ * PaymentService의 승인·취소·실패 콜백·만료 직전 PG 대조를 검증하는 단위 테스트이다.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -128,6 +129,28 @@ class PaymentServiceTest {
     @DisplayName("cancelPayment")
     class CancelPayment {
 
+        private static final Long REQUESTER_ID = 1L;
+
+        @Test
+        @DisplayName("요청자 권한 검증에 실패하면 상태 검증과 PG 호출 없이 예외가 전파된다")
+        void 권한검증_실패시_상태검증과_PG를_호출하지_않는다() {
+            // given
+            Order order = orderWithStatus(1L, OrderStatus.PREPARING);
+            Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
+            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            doThrow(new BusinessException(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS))
+                    .when(paymentValidator).validateCancelAuthority(payment, 2L, UserRole.USER);
+
+            // when & then
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, 2L, UserRole.USER, "사유", null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS);
+            verify(paymentValidator, never()).validateCancel(any(), any());
+            verify(paymentClientFactory, never()).getClient(anyString());
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.DONE);
+        }
+
         @Test
         @DisplayName("전액 취소하면 결제 상태가 CANCELED가 되고 전액취소 이벤트가 발행된다")
         void 전액취소시_이벤트가_발행된다() {
@@ -139,7 +162,7 @@ class PaymentServiceTest {
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
-            PaymentResponse response = paymentService.cancelPayment(1L, "단순 변심", null);
+            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "단순 변심", null);
 
             // then
             assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
@@ -157,7 +180,7 @@ class PaymentServiceTest {
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
-            PaymentResponse response = paymentService.cancelPayment(1L, "부분 반품", 3000);
+            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "부분 반품", 3000);
 
             // then
             assertThat(response.status()).isEqualTo(PaymentStatus.PARTIAL_CANCELED);
@@ -171,7 +194,7 @@ class PaymentServiceTest {
             when(paymentRepository.findById(999L)).thenReturn(Optional.empty());
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(999L, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(999L, REQUESTER_ID, UserRole.USER, "사유", null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
@@ -188,7 +211,7 @@ class PaymentServiceTest {
                     .when(paymentValidator).validateCancel(payment, null);
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(1L, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING);
@@ -207,7 +230,7 @@ class PaymentServiceTest {
                     .when(tossClient).cancelPayment(any(), any(), any());
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(1L, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_CANCEL_FAILED);
@@ -226,7 +249,7 @@ class PaymentServiceTest {
             // given
             Order order = orderWithStatus(1L, OrderStatus.PENDING);
             Payment payment = payment(PaymentStatus.READY, order, 10000, 10000);
-            when(paymentRepository.findByOrderPgOrderId("ORD-1")).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByOrderPgOrderIdWithLock("ORD-1")).thenReturn(Optional.of(payment));
 
             // when
             paymentService.handlePaymentFailure("ORD-1");
@@ -237,10 +260,26 @@ class PaymentServiceTest {
         }
 
         @Test
+        @DisplayName("이미 승인된 결제에 실패 콜백이 오면 상태를 바꾸지 않고 이벤트도 발행하지 않는다")
+        void 승인된_결제는_실패처리하지_않는다() {
+            // given
+            Order order = orderWithStatus(1L, OrderStatus.PAID);
+            Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
+            when(paymentRepository.findByOrderPgOrderIdWithLock("ORD-1")).thenReturn(Optional.of(payment));
+
+            // when
+            paymentService.handlePaymentFailure("ORD-1");
+
+            // then
+            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.DONE);
+            verify(eventPublisher, never()).publishEvent(any());
+        }
+
+        @Test
         @DisplayName("결제를 찾을 수 없으면 PAYMENT_NOT_FOUND 예외가 발생한다")
         void 결제가_없으면_예외() {
             // given
-            when(paymentRepository.findByOrderPgOrderId("NONE")).thenReturn(Optional.empty());
+            when(paymentRepository.findByOrderPgOrderIdWithLock("NONE")).thenReturn(Optional.empty());
 
             // when & then
             assertThatThrownBy(() -> paymentService.handlePaymentFailure("NONE"))
@@ -358,8 +397,6 @@ class PaymentServiceTest {
     @DisplayName("reconcileIfApproved")
     class ReconcileIfApproved {
 
-        // 승인 요청이 PG 에 도달했는데 응답만 유실된 상황이다.
-        // 우리 DB 는 결제 대기인데 PG 는 승인 완료라, 이대로 만료시키면 결제한 주문이 취소된다.
         @Test
         @DisplayName("PG 기준 승인 완료면 우리 결제를 승인 처리하고 취소하지 말라고 알린다")
         void PG가_승인상태면_우리상태를_맞춘다() {
@@ -416,8 +453,6 @@ class PaymentServiceTest {
             then(paymentClientFactory).should(never()).getClient(anyString());
         }
 
-        // 이미 승인·취소로 끝난 건은 대조 대상이 아니다. 만료 배치가 돌 때마다
-        // 종료된 결제까지 PG 에 물어보면 외부 호출만 늘어난다.
         @Test
         @DisplayName("이미 승인이 끝난 결제는 PG 를 조회하지 않는다")
         void 이미_처리된_결제는_PG를_조회하지_않는다() {
@@ -434,8 +469,6 @@ class PaymentServiceTest {
             then(paymentClientFactory).should(never()).getClient(anyString());
         }
 
-        // PG 를 거쳐 들어온 값이라도 우리가 저장해둔 요청 금액과 다르면 승인하지 않는다.
-        // 승인 콜백과 같은 기준을 적용해, 대조 경로가 금액 검증의 우회로가 되지 않게 한다.
         @Test
         @DisplayName("PG 금액이 요청 금액과 다르면 승인하지 않고 예외를 던진다")
         void 금액이_다르면_승인하지_않는다() {
@@ -457,8 +490,6 @@ class PaymentServiceTest {
             then(eventPublisher).should(never()).publishEvent(any());
         }
 
-        // 조회에 실패한 것과 승인되지 않은 것은 다르다. 실패를 false 로 뭉개면
-        // 알 수 없는 상태에서 취소해버려 막으려던 문제가 그대로 발생한다.
         @Test
         @DisplayName("PG 조회가 실패하면 삼키지 않고 예외를 전파한다")
         void PG_조회_실패는_전파한다() {
