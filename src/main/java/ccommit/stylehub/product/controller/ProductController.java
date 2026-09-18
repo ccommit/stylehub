@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @created 2026/03/25
  * @modified 2026/03/27 by WonJin - feat: 커서 기반 전체 상품 목록 조회 API 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewController를 ProductController로 통합
+ * @modified 2026/09/17 by WonJin - fix: 재고 변경 API 가 경로의 productId 를 바인딩해 옵션 소속 검증에 사용 (IDOR 차단)
  *
  * <p>
  * 상품 관련 API를 제공한다.
@@ -85,10 +86,12 @@ public class ProductController {
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductOptionResponse> updateStock(
             @PathVariable Long storeId,
+            @PathVariable Long productId,
             @PathVariable Long optionId,
             @Valid @RequestBody StockUpdateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(productApplicationService.updateStock(userId, storeId, optionId, request.stockQuantity()));
+        return ResponseEntity.ok(productApplicationService.updateStock(
+                userId, storeId, productId, optionId, request.stockQuantity()));
     }
 }

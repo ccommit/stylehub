@@ -5,6 +5,7 @@ import ccommit.stylehub.product.entity.QProduct;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.user.entity.QUser;
+import ccommit.stylehub.user.enums.StoreStatus;
 import com.querydsl.core.BooleanBuilder;
 import com.querydsl.core.types.Projections;
 import com.querydsl.jpa.impl.JPAQueryFactory;
@@ -17,6 +18,7 @@ import java.util.List;
  * @author WonJin Bae
  * @created 2026/03/27
  * @modified 2026/04/24 by WonJin - perf: 엔티티 전체 조회 대신 Projections.constructor 로 8개 컬럼만 DTO 직접 투영 (31→8 컬럼, 과다 컬럼 투영 해소)
+ * @modified 2026/09/17 by WonJin - fix: 승인(APPROVED) 스토어의 상품만 조회 (정지·미승인 스토어 상품 노출 차단)
  *
  * <p>
  * QueryDSL 기반 상품 동적 조회를 담당한다.
@@ -41,7 +43,9 @@ public class ProductQueryRepository {
         QProduct product = QProduct.product;
         QUser user = QUser.user;
 
-        BooleanBuilder builder = new BooleanBuilder();
+        // 정지·미승인 스토어의 상품은 목록에서 제외한다. 이미 조인 중인 users 의 조건이라 조인이 늘지 않는다.
+        // 내 스토어 목록(getMyStoreProducts)도 이 쿼리를 쓰지만, 그 API 는 승인 스토어만 호출할 수 있어 결과가 달라지지 않는다.
+        BooleanBuilder builder = new BooleanBuilder(user.storeStatus.eq(StoreStatus.APPROVED));
 
         if (cursor != null) {
             builder.and(product.productId.lt(cursor));

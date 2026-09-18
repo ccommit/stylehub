@@ -17,6 +17,7 @@ import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.StoreStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ import java.util.List;
  * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지
  * @modified 2026/05/03 by WonJin - perf: decreaseStockWithLock 을 SELECT FOR UPDATE 비관적 락에서 단일 atomic UPDATE 로 전환 (쿼리 2번 → 1번, 락을 쥐고 지나는 구간 단축)
  * @modified 2026/09/17 by WonJin - fix: 재고 복구를 원자 UPDATE 로 전환 — 취소 트랜잭션이 먼저 읽어 둔 재고 값으로 동시 차감을 덮어쓰던 문제 해결
+ * @modified 2026/09/17 by WonJin - fix: updateStock 옵션 소속(상품·스토어) 검증으로 IDOR 차단, 정지·미승인 스토어 상품의 상세 노출·재고 차감 차단
  
  
  *
@@ -77,11 +79,12 @@ public class ProductService implements ProductPort {
         return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
     }
 
-    // 지정 옵션의 재고 수량을 변경한다.
+    // 소속이 다르면 403 대신 없는 옵션과 같은 404로 응답한다. 403은 순번 optionId로 다른 스토어 옵션의 존재를 알려 준다.
     @Transactional
-    public ProductOptionResponse updateStock(Long optionId, Integer stockQuantity) {
+    public ProductOptionResponse updateStock(Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption target = productOptionRepository
                 .findByIdWithLock(optionId)
+                .filter(option -> option.isOwnedBy(storeId, productId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
 
         target.updateStockQuantity(stockQuantity);
@@ -92,17 +95,23 @@ public class ProductService implements ProductPort {
     // TODO: 더 큰 트래픽(100k+ TPS) 대응 시 Redis DECR 원자 연산으로 전환 검토
     @Override
     public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
-        int updated = productOptionRepository.decreaseStockAtomic(optionId, quantity);
+        int updated = productOptionRepository.decreaseStockAtomic(optionId, quantity, StoreStatus.APPROVED);
         if (updated == 0) {
-            // 0건 = 옵션이 없거나 재고 부족 — 둘을 구분해서 정확한 에러 코드 반환
-            if (!productOptionRepository.existsById(optionId)) {
-                throw new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
-            }
-            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+            throw new BusinessException(resolveDecreaseFailure(optionId));
         }
         // OrderDetail FK + getProductPrice() 호출을 위해 1회 조회 (단순 SELECT)
         return productOptionRepository.findById(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+    }
+
+    // 판매 중지면 재고와 무관하게 주문할 수 없으므로 재고 부족보다 먼저 알린다.
+    // UPDATE와 별개 조회라 그 사이 상태가 바뀌면 원인이 달리 보고될 수 있지만, 차감은 이미 거절돼 정합성엔 영향이 없다.
+    private ErrorCode resolveDecreaseFailure(Long optionId) {
+        return productOptionRepository.findByIdWithProductAndStore(optionId)
+                .map(option -> option.getProduct().isOnSale()
+                        ? ErrorCode.INSUFFICIENT_STOCK
+                        : ErrorCode.PRODUCT_NOT_ON_SALE)
+                .orElse(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
     }
 
     // 취소 트랜잭션이 먼저 올려 둔 옵션 엔티티 값에 더하면 그 사이 커밋된 차감을 덮어쓰므로, DB 현재 값에 더하는 UPDATE로 복구한다.
@@ -145,7 +154,7 @@ public class ProductService implements ProductPort {
     )
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
-        Product product = productRepository.findByIdWithUserAndOptions(productId)
+        Product product = productRepository.findByIdWithUserAndOptions(productId, StoreStatus.APPROVED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
 
         return ProductResponse.from(product, product.getOptions());
