@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -46,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,6 +63,7 @@ import static org.mockito.Mockito.mock;
  * @modified 2026/09/17 by WonJin - test: cancelPayment 요청자(ID·역할) 파라미터 반영, 권한 검증 실패 시 PG 미호출 검증 추가
  * @modified 2026/09/17 by WonJin - test: 실패 콜백이 락 조회를 쓰고 승인 대기 결제에만 반영되는지 검증
  * @modified 2026/09/17 by WonJin - test: 승인 3단계(선점·PG 호출·반영)와 만료 직전 대조 결과(APPROVED/IN_FLIGHT/NOT_APPROVED) 검증으로 재작성
+ * @modified 2026/09/17 by WonJin - test: 결제 취소가 락 조회 후 DB 반영·flush 를 PG 호출보다 먼저 하는지 검증
  *
  * <p>
  * PaymentService의 승인·취소·실패 콜백·만료 직전 PG 대조를 검증하는 단위 테스트이다.
@@ -152,7 +155,8 @@ class PaymentServiceTest {
             // given
             Order order = orderWithStatus(1L, OrderStatus.PREPARING);
             Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
-            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
             doThrow(new BusinessException(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS))
                     .when(paymentValidator).validateCancelAuthority(payment, 2L, UserRole.USER);
 
@@ -173,7 +177,8 @@ class PaymentServiceTest {
             Order order = orderWithStatus(1L, OrderStatus.PREPARING);
             Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
             ReflectionTestUtils.setField(payment, "approvedAmount", 10000);
-            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
@@ -191,7 +196,8 @@ class PaymentServiceTest {
             // given
             Order order = orderWithStatus(1L, OrderStatus.PREPARING);
             Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
-            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
@@ -206,7 +212,7 @@ class PaymentServiceTest {
         @DisplayName("결제를 찾을 수 없으면 PAYMENT_NOT_FOUND 예외가 발생한다")
         void 결제가_없으면_예외() {
             // given
-            when(paymentRepository.findById(999L)).thenReturn(Optional.empty());
+            when(paymentRepository.findByIdWithLock(999L)).thenReturn(Optional.empty());
 
             // when & then
             assertThatThrownBy(() -> paymentService.cancelPayment(999L, REQUESTER_ID, UserRole.USER, "사유", null))
@@ -221,7 +227,8 @@ class PaymentServiceTest {
             // given
             Order order = orderWithStatus(1L, OrderStatus.SHIPPING);
             Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
-            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
             doThrow(new BusinessException(ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING))
                     .when(paymentValidator).validateCancel(payment, null);
 
@@ -233,13 +240,15 @@ class PaymentServiceTest {
             verify(paymentClientFactory, never()).getClient(anyString());
         }
 
+        // PG 실패 시의 롤백은 트랜잭션이 하므로 실제 DB로 PaymentCancelOrderConsistencyTest에서 검증한다.
         @Test
-        @DisplayName("PG 취소가 실패하면 결제 상태를 변경하지 않고 예외가 전파된다")
-        void PG취소실패시_상태를_변경하지_않는다() {
+        @DisplayName("DB 반영(전액취소 이벤트 → 주문 취소)과 flush 를 마친 뒤 PG 취소를 호출하고, PG 실패는 그대로 전파한다")
+        void DB반영후_PG를_호출하고_실패는_전파한다() {
             // given
             Order order = orderWithStatus(1L, OrderStatus.PREPARING);
             Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
-            when(paymentRepository.findById(1L)).thenReturn(Optional.of(payment));
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
             doThrow(new BusinessException(ErrorCode.PAYMENT_CANCEL_FAILED))
                     .when(tossClient).cancelPayment(any(), any(), any());
@@ -249,8 +258,10 @@ class PaymentServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_CANCEL_FAILED);
-            assertThat(payment.getStatus()).isEqualTo(PaymentStatus.DONE);
-            verify(eventPublisher, never()).publishEvent(any());
+            InOrder inOrder = inOrder(eventPublisher, em, tossClient);
+            inOrder.verify(eventPublisher).publishEvent(new PaymentFullyCanceledEvent(1L));
+            inOrder.verify(em).flush();
+            inOrder.verify(tossClient).cancelPayment(any(), any(), any());
         }
     }
 
@@ -461,7 +472,7 @@ class PaymentServiceTest {
             willAnswer(invocation -> {
                 // 유예 시간을 넘길 만큼 지연되는 동안 만료 처리가 끝난 상황
                 payment.expire();
-                order.cancel();
+                order.cancelUnpaid();
                 return null;
             }).given(tossClient).confirmPayment(PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
 

@@ -15,6 +15,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * @author WonJin Bae
  * @created 2026/04/22
  * @modified 2026/09/17 by WonJin - fix: 결제 실패 이벤트는 결제 대기 주문만 취소
+ * @modified 2026/09/17 by WonJin - fix: 결제 전액 취소 이벤트는 결제 후 취소 규칙으로 주문 취소
  *
  * <p>
  * Order 도메인과 Payment 도메인의 이벤트를 수신해 Order 측 후속 작업을 수행한다.
@@ -54,6 +55,6 @@ public class OrderEventListener {
 
     @EventListener
     public void onPaymentFullyCanceled(PaymentFullyCanceledEvent event) {
-        orderService.cancelOrder(event.orderId());
+        orderService.cancelPaidOrder(event.orderId());
     }
 }

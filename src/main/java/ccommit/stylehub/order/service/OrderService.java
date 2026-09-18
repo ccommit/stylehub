@@ -49,6 +49,7 @@ import java.util.TreeMap;
  * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
  * @modified 2026/05/08 by WonJin - feat: 쿠폰 사용 주문 + 보상 트랜잭션 — placeOrder 가 CouponPort.useUserCoupon (비관적 락 + 검증 + 할인 + USED 전이) 호출, cancelOrder 에 restoreUserCoupon 추가 (결제 실패 시 UNUSED 복구). 시나리오 2-2 측정 위한 구현.
  * @modified 2026/09/17 by WonJin - fix: cancelUnpaidOrder 추가 — 만료·결제 실패 처리는 결제 대기 주문만 취소 (이미 결제된 주문을 환불 없이 취소하던 경로 차단)
+ * @modified 2026/09/17 by WonJin - fix: 결제 후 취소를 cancelPaidOrder 로 분리(배송 준비·배송 완료 주문 포함), 배송 상태 변경 시 주문 행 락
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -107,13 +108,15 @@ public class OrderService {
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    // 호출자가 주문 상태를 몰라도 되도록 PENDING/PAID 모두 받고, 상태 검증은 Order.cancel()에 맡긴다
+    // 결제 취소 트랜잭션에 참여하므로 여기서 거절되면 PG 호출 전에 전체가 롤백된다.
+    // 만료 처리가 이 경로를 타면 결제된 주문을 환불 없이 취소하게 되므로 결제 전 취소(cancelUnpaidOrder)와 나눈다.
     @Transactional
-    public void cancelOrder(Long orderId) {
+    public void cancelPaidOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
-        cancelAndRestore(order);
+        order.cancelPaid();
+        restoreStockAndCoupon(order);
     }
 
     // 주문 행을 잠근 뒤 상태를 보므로, 승인 반영이 먼저 커밋됐으면 PAID를 보고 아무것도 하지 않는다. 중복 호출에도 멱등하다.
@@ -125,12 +128,12 @@ public class OrderService {
         if (!order.isAwaitingPayment()) {
             return false;
         }
-        cancelAndRestore(order);
+        order.cancelUnpaid();
+        restoreStockAndCoupon(order);
         return true;
     }
 
-    private void cancelAndRestore(Order order) {
-        order.cancel();
+    private void restoreStockAndCoupon(Order order) {
         restoreStock(order.getOrderId());
         restoreUserCoupon(order.getOrderId());  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
     }
@@ -162,9 +165,10 @@ public class OrderService {
     }
 
     // 배송 상태를 변경한다. 모든 검증은 DeliveryValidator에 위임한다.
+    // 결제 취소와 동시에 들어오면 취소된 주문을 배송 중으로 덮어쓸 수 있어 주문 행을 잠그고 검증한다.
     @Transactional
     public void updateDeliveryStatus(UpdateDeliveryStatusRequest request) {
-        Order order = orderRepository.findById(request.orderId())
+        Order order = orderRepository.findByIdWithLock(request.orderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         deliveryValidator.validate(request, order);

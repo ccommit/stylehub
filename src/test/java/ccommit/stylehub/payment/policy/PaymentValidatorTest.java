@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @created 2026/08/27
  * @modified 2026/09/17 by WonJin - test: validateCancelAuthority(주문자 본인/타인/관리자) 검증 추가
  * @modified 2026/09/17 by WonJin - test: 승인 시작은 READY 만 허용, 결제 대기 주문 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 결제 취소 허용 주문 상태가 Order 규칙과 같은지 검증 추가
  *
  * <p>
  * PaymentValidator의 승인·취소 가능 여부, 금액 위변조, 취소 권한, 배송 상태별 취소 기한을 검증하는 단위 테스트이다.
@@ -202,6 +203,26 @@ class PaymentValidatorTest {
 
             // when & then
             assertThatCode(() -> validator.validateCancel(payment, null)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("결제 완료(PAID) 주문의 DONE 결제는 취소할 수 있다")
+        void 결제완료_주문은_통과한다() {
+            Payment payment = paymentWith(PaymentStatus.DONE, orderWithStatus(OrderStatus.PAID, LocalDateTime.now()), 10000, 10000);
+
+            assertThatCode(() -> validator.validateCancel(payment, null)).doesNotThrowAnyException();
+        }
+
+        @ParameterizedTest
+        @DisplayName("결제 후 취소 대상이 아닌 주문 상태(PENDING, CANCELLED)면 INVALID_ORDER_STATUS 예외가 발생한다")
+        @EnumSource(value = OrderStatus.class, names = {"PENDING", "CANCELLED"})
+        void 결제후_취소대상이_아니면_예외(OrderStatus status) {
+            Payment payment = paymentWith(PaymentStatus.DONE, orderWithStatus(status, LocalDateTime.now()), 10000, 10000);
+
+            assertThatThrownBy(() -> validator.validateCancel(payment, null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.INVALID_ORDER_STATUS);
         }
 
         @Test
