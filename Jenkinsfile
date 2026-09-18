@@ -1,7 +1,7 @@
 // =========================================================================
 // StyleHub CI/CD 파이프라인
 //
-// 흐름: Checkout → Test(도커 컨테이너 내부 Gradle) → JAR 빌드
+// 흐름: live 브랜치 변경 감지(5분 폴링) → Checkout → Test(도커 컨테이너 내부 Gradle) → JAR 빌드
 //       → 운영서버로 SCP 전송 → systemd 서비스 재시작
 //
 // 운영서버는 Docker가 아니라 java -jar 를 systemd(stylehub.service)로 관리하는
@@ -112,7 +112,7 @@ pipeline {
         stage('Deploy') {
             when {
                 anyOf {
-                    branch 'develop'
+                    branch 'live'
                     expression { env.BRANCH_NAME == null }
                 }
             }
@@ -137,7 +137,7 @@ pipeline {
         stage('Verify') {
             when {
                 anyOf {
-                    branch 'develop'
+                    branch 'live'
                     expression { env.BRANCH_NAME == null }
                 }
             }
