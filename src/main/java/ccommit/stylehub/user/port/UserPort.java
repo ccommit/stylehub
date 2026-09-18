@@ -7,6 +7,7 @@ import ccommit.stylehub.user.entity.User;
  * @author WonJin Bae
  * @created 2026/04/20
  * @modified 2026/04/22 by WonJin - refactor: 검증 전용 메서드 validateApprovedStoreOwner 분리 (의도 명확화)
+ * @modified 2026/09/15 by WonJin - feat: 조회 없이 참조만 얻는 getUserReference 추가
  *
  * <p>
  * User 도메인이 외부에 제공하는 포트 인터페이스이다.
@@ -19,6 +20,9 @@ public interface UserPort {
     Address findAddressByOwner(Long userId, Long addressId);
 
     User findUserById(Long userId);
+
+    // 조회 쿼리 없이 연관관계 설정용 참조만 얻는다. 존재가 이미 보장된 사용자(세션 사용자 등)에만 사용한다.
+    User getUserReference(Long userId);
 
     void validateApprovedStoreOwner(Long userId, Long storeId);
 

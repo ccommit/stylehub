@@ -32,6 +32,7 @@ import java.time.LocalDateTime;
  * @modified 2026/04/09 by WonJin - feat: 와일드카드 import 수정, UniqueConstraint 추가
  * @modified 2026/04/16 by WonJin - docs: (user_id, coupon_event_id) UNIQUE 제약 사용 이유 주석 추가
  * @modified 2026/05/08 by WonJin - feat: markUsed() / markUnused() 상태 전이 메서드 추가 — 쿠폰 사용 주문 + 결제 실패 시 보상 트랜잭션 지원
+ * @modified 2026/09/17 by WonJin - docs: 삭제된 checkDuplicateIssue 참조를 Redis 사전 확인 + DB UNIQUE 최종 방어 설명으로 정정
  *
  * <p>
  * 사용자에게 발급된 개별 쿠폰 인스턴스를 관리한다.
@@ -40,28 +41,7 @@ import java.time.LocalDateTime;
  */
 
 @Entity
-/*
- * (user_id, coupon_event_id) 복합 UNIQUE 제약을 두는 이유:
- *
- * 1) 중복 발급의 최종 방어선
- *    - 서비스 레이어(CouponService.checkDuplicateIssue)에서 1차 체크를 수행하지만,
- *      동시성 경합 상황에서 두 트랜잭션이 체크 단계를 동시에 통과한 뒤
- *      각자 save를 시도할 가능성이 있다.
- *    - DB UNIQUE 제약으로 최종 방어하여 같은 사용자가 동일 쿠폰 이벤트를
- *      두 번 발급받는 것을 원천 차단한다.
- *
- * 2) 비즈니스 규칙을 스키마로 표현
- *    - "한 사용자는 한 쿠폰 이벤트당 최대 1장만 소유" 이라는 도메인 규칙을
- *      애플리케이션 코드가 아닌 스키마 수준에서 명시하여 일관성을 보장한다.
- *
- * 3) 조회 성능 보너스
- *    - UNIQUE 인덱스가 자동 생성되어
- *      existsByUserUserIdAndCouponEventCouponEventId 같은 조회 쿼리가
- *      인덱스 스캔으로 빠르게 동작한다.
- *
- * PK는 user_coupon_id(대리 키)로 유지하여 조인 및 연관관계 처리 편의성을 확보하고,
- * 비즈니스 제약은 UNIQUE 제약으로 분리 표현하는 구조이다.
- */
+// 한 사용자는 이벤트당 1장만 가진다. Redis 발급자 기록은 유실·재동기화·만료로 사라질 수 있어 DB 유니크 제약을 최종 방어선으로 둔다.
 @Table(name = "user_coupons", uniqueConstraints = {
         @UniqueConstraint(columnNames = {"user_id", "coupon_event_id"})
 })
@@ -98,10 +78,7 @@ public class UserCoupon {
                 .build();
     }
 
-    /**
-     * 쿠폰을 USED 상태로 전이한다. 주문 시점에 호출.
-     * 이미 USED 면 예외 — 동시 사용 / 재사용 차단의 마지막 방어선.
-     */
+    // 이미 USED면 예외를 던져 동시 사용·재사용을 막는 마지막 방어선이 된다.
     public void markUsed() {
         if (this.status != CouponStatus.UNUSED) {
             throw new BusinessException(ErrorCode.COUPON_NOT_AVAILABLE);
@@ -110,10 +87,7 @@ public class UserCoupon {
         this.usedAt = LocalDateTime.now();
     }
 
-    /**
-     * 쿠폰을 UNUSED 상태로 복구한다. 결제 실패 시 보상 트랜잭션에서 호출.
-     * 이미 UNUSED 면 멱등 (예외 X) — 보상 호출이 중복돼도 안전.
-     */
+    // 보상 호출이 중복돼도 안전하도록 이미 UNUSED여도 예외 없이 복구한다(멱등).
     public void markUnused() {
         this.status = CouponStatus.UNUSED;
         this.usedAt = null;

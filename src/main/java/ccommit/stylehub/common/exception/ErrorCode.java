@@ -7,6 +7,12 @@ import org.springframework.http.HttpStatus;
  * @created 2026/03/22
  * @modified 2026/03/24 by WonJin - refactor: bwj 패키지명 ccommit으로 변경, Auth 에러코드 추가
  * @modified 2026/09/17 by WonJin - feat: UNAUTHORIZED_PAYMENT_ACCESS 추가 (타인 결제 취소 차단)
+ * @modified 2026/09/17 by WonJin - feat: ORDER_NOT_PAYABLE, PAYMENT_RESULT_UNKNOWN 추가 (만료 주문 승인 차단, PG 결과 불명 구분)
+ * @modified 2026/09/17 by WonJin - feat: COUPON_NOT_APPLICABLE 추가 (발행 스토어 상품이 없는 주문의 스토어 쿠폰 사용 거절)
+ * @modified 2026/09/17 by WonJin - fix: PRODUCT_NOT_ON_SALE 추가 (승인 상태가 아닌 스토어 상품 주문 거절)
+ * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
+ * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
+ * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -28,12 +34,18 @@ public enum ErrorCode {
     DUPLICATE_EMAIL_OR_NAME(HttpStatus.CONFLICT, "U003", "이미 사용 중인 이메일 또는 닉네임입니다"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U004", "존재하지 않는 사용자입니다"),
     INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "U005", "이메일 또는 비밀번호가 일치하지 않습니다"),
+    // 입력값 자체는 유효하고 "이미 5개 보유"라는 현재 상태 때문에 거절되므로 400 이 아닌 409 로 둔다 (INSUFFICIENT_STOCK, COUPON_SOLD_OUT 과 같은 기준)
+    ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "U006", "배송지는 최대 5개까지 등록할 수 있습니다"),
+    ADDRESS_IN_USE(HttpStatus.CONFLICT, "U007", "주문에 사용된 배송지는 삭제할 수 없습니다"),
 
     // OAuth
     ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "O001", "이미 일반 회원가입으로 등록된 이메일입니다"),
     ALREADY_REGISTERED_OTHER_PROVIDER(HttpStatus.CONFLICT, "O002", "이미 다른 소셜 계정으로 가입된 이메일입니다"),
     UNSUPPORTED_OAUTH_PROVIDER(HttpStatus.BAD_REQUEST, "O003", "지원하지 않는 OAuth Provider입니다"),
     OAUTH_AUTHENTICATION_FAILED(HttpStatus.UNAUTHORIZED, "O004", "OAuth 인증에 실패했습니다"),
+    INVALID_OAUTH_STATE(HttpStatus.BAD_REQUEST, "O005", "OAuth 로그인 요청이 유효하지 않습니다. 로그인을 다시 시작해주세요"),
+    OAUTH_NICKNAME_CONFLICT(HttpStatus.CONFLICT, "O006", "소셜 가입 닉네임을 정하지 못했습니다. 잠시 후 다시 시도해주세요"),
+    OAUTH_PROVIDER_UNAVAILABLE(HttpStatus.BAD_GATEWAY, "O007", "OAuth 제공자와 통신하지 못했습니다. 잠시 후 다시 시도해주세요"),
 
     // Store
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "존재하지 않는 스토어입니다"),
@@ -46,6 +58,9 @@ public enum ErrorCode {
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P002", "존재하지 않는 상품입니다"),
     INVALID_CATEGORY_COMBINATION(HttpStatus.BAD_REQUEST, "P003", "메인카테고리와 서브 카테고리가 일치하지 않습니다"),
     PRODUCT_OPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "P004", "존재하지 않는 상품 옵션입니다"),
+    // 요청 형식은 올바르고 상품도 존재하지만, 스토어가 정지·미승인이라는 "현재 상태" 와 충돌해 처리할 수 없으므로 409.
+    // 입력값 오류(400)가 아니며, 같은 요청이 스토어 상태에 따라 성공할 수도 있다는 점에서 INSUFFICIENT_STOCK(409)과 같은 성격이다.
+    PRODUCT_NOT_ON_SALE(HttpStatus.CONFLICT, "P005", "현재 판매 중이 아닌 상품입니다"),
 
     // Order
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "OR001", "존재하지 않는 주문입니다"),
@@ -66,6 +81,8 @@ public enum ErrorCode {
     CANCEL_NOT_ALLOWED_SHIPPING(HttpStatus.BAD_REQUEST, "PM007", "배송 중에는 취소할 수 없습니다"),
     REFUND_PERIOD_EXPIRED(HttpStatus.BAD_REQUEST, "PM008", "환불 가능 기간이 지났습니다"),
     UNAUTHORIZED_PAYMENT_ACCESS(HttpStatus.FORBIDDEN, "PM009", "본인 결제만 취소할 수 있습니다"),
+    ORDER_NOT_PAYABLE(HttpStatus.CONFLICT, "PM010", "만료되었거나 취소된 주문은 결제할 수 없습니다"),
+    PAYMENT_RESULT_UNKNOWN(HttpStatus.BAD_GATEWAY, "PM011", "결제 결과를 확인하고 있습니다. 잠시 후 주문 상태를 확인해주세요"),
 
     // Coupon
     COUPON_NOT_FOUND(HttpStatus.NOT_FOUND, "CP001", "존재하지 않는 쿠폰 이벤트입니다"),
@@ -81,6 +98,9 @@ public enum ErrorCode {
     COUPON_NOT_AVAILABLE(HttpStatus.CONFLICT, "CP011", "사용 가능한 상태의 쿠폰이 아닙니다"),
     MIN_ORDER_AMOUNT_NOT_MET(HttpStatus.BAD_REQUEST, "CP012", "최소 주문 금액 미달로 쿠폰을 사용할 수 없습니다"),
     UNAUTHORIZED_USER_COUPON(HttpStatus.FORBIDDEN, "CP013", "본인의 쿠폰이 아닙니다"),
+    INVALID_ISSUE_COUNT(HttpStatus.BAD_REQUEST, "CP014", "이미 발급된 수량보다 적게 변경할 수 없습니다"),
+    COUPON_NOT_APPLICABLE(HttpStatus.BAD_REQUEST, "CP015", "쿠폰을 발행한 스토어의 상품이 주문에 없습니다"),
+    COUPON_ISSUE_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "CP016", "선착순 쿠폰 발급을 잠시 처리할 수 없습니다. 잠시 후 다시 시도해주세요"),
 
     // Auth
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "A001", "로그인이 필요합니다"),

@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 /**
  * @author WonJin Bae
  * @created 2026/04/09
+ * @modified 2026/09/17 by WonJin - fix: 시작일 @Future 제거 — "지금" 시작하는 이벤트가 네트워크 지연으로 거절되지 않도록 CouponValidator 에서 허용 오차를 두고 검증
  *
  * <p>
  * 쿠폰 이벤트 생성 요청 DTO이다.
@@ -40,7 +41,6 @@ public record CouponEventCreateRequest(
         Integer issueCount,
 
         @NotNull(message = "시작일은 필수입니다")
-        @Future(message = "시작일은 현재보다 이후여야 합니다")
         LocalDateTime startedAt,
 
         @NotNull(message = "만료일은 필수입니다")

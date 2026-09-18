@@ -2,6 +2,9 @@ package ccommit.stylehub.order.service;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.coupon.dto.CouponUsageResult;
+import ccommit.stylehub.coupon.entity.UserCoupon;
+import ccommit.stylehub.coupon.port.CouponPort;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.order.dto.response.OrderResponse;
@@ -28,15 +31,21 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -46,11 +55,12 @@ import static org.mockito.Mockito.never;
 /**
  * @author WonJin Bae
  * @created 2026/04/24
+ * @modified 2026/09/17 by WonJin - test: 결제 대기 주문만 취소하는 cancelUnpaidOrder 검증 추가
+ * @modified 2026/09/17 by WonJin - test: CouponPort 목 추가, 쿠폰 사용 시 스토어별 주문 금액 전달·할인 반영 검증
  *
  * <p>
- * OrderService.placeOrder 의 단위 테스트이다.
- * 현재 코드는 쿠폰/포인트 로직이 TODO 상태이므로 해당 케이스는 기능 구현 후 별도 추가가 필요하다.
- * 본 테스트는 기본 주문 플로우(배송지 조회 → 주문 저장 → 재고 차감 → 이벤트 발행)를 검증한다.
+ * OrderService의 주문 접수(재고 차감·쿠폰 적용·이벤트 발행)와 결제 대기 주문 취소를 검증하는 단위 테스트이다.
+ * 포인트 사용은 아직 구현되지 않아 다루지 않는다.
  * </p>
  */
 @ExtendWith(MockitoExtension.class)
@@ -74,6 +84,9 @@ class OrderServiceTest {
 
     @Mock
     private ProductPort productPort;
+
+    @Mock
+    private CouponPort couponPort;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -204,6 +217,64 @@ class OrderServiceTest {
         }
     }
 
+    @Nested
+    @DisplayName("placeOrder (쿠폰 사용)")
+    class PlaceOrderWithCoupon {
+
+        @Test
+        @DisplayName("쿠폰 사용 주문은 스토어별 주문 금액을 쿠폰 포트에 넘기고, 돌려받은 할인액을 주문에 반영하고 첫 항목에 쿠폰을 연결한다")
+        void passesAmountByStoreAndAppliesDiscount() {
+            // given
+            Long userId = 1L;
+            Long addressId = 10L;
+            Long userCouponId = 77L;
+            OrderCreateRequest request = new OrderCreateRequest(addressId, List.of(
+                    new OrderDetailRequest(100L, 1),
+                    new OrderDetailRequest(200L, 2)
+            ), userCouponId);
+
+            stubAddressOwnedByUser(userId, addressId);
+            Order savedOrder = stubOrderSave(999L);
+            ProductOption storeAOption = stubDecreaseStock(100L, 1, 10_000);
+            ProductOption storeBOption = stubDecreaseStock(200L, 2, 5_000);
+            given(storeAOption.getStoreId()).willReturn(10L);
+            given(storeBOption.getStoreId()).willReturn(20L);
+            OrderDetail detailA = stubOrderDetail(1L, storeAOption, savedOrder, 1, 10_000);
+            OrderDetail detailB = stubOrderDetail(2L, storeBOption, savedOrder, 2, 5_000);
+            given(orderDetailRepository.saveAll(anyList())).willReturn(List.of(detailA, detailB));
+
+            UserCoupon userCoupon = mock(UserCoupon.class);
+            given(couponPort.useUserCoupon(eq(userId), eq(userCouponId), any()))
+                    .willReturn(new CouponUsageResult(userCoupon, 1_000));
+
+            // when
+            orderService.placeOrder(userId, request);
+
+            // then
+            then(couponPort).should().useUserCoupon(userId, userCouponId, Map.of(10L, 10_000, 20L, 10_000));
+            then(savedOrder).should().applyDiscount(1_000);
+            then(detailA).should().attachCoupon(userCoupon);
+        }
+
+        @Test
+        @DisplayName("쿠폰을 쓰지 않는 주문은 쿠폰 포트를 호출하지 않는다")
+        void doesNotUseCoupon_whenCouponIdMissing() {
+            // given
+            OrderCreateRequest request = new OrderCreateRequest(10L, List.of(new OrderDetailRequest(100L, 1)), null);
+            stubAddressOwnedByUser(1L, 10L);
+            Order savedOrder = stubOrderSave(999L);
+            ProductOption option = stubDecreaseStock(100L, 1, 10_000);
+            OrderDetail detail = stubOrderDetail(1L, option, savedOrder, 1, 10_000);
+            given(orderDetailRepository.saveAll(anyList())).willReturn(List.of(detail));
+
+            // when
+            orderService.placeOrder(1L, request);
+
+            // then
+            then(couponPort).shouldHaveNoInteractions();
+        }
+    }
+
     // ===== Helpers =====
 
     private void stubAddressOwnedByUser(Long userId, Long addressId) {
@@ -250,5 +321,49 @@ class OrderServiceTest {
         given(detail.getUnitPrice()).willReturn(unitPrice);
         given(detail.getTotalPrice()).willReturn(quantity * unitPrice);
         return detail;
+    }
+
+    @Nested
+    @DisplayName("cancelUnpaidOrder (결제 대기 주문만 취소)")
+    class CancelUnpaidOrder {
+
+        @Test
+        @DisplayName("결제 대기(PENDING) 주문이면 취소하고 재고를 복구한 뒤 true 를 돌려준다")
+        void cancelsPendingOrder() {
+            // given
+            Order order = Order.builder().orderStatus(OrderStatus.PENDING).build();
+            ReflectionTestUtils.setField(order, "orderId", 1L);
+            ProductOption option = mock(ProductOption.class);
+            given(option.getProductOptionId()).willReturn(100L);
+            OrderDetail detail = mock(OrderDetail.class);
+            given(detail.getProductOption()).willReturn(option);
+            given(detail.getQuantity()).willReturn(2);
+            given(orderRepository.findByIdWithLock(1L)).willReturn(Optional.of(order));
+            given(orderDetailRepository.findByOrderIdWithDetails(1L)).willReturn(new ArrayList<>(List.of(detail)));
+
+            // when
+            boolean cancelled = orderService.cancelUnpaidOrder(1L);
+
+            // then
+            assertThat(cancelled).isTrue();
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELLED);
+            then(productPort).should().increaseStock(100L, 2);
+        }
+
+        @Test
+        @DisplayName("이미 결제된(PAID) 주문이면 취소하지 않고 재고도 복구하지 않는다")
+        void skipsPaidOrder() {
+            // given
+            Order order = Order.builder().orderStatus(OrderStatus.PAID).build();
+            given(orderRepository.findByIdWithLock(1L)).willReturn(Optional.of(order));
+
+            // when
+            boolean cancelled = orderService.cancelUnpaidOrder(1L);
+
+            // then
+            assertThat(cancelled).isFalse();
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+            then(productPort).should(never()).increaseStock(anyLong(), anyInt());
+        }
     }
 }
