@@ -84,7 +84,8 @@ pipeline {
                     image 'eclipse-temurin:17-jdk-jammy'
                     // 의존성 캐시 재사용 + 테스트가 로컬(Docker Desktop 호스트)의 Redis 에 붙도록 지정
                     // (MySQL 은 테스트 시 H2 로 자동 폴백되어 별도 지정 불필요)
-                    args '-v $HOME/.gradle:/root/.gradle -e SPRING_DATA_REDIS_HOST=host.docker.internal'
+                    // 호스트 Redis 의 DB 0 은 로컬에서 도는 다른 테스트도 쓰고, 캐시 테스트는 키를 패턴으로 지우므로 전용 DB 15 를 쓴다 (#134)
+                    args '-v $HOME/.gradle:/root/.gradle -e SPRING_DATA_REDIS_HOST=host.docker.internal -e SPRING_DATA_REDIS_DATABASE=15'
                     reuseNode true
                 }
             }
