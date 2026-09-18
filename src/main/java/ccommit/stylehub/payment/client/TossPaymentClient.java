@@ -26,6 +26,7 @@ import java.util.Map;
  * @author WonJin Bae
  * @created 2026/04/01
  * @modified 2026/09/17 by WonJin - fix: 승인 실패를 PG 거절(4xx)과 결과 불명(5xx·타임아웃)으로 구분
+ * @modified 2026/09/18 by WonJin - feat: 결제 취소에 Idempotency-Key 헤더 전달 (응답 유실 후 재시도 시 이중 환불 차단)
  *
  * <p>
  * 토스페이먼츠 결제 승인/취소 API를 호출하는 클라이언트이다.
@@ -39,6 +40,7 @@ public class TossPaymentClient implements PaymentClient {
     private static final Logger log = LoggerFactory.getLogger(TossPaymentClient.class);
 
     private static final String APPROVED_STATUS = "DONE";
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final TossPaymentProperties tossProperties;
     private final RestTemplate restTemplate;
@@ -71,10 +73,13 @@ public class TossPaymentClient implements PaymentClient {
         }
     }
 
-    // cancelAmount가 null이면 전액 취소, 있으면 부분 취소
+    // cancelAmount가 null이면 전액 취소, 있으면 부분 취소. 토스는 같은 Idempotency-Key 재요청에 첫 응답을 그대로 돌려준다(15일 유효).
     @Override
-    public void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount) {
+    public void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount, String idempotencyKey) {
         HttpHeaders headers = createAuthHeaders();
+        if (idempotencyKey != null) {
+            headers.set(IDEMPOTENCY_KEY_HEADER, idempotencyKey);
+        }
 
         Map<String, Object> body = new HashMap<>();
         body.put("cancelReason", cancelReason);
