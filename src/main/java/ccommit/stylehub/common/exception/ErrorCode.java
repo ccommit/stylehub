@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - fix: PRODUCT_NOT_ON_SALE 추가 (승인 상태가 아닌 스토어 상품 주문 거절)
  * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
  * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
+ * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -33,6 +34,9 @@ public enum ErrorCode {
     DUPLICATE_EMAIL_OR_NAME(HttpStatus.CONFLICT, "U003", "이미 사용 중인 이메일 또는 닉네임입니다"),
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "U004", "존재하지 않는 사용자입니다"),
     INVALID_PASSWORD(HttpStatus.UNAUTHORIZED, "U005", "이메일 또는 비밀번호가 일치하지 않습니다"),
+    // 입력값 자체는 유효하고 "이미 5개 보유"라는 현재 상태 때문에 거절되므로 400 이 아닌 409 로 둔다 (INSUFFICIENT_STOCK, COUPON_SOLD_OUT 과 같은 기준)
+    ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "U006", "배송지는 최대 5개까지 등록할 수 있습니다"),
+    ADDRESS_IN_USE(HttpStatus.CONFLICT, "U007", "주문에 사용된 배송지는 삭제할 수 없습니다"),
 
     // OAuth
     ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "O001", "이미 일반 회원가입으로 등록된 이메일입니다"),
