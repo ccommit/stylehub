@@ -14,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author WonJin Bae
  * @created 2026/09/08
+ * @modified 2026/09/17 by WonJin - test: Redis 명령 타임아웃 설정 누락 검증 추가 (선착순 쿠폰 fail-closed 시 스레드 고갈 방지)
  *
  * <p>
  * 운영 프로파일 설정 누락 회귀 테스트이다.
@@ -77,6 +78,14 @@ class ProdProfilePropertiesTest {
     void sessionSecurityPropertiesArePresent(String key) throws IOException {
         assertThat(loadProdProperties().getProperty(key))
                 .as("%s 가 없으면 세션 쿠키 보호 수준이 운영에서 낮아진다", key)
+                .isNotBlank();
+    }
+
+    @Test
+    @DisplayName("Redis 명령 타임아웃이 운영 프로파일에 존재해야 한다")
+    void redisCommandTimeoutIsPresent() throws IOException {
+        assertThat(loadProdProperties().getProperty("spring.data.redis.timeout"))
+                .as("없으면 Redis 장애 시 요청이 Lettuce 기본 타임아웃(60초)까지 톰캣 스레드를 붙잡는다")
                 .isNotBlank();
     }
 

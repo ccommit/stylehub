@@ -25,6 +25,7 @@ import java.util.List;
 /**
  * @author WonJin Bae
  * @created 2026/04/09
+ * @modified 2026/09/17 by WonJin - feat: 선착순 발급 카운터 재동기화 관리자 API 추가 (Redis 자리 누수 복구 수단)
  *
  * <p>
  * 쿠폰 이벤트 생성(STORE/ADMIN) 및 선착순 발급(USER) API를 제공한다.
@@ -71,6 +72,14 @@ public class CouponController {
     @RequiredRole(UserRole.ADMIN)
     public ResponseEntity<Void> deactivateCouponEvent(@PathVariable Long couponEventId) {
         couponApplicationService.deactivateCouponEvent(couponEventId);
+        return ResponseEntity.ok().build();
+    }
+
+    // 커밋 전 서버 종료나 Redis 보상 실패로 새어 나간 자리와 사용자 기록을 지워, 다음 발급 요청이 DB 기준으로 카운터를 다시 만들게 한다.
+    @PostMapping("/admin/coupon-events/{couponEventId}/issue-counter/resync")
+    @RequiredRole(UserRole.ADMIN)
+    public ResponseEntity<Void> resyncIssueCounter(@PathVariable Long couponEventId) {
+        couponApplicationService.resyncIssueCounter(couponEventId);
         return ResponseEntity.ok().build();
     }
 
