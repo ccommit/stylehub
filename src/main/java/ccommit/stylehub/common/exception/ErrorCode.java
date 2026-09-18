@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - feat: UNAUTHORIZED_PAYMENT_ACCESS 추가 (타인 결제 취소 차단)
  * @modified 2026/09/17 by WonJin - feat: ORDER_NOT_PAYABLE, PAYMENT_RESULT_UNKNOWN 추가 (만료 주문 승인 차단, PG 결과 불명 구분)
  * @modified 2026/09/17 by WonJin - feat: COUPON_NOT_APPLICABLE 추가 (발행 스토어 상품이 없는 주문의 스토어 쿠폰 사용 거절)
+ * @modified 2026/09/17 by WonJin - fix: PRODUCT_NOT_ON_SALE 추가 (승인 상태가 아닌 스토어 상품 주문 거절)
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -48,6 +49,9 @@ public enum ErrorCode {
     PRODUCT_NOT_FOUND(HttpStatus.NOT_FOUND, "P002", "존재하지 않는 상품입니다"),
     INVALID_CATEGORY_COMBINATION(HttpStatus.BAD_REQUEST, "P003", "메인카테고리와 서브 카테고리가 일치하지 않습니다"),
     PRODUCT_OPTION_NOT_FOUND(HttpStatus.NOT_FOUND, "P004", "존재하지 않는 상품 옵션입니다"),
+    // 요청 형식은 올바르고 상품도 존재하지만, 스토어가 정지·미승인이라는 "현재 상태" 와 충돌해 처리할 수 없으므로 409.
+    // 입력값 오류(400)가 아니며, 같은 요청이 스토어 상태에 따라 성공할 수도 있다는 점에서 INSUFFICIENT_STOCK(409)과 같은 성격이다.
+    PRODUCT_NOT_ON_SALE(HttpStatus.CONFLICT, "P005", "현재 판매 중이 아닌 상품입니다"),
 
     // Order
     ORDER_NOT_FOUND(HttpStatus.NOT_FOUND, "OR001", "존재하지 않는 주문입니다"),
