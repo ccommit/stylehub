@@ -1,0 +1,101 @@
+{
+  "uid": "stylehub-app",
+  "title": "StyleHub 애플리케이션",
+  "tags": ["stylehub"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-3h", "to": "now"},
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "URI별 p95 응답 시간",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "{{method}} {{uri}}",
+         "expr": "histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{job=\"stylehub\", uri!~\"/actuator.*\"}[5m])))"}
+      ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "상태 코드별 요청 수",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "{{status}}",
+         "expr": "sum by (status) (rate(http_server_requests_seconds_count{job=\"stylehub\", uri!~\"/actuator.*\"}[1m]))"}
+      ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "5xx 비율",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "5xx",
+         "expr": "(sum(rate(http_server_requests_seconds_count{job=\"stylehub\", status=~\"5..\", uri!~\"/actuator.*\"}[5m])) or vector(0)) / sum(rate(http_server_requests_seconds_count{job=\"stylehub\", uri!~\"/actuator.*\"}[5m]))"}
+      ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Hikari 커넥션",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "active", "expr": "sum(hikaricp_connections_active{job=\"stylehub\"})"},
+        {"refId": "B", "legendFormat": "pending", "expr": "sum(hikaricp_connections_pending{job=\"stylehub\"})"},
+        {"refId": "C", "legendFormat": "max", "expr": "sum(hikaricp_connections_max{job=\"stylehub\"})"}
+      ]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "커넥션 획득 타임아웃 (5분 누적)",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "timeout", "expr": "sum(increase(hikaricp_connections_timeout_total{job=\"stylehub\"}[5m]))"}
+      ]
+    },
+    {
+      "id": 6, "type": "timeseries", "title": "Tomcat 스레드 (API 포트)",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "none"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "busy", "expr": "sum(tomcat_threads_busy_threads{job=\"stylehub\", name=~\".*8080.*\"})"},
+        {"refId": "B", "legendFormat": "max", "expr": "sum(tomcat_threads_config_max_threads{job=\"stylehub\", name=~\".*8080.*\"})"}
+      ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "JVM 힙",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "used", "expr": "sum(jvm_memory_used_bytes{job=\"stylehub\", area=\"heap\"})"},
+        {"refId": "B", "legendFormat": "committed", "expr": "sum(jvm_memory_committed_bytes{job=\"stylehub\", area=\"heap\"})"}
+      ]
+    },
+    {
+      "id": 8, "type": "timeseries", "title": "GC 최대 멈춤",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "{{gc}}", "expr": "max by (gc) (max_over_time(jvm_gc_pause_seconds_max{job=\"stylehub\"}[5m]))"}
+      ]
+    },
+    {
+      "id": 9, "type": "timeseries", "title": "CPU (프로세스, 시스템)",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "targets": [
+        {"refId": "A", "legendFormat": "process", "expr": "process_cpu_usage{job=\"stylehub\"}"},
+        {"refId": "B", "legendFormat": "system", "expr": "system_cpu_usage{job=\"stylehub\"}"}
+      ]
+    }
+  ]
+}

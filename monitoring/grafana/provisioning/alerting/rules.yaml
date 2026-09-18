@@ -1,0 +1,138 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: server
+    folder: StyleHub
+    interval: 1m
+    rules:
+      - uid: stylehub-scrape-down
+        title: 수집 끊김
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job=~"stylehub|node"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: lt, params: [1]}
+        for: 2m
+        noDataState: Alerting
+        execErrState: Error
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.job }} 을 2분 넘게 수집하지 못했다. 서버 다운, 배포 지연, 터널 끊김 중 하나다."
+
+      - uid: stylehub-memory-low
+        title: 가용 메모리 부족
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 * node_memory_MemAvailable_bytes{job="node"} / node_memory_MemTotal_bytes{job="node"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: lt, params: [10]}
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: warning}
+        annotations:
+          summary: "운영 서버 가용 메모리가 5분 넘게 10% 미만이다: {{ if ne $values.A.Value nil }}{{ humanize $values.A.Value }}{{ else }}N/A{{ end }}%"
+
+      - uid: stylehub-disk-high
+        title: 디스크 사용률 높음
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 600, to: 0}
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 * (1 - node_filesystem_avail_bytes{job="node", mountpoint="/"} / node_filesystem_size_bytes{job="node", mountpoint="/"})
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: gt, params: [80]}
+        for: 5m
+        noDataState: OK
+        execErrState: Error
+        labels: {severity: warning}
+        annotations:
+          summary: "운영 서버 디스크 사용률이 80%를 넘었다: {{ if ne $values.A.Value nil }}{{ humanize $values.A.Value }}{{ else }}N/A{{ end }}%"
+
+  - orgId: 1
+    name: aws
+    folder: StyleHub
+    interval: 5m
+    rules:
+      - uid: stylehub-cpu-credit-low
+        title: CPU 크레딧 부족
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 3600, to: 0}
+            datasourceUid: cloudwatch
+            model:
+              refId: A
+              queryMode: Metrics
+              region: default
+              namespace: AWS/EC2
+              metricName: CPUCreditBalance
+              dimensions: {InstanceId: "*"}
+              matchExact: false
+              statistic: Average
+              period: "300"
+              metricQueryType: 0
+              metricEditorMode: 0
+              id: ""
+              expression: ""
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource: {type: __expr__, uid: __expr__}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              datasource: {type: __expr__, uid: __expr__}
+              conditions:
+                - evaluator: {type: lt, params: [30]}
+        for: 10m
+        noDataState: NoData
+        execErrState: Error
+        labels: {severity: warning}
+        annotations:
+          summary: "CPU 크레딧 잔량이 30 미만이다: {{ if ne $values.B.Value nil }}{{ humanize $values.B.Value }}{{ else }}N/A(CloudWatch 값을 받지 못함 — 키·권한·리전 확인){{ end }}. standard 모드라 곧 기준 성능으로 제한된다."
