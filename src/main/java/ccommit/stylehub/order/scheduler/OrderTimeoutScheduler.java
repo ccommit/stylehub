@@ -4,6 +4,7 @@ import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderService;
+import ccommit.stylehub.payment.port.PaymentPort;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,7 @@ import java.util.List;
  * @created 2026/03/27
  * @modified 2026/03/27 by WonJin - refactor: Lua 스크립트로 ZRANGEBYSCORE+ZREM 원자적 처리, 보정 스케줄러 배치 LIMIT 추가
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService → OrderService 통합에 따른 의존성 변경
+ * @modified 2026/09/08 by WonJin - feat: 취소 직전 PG 결제 상태 대조 추가 (승인 응답 유실 구간 축소)
  *
  * <p>
  * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
@@ -59,6 +61,7 @@ public class OrderTimeoutScheduler {
     private final StringRedisTemplate redisTemplate;
     private final OrderRepository orderRepository;
     private final OrderService orderService;
+    private final PaymentPort paymentPort;
 
     /**
      * Redis ZSET에서 만료된 주문을 1분마다 폴링하여 취소 처리한다.
@@ -82,13 +85,31 @@ public class OrderTimeoutScheduler {
         }
 
         for (String orderIdStr : expiredOrderIds) {
-            Long orderId = Long.valueOf(orderIdStr);
-            try {
-                orderService.cancelOrder(orderId);
-                log.info("주문 타임아웃 취소: orderId={}", orderId);
-            } catch (Exception e) {
-                log.error("주문 타임아웃 취소 실패: orderId={}, error={}", orderId, e.getMessage());
+            cancelIfNotPaid(Long.valueOf(orderIdStr));
+        }
+    }
+
+    /**
+     * 취소하기 전에 PG 쪽 결제 상태를 대조한다.
+     *
+     * <p>승인 요청이 PG 에 도달했는데 응답만 유실되면 우리 DB 에는 결제 대기로 남는다.
+     * 그대로 취소하면 사용자는 결제했는데 주문은 사라지고 재고까지 복구된다.
+     *
+     * <p>대조에 실패하면 취소하지 않고 넘어간다. 조회할 수 없다는 것과 승인되지 않았다는 것은
+     * 다르고, 알 수 없는 상태에서 취소하면 막으려던 문제가 그대로 발생한다.
+     * 이 주문은 여전히 결제 대기 상태이므로 DB 보정 스케줄러가 다시 찾아낸다.
+     */
+    private void cancelIfNotPaid(Long orderId) {
+        try {
+            if (paymentPort.reconcileIfApproved(orderId)) {
+                log.warn("만료 직전 PG 승인 확인 — 취소하지 않고 결제 상태를 맞춤: orderId={}", orderId);
+                return;
             }
+            orderService.cancelOrder(orderId);
+            log.info("주문 타임아웃 취소: orderId={}", orderId);
+        } catch (Exception e) {
+            log.error("주문 타임아웃 처리 실패 — 취소하지 않고 다음 회차로 미룸: orderId={}, error={}",
+                    orderId, e.getMessage());
         }
     }
 

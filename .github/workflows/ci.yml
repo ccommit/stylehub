@@ -1,0 +1,61 @@
+# 푸시와 PR 마다 테스트를 자동 실행한다.
+#
+# 배포(CD)는 Jenkins 가 계속 담당하고 여기서는 테스트(CI)만 돌린다.
+# Jenkins 가 개발 머신에서 실행되기 때문에 머신이 꺼져 있으면 검증이 진행되지 않는데,
+# 검증만이라도 개발 머신 상태와 무관하게 돌아가도록 분리했다.
+# 별도 인스턴스에 Jenkins 를 올리는 방안은 비용이 들고, 이 저장소는 퍼블릭이라
+# Actions 실행 시간이 무료다.
+
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  test:
+    name: 테스트
+    runs-on: ubuntu-latest
+
+    # 통합 테스트가 Redis 를 사용한다. MySQL 은 저장소에 application.properties 가 없어
+    # 테스트 시 H2 로 폴백되므로 별도 구성이 필요 없다.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+
+      - name: JDK 17 설정
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: gradlew 실행 권한 부여
+        run: chmod +x gradlew
+
+      - name: 테스트 실행
+        run: ./gradlew test --no-daemon
+
+      # 실패했을 때 원인을 보려면 리포트가 필요하므로 성공 여부와 무관하게 올린다.
+      - name: 테스트 리포트 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            build/test-results/test/
+            build/reports/tests/test/
+          retention-days: 7
