@@ -158,7 +158,7 @@ pipeline {
                         sh '''
                             ssh -o StrictHostKeyChecking=no $DEPLOY_HOST "
                                 echo '--- 헬스체크 ---'
-                                curl -fsS http://localhost:8080/actuator/health
+                                curl -fsS http://127.0.0.1:9081/actuator/health
                                 echo
                                 echo '--- 배포된 JAR 시각 ---'
                                 stat -c '%y' $DEPLOY_DIR/$JAR_NAME
