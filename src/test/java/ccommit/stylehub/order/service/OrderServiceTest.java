@@ -28,15 +28,19 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -46,6 +50,7 @@ import static org.mockito.Mockito.never;
 /**
  * @author WonJin Bae
  * @created 2026/04/24
+ * @modified 2026/09/17 by WonJin - test: 결제 대기 주문만 취소하는 cancelUnpaidOrder 검증 추가
  *
  * <p>
  * OrderService.placeOrder 의 단위 테스트이다.
@@ -250,5 +255,49 @@ class OrderServiceTest {
         given(detail.getUnitPrice()).willReturn(unitPrice);
         given(detail.getTotalPrice()).willReturn(quantity * unitPrice);
         return detail;
+    }
+
+    @Nested
+    @DisplayName("cancelUnpaidOrder (결제 대기 주문만 취소)")
+    class CancelUnpaidOrder {
+
+        @Test
+        @DisplayName("결제 대기(PENDING) 주문이면 취소하고 재고를 복구한 뒤 true 를 돌려준다")
+        void cancelsPendingOrder() {
+            // given
+            Order order = Order.builder().orderStatus(OrderStatus.PENDING).build();
+            ReflectionTestUtils.setField(order, "orderId", 1L);
+            ProductOption option = mock(ProductOption.class);
+            given(option.getProductOptionId()).willReturn(100L);
+            OrderDetail detail = mock(OrderDetail.class);
+            given(detail.getProductOption()).willReturn(option);
+            given(detail.getQuantity()).willReturn(2);
+            given(orderRepository.findByIdWithLock(1L)).willReturn(Optional.of(order));
+            given(orderDetailRepository.findByOrderIdWithDetails(1L)).willReturn(new ArrayList<>(List.of(detail)));
+
+            // when
+            boolean cancelled = orderService.cancelUnpaidOrder(1L);
+
+            // then
+            assertThat(cancelled).isTrue();
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELLED);
+            then(productPort).should().increaseStock(100L, 2);
+        }
+
+        @Test
+        @DisplayName("이미 결제된(PAID) 주문이면 취소하지 않고 재고도 복구하지 않는다")
+        void skipsPaidOrder() {
+            // given
+            Order order = Order.builder().orderStatus(OrderStatus.PAID).build();
+            given(orderRepository.findByIdWithLock(1L)).willReturn(Optional.of(order));
+
+            // when
+            boolean cancelled = orderService.cancelUnpaidOrder(1L);
+
+            // then
+            assertThat(cancelled).isFalse();
+            assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
+            then(productPort).should(never()).increaseStock(anyLong(), anyInt());
+        }
     }
 }

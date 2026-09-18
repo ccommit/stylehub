@@ -1,10 +1,13 @@
 package ccommit.stylehub.order.scheduler;
 
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.payment.port.PaymentPort;
+import ccommit.stylehub.payment.port.PaymentReconcileResult;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +27,7 @@ import java.util.List;
  * @modified 2026/03/27 by WonJin - refactor: Lua 스크립트로 ZRANGEBYSCORE+ZREM 원자적 처리, 보정 스케줄러 배치 LIMIT 추가
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService → OrderService 통합에 따른 의존성 변경
  * @modified 2026/09/08 by WonJin - feat: 취소 직전 PG 결제 상태 대조 추가 (승인 응답 유실 구간 축소)
+ * @modified 2026/09/17 by WonJin - fix: 결론을 못 낸 주문은 타이머 재등록, 승인 진행 중 주문은 취소 보류, 보정 스케줄러도 PG 대조 경로 사용
  *
  * <p>
  * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
@@ -42,6 +46,9 @@ public class OrderTimeoutScheduler {
 
     private static final int TIMEOUT_MINUTES = 10;
     private static final int BATCH_SIZE = 100;
+
+    // 결론을 미룬 주문을 다시 확인하기까지의 간격. 폴링 주기(1분)와 맞췄다.
+    private static final long RETRY_DELAY_MILLIS = 60_000;
 
     // Lua 스크립트: ZRANGEBYSCORE + ZREM을 원자적으로 실행하여 다중 서버 중복 처리를 방지한다.
     private static final DefaultRedisScript<List> FETCH_AND_REMOVE_SCRIPT;
@@ -62,12 +69,9 @@ public class OrderTimeoutScheduler {
     private final OrderRepository orderRepository;
     private final OrderService orderService;
     private final PaymentPort paymentPort;
+    private final OrderPaymentTimeout orderPaymentTimeout;
 
-    /**
-     * Redis ZSET에서 만료된 주문을 1분마다 폴링하여 취소 처리한다.
-     * Lua 스크립트로 조회+제거를 원자적으로 수행하여 다중 서버 중복 처리를 방지한다.
-     * TODO: 주문 취소 시 유저 메일 발송 추가 필요
-     */
+    // TODO: 주문 취소 시 유저 메일 발송 추가 필요
     @Scheduled(fixedDelay = 60000)
     @SuppressWarnings("unchecked")
     public void cancelExpiredOrders() {
@@ -85,35 +89,50 @@ public class OrderTimeoutScheduler {
         }
 
         for (String orderIdStr : expiredOrderIds) {
-            cancelIfNotPaid(Long.valueOf(orderIdStr));
+            expireIfUnpaid(Long.valueOf(orderIdStr));
         }
     }
 
-    /**
-     * 취소하기 전에 PG 쪽 결제 상태를 대조한다.
-     *
-     * <p>승인 요청이 PG 에 도달했는데 응답만 유실되면 우리 DB 에는 결제 대기로 남는다.
-     * 그대로 취소하면 사용자는 결제했는데 주문은 사라지고 재고까지 복구된다.
-     *
-     * <p>대조에 실패하면 취소하지 않고 넘어간다. 조회할 수 없다는 것과 승인되지 않았다는 것은
-     * 다르고, 알 수 없는 상태에서 취소하면 막으려던 문제가 그대로 발생한다.
-     * 이 주문은 여전히 결제 대기 상태이므로 DB 보정 스케줄러가 다시 찾아낸다.
-     */
-    private void cancelIfNotPaid(Long orderId) {
+    // 조회 실패는 미승인과 다르므로 취소하지 않고, Lua 스크립트가 이미 ZSET에서 꺼냈으니 타이머를 다시 등록한다.
+    // 금액 불일치는 재시도로 풀리지 않고 위변조 가능성이 있어 재등록하지 않고 사람이 확인하게 남긴다.
+    private void expireIfUnpaid(Long orderId) {
         try {
-            if (paymentPort.reconcileIfApproved(orderId)) {
-                log.warn("만료 직전 PG 승인 확인 — 취소하지 않고 결제 상태를 맞춤: orderId={}", orderId);
+            PaymentReconcileResult result = paymentPort.reconcileBeforeExpiry(orderId);
+            switch (result) {
+                case APPROVED -> log.warn("만료 직전 PG 승인 확인 — 취소하지 않고 결제 상태를 맞춤: orderId={}", orderId);
+                case IN_FLIGHT -> {
+                    orderPaymentTimeout.retryAfter(orderId, RETRY_DELAY_MILLIS);
+                    log.info("승인 요청 진행 중 — 만료 처리를 미룸: orderId={}", orderId);
+                }
+                case NOT_APPROVED -> {
+                    if (orderService.cancelUnpaidOrder(orderId)) {
+                        log.info("주문 타임아웃 취소: orderId={}", orderId);
+                    }
+                }
+            }
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.PAYMENT_AMOUNT_MISMATCH) {
+                log.error("[수동 확인 필요] 만료 직전 PG 대조 금액 불일치 — 취소하지 않음: orderId={}", orderId);
                 return;
             }
-            orderService.cancelOrder(orderId);
-            log.info("주문 타임아웃 취소: orderId={}", orderId);
+            retryLater(orderId, e);
         } catch (Exception e) {
-            log.error("주문 타임아웃 처리 실패 — 취소하지 않고 다음 회차로 미룸: orderId={}, error={}",
-                    orderId, e.getMessage());
+            retryLater(orderId, e);
         }
     }
 
-    // Redis 타이머 누락 보정 — 서버 장애 등으로 Redis에 등록되지 못한 PENDING 주문을 1시간마다 배치 탐색하여 취소
+    private void retryLater(Long orderId, Exception cause) {
+        log.error("주문 타임아웃 처리 실패 — 취소하지 않고 다음 회차로 미룸: orderId={}, error={}", orderId, cause.getMessage());
+        try {
+            orderPaymentTimeout.retryAfter(orderId, RETRY_DELAY_MILLIS);
+        } catch (Exception e) {
+            // Redis 에도 다시 넣지 못하면 결제 대기 주문으로 남아 보정 스케줄러가 찾아낸다.
+            log.error("주문 타임아웃 재등록 실패 — 보정 스케줄러가 처리: orderId={}", orderId, e);
+        }
+    }
+
+    // 서버 장애 등으로 Redis 타이머가 누락된 결제 대기 주문을 보정한다.
+    // 타이머 등록과 승인 응답이 함께 유실된 주문을 대조 없이 취소하면 결제한 주문이 사라지므로 같은 PG 대조를 거친다.
     @Scheduled(fixedDelay = 3600000)
     public void compensateOrphanedOrders() {
         LocalDateTime expiredTime = LocalDateTime.now().minusMinutes(TIMEOUT_MINUTES);
@@ -128,12 +147,7 @@ public class OrderTimeoutScheduler {
         log.warn("Redis 타이머 누락 보정: {}건 발견", orphanedOrders.size());
 
         for (Order order : orphanedOrders) {
-            try {
-                orderService.cancelOrder(order.getOrderId());
-                log.info("보정 취소 완료: orderId={}", order.getOrderId());
-            } catch (Exception e) {
-                log.error("보정 취소 실패: orderId={}, error={}", order.getOrderId(), e.getMessage());
-            }
+            expireIfUnpaid(order.getOrderId());
         }
     }
 }

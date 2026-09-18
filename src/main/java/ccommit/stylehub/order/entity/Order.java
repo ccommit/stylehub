@@ -36,6 +36,7 @@ import java.util.UUID;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/22 by WonJin - refactor: cancel/cancelPaid 통합 (내부 상태 PENDING/PAID 모두 허용) — 호출자가 상태를 알 필요 없게 함
  * @modified 2026/05/08 by WonJin - feat: applyDiscount 추가 (쿠폰 사용 주문 시 할인 금액 반영)
+ * @modified 2026/09/17 by WonJin - fix: 결제 대기 여부 조회 추가 (만료 처리는 결제 대기 주문만 취소)
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -100,11 +101,13 @@ public class Order extends BaseEntity {
         return totalAmount - this.discountAmount - this.usedPoint;
     }
 
-    /**
-     * 쿠폰 할인을 적용한다. 결제 실패 시 보상으로 0 으로 되돌림.
-     */
     public void applyDiscount(int discountAmount) {
         this.discountAmount = discountAmount;
+    }
+
+    // 결제 대기(PENDING) 주문인지 확인한다. 만료·결제 실패 처리는 이 상태의 주문만 취소한다.
+    public boolean isAwaitingPayment() {
+        return this.orderStatus == OrderStatus.PENDING;
     }
 
     // 주문 취소 — PENDING(결제 전) 또는 PAID(결제 완료) 상태에서만 전환 가능
