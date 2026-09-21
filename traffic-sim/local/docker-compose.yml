@@ -1,0 +1,62 @@
+# 2단계 로컬 검증용 스택: MySQL, Redis, Mock PG, 직접 빌드한 StyleHub jar(prod 프로파일).
+# 운영과 같게 JVM 시간대는 UTC 이고, 결제는 Mock PG 로 보낸다. 밖으로는 127.0.0.1:18080 하나만 연다.
+name: stylehub-sim-local
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${SIM_LOCAL_DB_PASSWORD:-simlocal}
+      MYSQL_DATABASE: stylehub
+      MYSQL_USER: stylehub
+      MYSQL_PASSWORD: ${SIM_LOCAL_DB_PASSWORD:-simlocal}
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  mock-pg:
+    image: python:3.12-slim
+    command: ["python", "/app/mock_pg.py"]
+    environment:
+      MOCK_PG_BIND: 0.0.0.0
+      MOCK_PG_PORT: "18090"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ../mock-pg/mock_pg.py:/app/mock_pg.py:ro
+
+  app:
+    image: eclipse-temurin:17-jre
+    command: ["java", "-jar", "/app/app.jar"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-pg:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      TZ: UTC
+      DB_HOST: mysql
+      DB_PASSWORD: ${SIM_LOCAL_DB_PASSWORD:-simlocal}
+      REDIS_HOST: redis
+      JPA_DDL_AUTO: update
+      GOOGLE_CLIENT_ID: local-dummy
+      GOOGLE_CLIENT_SECRET: local-dummy
+      TOSS_SECRET_KEY: local-dummy
+      TOSS_PAYMENTS_CONFIRMURL: http://mock-pg:18090/v1/payments/confirm
+      TOSS_PAYMENTS_CANCELURL: http://mock-pg:18090/v1/payments
+      TOSS_PAYMENTS_FINDBYORDERIDURL: http://mock-pg:18090/v1/payments/orders
+    volumes:
+      - ../../build/libs/stylehub-0.0.1-SNAPSHOT.jar:/app/app.jar:ro
+    ports:
+      - "127.0.0.1:18080:8080"
