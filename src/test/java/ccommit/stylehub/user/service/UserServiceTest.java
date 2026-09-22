@@ -21,12 +21,14 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willAnswer;
@@ -38,6 +40,7 @@ import static org.mockito.Mockito.never;
  * @created 2026/04/24
  * @modified 2026/05/01 by WonJin - test: throws_whenEmailNotFound DisplayName 에 user enumeration 방지 의도 명시 — 코드 리뷰 시 INVALID_PASSWORD 반환이 버그처럼 보이지 않도록
  * @modified 2026/09/17 by WonJin - test: 미존재 이메일·소셜 계정·비활성 계정이 INVALID_PASSWORD 로 응답하고 더미 해시 검증을 수행하는지 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 로그인 적립 검증을 PointService 위임 호출 확인으로 변경 (엔티티 addPoint 제거, 적립 규칙은 PointServiceTest·LoginPointPersistenceTest 에서 검증)
  *
  * <p>
  * UserService.login 의 단위 테스트이다.
@@ -56,6 +59,9 @@ class UserServiceTest {
 
     @Mock
     private TransactionTemplate transactionTemplate;
+
+    @Mock
+    private PointService pointService;
 
     @InjectMocks
     private UserService userService;
@@ -76,12 +82,10 @@ class UserServiceTest {
             given(user.getPassword()).willReturn("hashed-pw");
             given(user.getActive()).willReturn(true);
             given(user.getRole()).willReturn(UserRole.USER);
-            given(user.getLastLoginDate()).willReturn(null);   // 최초 로그인 → 1000P 지급 경로
 
             stubTransactionTemplatePassthrough();
             given(userRepository.findByEmail("user@test.com")).willReturn(Optional.of(user));
             given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
-            given(userRepository.findById(1L)).willReturn(Optional.of(user));
 
             // when
             UserLoginResponse response = userService.login(request);
@@ -90,9 +94,7 @@ class UserServiceTest {
             assertThat(response.userId()).isEqualTo(1L);
             assertThat(response.email()).isEqualTo("user@test.com");
             assertThat(response.role()).isEqualTo(UserRole.USER);
-            then(userRepository).should().findById(1L);        // rewardLoginPoint 내부 호출 확인
-            then(user).should().addPoint(1000);                // 최초 로그인 포인트
-            then(user).should().updateLastLoginDate(any());
+            then(pointService).should().rewardLoginPoint(eq(1L), any(LocalDate.class));   // 적립 규칙·원자성은 PointService 가 맡는다
         }
 
         @Test
@@ -117,8 +119,7 @@ class UserServiceTest {
 
             // then
             assertThat(response.role()).isEqualTo(UserRole.STORE);
-            then(userRepository).should(never()).findById(any());    // rewardLoginPoint 진입 안 함
-            then(storeUser).should(never()).addPoint(any(Integer.class));
+            then(pointService).should(never()).rewardLoginPoint(any(), any());
         }
 
         @Test
@@ -158,7 +159,7 @@ class UserServiceTest {
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
             then(passwordHasher).should().verifyDummy("raw-pw");
             then(passwordHasher).should(never()).matches(any(), any());
-            then(userRepository).should(never()).findById(any());   // 포인트 적립으로 넘어가지 않는다
+            then(pointService).should(never()).rewardLoginPoint(any(), any());   // 포인트 적립으로 넘어가지 않는다
         }
 
         @Test
@@ -181,7 +182,7 @@ class UserServiceTest {
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
             then(passwordHasher).should().verifyDummy("raw-pw");
             then(passwordHasher).should(never()).matches(any(), any());
-            then(userRepository).should(never()).findById(any());
+            then(pointService).should(never()).rewardLoginPoint(any(), any());
         }
 
         @Test

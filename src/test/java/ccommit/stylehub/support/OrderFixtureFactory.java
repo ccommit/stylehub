@@ -22,6 +22,7 @@ import java.util.UUID;
  * @author WonJin Bae
  * @created 2026/09/04
  * @modified 2026/09/17 by WonJin - test: 상품 소유자를 구매자와 분리된 승인 스토어로 생성 (재고 차감이 스토어 승인 상태를 요구하게 됨), 스토어·상품 단위 생성과 ID 기반 정리 메서드 추가
+ * @modified 2026/09/17 by WonJin - test: 정리 시 포인트 이력을 주문·회원보다 먼저 삭제 (로그인 적립·주문 포인트 사용이 이력을 남기게 됨)
  *
  * <p>
  * 주문 통합 테스트가 존재를 가정해온 User/Address/Product/ProductOption을 실제로 만드는 테스트 전용 픽스처 팩토리이다.
@@ -105,11 +106,13 @@ public class OrderFixtureFactory {
     }
 
     // deleteAll()은 같은 컨텍스트를 쓰는 다른 테스트 데이터까지 지우므로 ID로 범위를 한정해 외래키 의존 순서대로 지운다.
+    // 결제 → 주문 상세 → 포인트 이력(주문) → 주문 → 옵션 → 상품 → 포인트 이력(회원) → 배송지 → 회원 순서다.
     @Transactional
     public void deleteByIds(Collection<Long> orderIds, Collection<Long> productIds, Collection<Long> userIds) {
         if (!orderIds.isEmpty()) {
             deleteIn("DELETE FROM Payment p WHERE p.order.orderId IN :ids", orderIds);
             deleteIn("DELETE FROM OrderDetail od WHERE od.order.orderId IN :ids", orderIds);
+            deleteIn("DELETE FROM PointHistory ph WHERE ph.order.orderId IN :ids", orderIds);
             deleteIn("DELETE FROM Order o WHERE o.orderId IN :ids", orderIds);
         }
         if (!productIds.isEmpty()) {
@@ -117,6 +120,7 @@ public class OrderFixtureFactory {
             deleteIn("DELETE FROM Product p WHERE p.productId IN :ids", productIds);
         }
         if (!userIds.isEmpty()) {
+            deleteIn("DELETE FROM PointHistory ph WHERE ph.user.userId IN :ids", userIds);
             deleteIn("DELETE FROM Address a WHERE a.user.userId IN :ids", userIds);
             deleteIn("DELETE FROM User u WHERE u.userId IN :ids", userIds);
         }
