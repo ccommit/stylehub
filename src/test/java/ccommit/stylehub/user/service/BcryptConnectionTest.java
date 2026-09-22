@@ -7,6 +7,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -25,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @created 2026/03/21 08:17
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/09/17 by WonJin - test: 중복 Javadoc 3개를 헤더 하나로 합치고, 풀 크기·요청 수를 실제 상수와 맞추고, 측정 조건의 한계를 사실대로 정정(테스트 로직은 그대로)
+ * @modified 2026/09/17 by WonJin - test: 측정값 출력을 System.out 에서 SLF4J(log.info)로 교체
  *
  * <p>
  * BCrypt 해싱을 커넥션을 잡은 채 할 때와 얻기 전에 할 때의 풀 영향을 Spring 없이 HikariCP·H2로 비교한다.
@@ -32,6 +35,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </p>
  */
 class BcryptConnectionTest {
+
+    private static final Logger log = LoggerFactory.getLogger(BcryptConnectionTest.class);
 
     private static HikariDataSource dataSource;
 
@@ -129,17 +134,8 @@ class BcryptConnectionTest {
         long avgDuration = durations.stream().mapToLong(Long::longValue).sum() / durations.size();
         long maxDuration = durations.stream().mapToLong(Long::longValue).max().orElse(0);
 
-        System.out.println("========================================");
-        System.out.println("  [변경 전] BCrypt IN Transaction");
-        System.out.println("========================================");
-        System.out.println("  커넥션 풀 크기     : " + POOL_SIZE);
-        System.out.println("  동시 요청 수       : " + CONCURRENT_REQUESTS);
-        System.out.println("  성공               : " + successCount.get());
-        System.out.println("  타임아웃 (실패)    : " + timeoutCount.get());
-        System.out.println("  평균 응답 시간     : " + avgDuration + "ms");
-        System.out.println("  최대 응답 시간     : " + maxDuration + "ms");
-        System.out.println("  전체 소요 시간     : " + totalTime + "ms");
-        System.out.println("========================================");
+        log.info("[변경 전] BCrypt IN Transaction — 풀 크기={}, 동시 요청={}, 성공={}, 타임아웃={}, 평균={}ms, 최대={}ms, 전체={}ms",
+                POOL_SIZE, CONCURRENT_REQUESTS, successCount.get(), timeoutCount.get(), avgDuration, maxDuration, totalTime);
 
         // 커넥션 타임아웃이 발생해야 한다 (풀 고갈 증명)
         assertThat(timeoutCount.get())
@@ -212,17 +208,8 @@ class BcryptConnectionTest {
         long avgDuration = durations.stream().mapToLong(Long::longValue).sum() / durations.size();
         long maxDuration = durations.stream().mapToLong(Long::longValue).max().orElse(0);
 
-        System.out.println("========================================");
-        System.out.println("  [변경 후] BCrypt OUT of Transaction");
-        System.out.println("========================================");
-        System.out.println("  커넥션 풀 크기     : " + POOL_SIZE);
-        System.out.println("  동시 요청 수       : " + CONCURRENT_REQUESTS);
-        System.out.println("  성공               : " + successCount.get());
-        System.out.println("  타임아웃 (실패)    : " + timeoutCount.get());
-        System.out.println("  평균 응답 시간     : " + avgDuration + "ms");
-        System.out.println("  최대 응답 시간     : " + maxDuration + "ms");
-        System.out.println("  전체 소요 시간     : " + totalTime + "ms");
-        System.out.println("========================================");
+        log.info("[변경 후] BCrypt OUT of Transaction — 풀 크기={}, 동시 요청={}, 성공={}, 타임아웃={}, 평균={}ms, 최대={}ms, 전체={}ms",
+                POOL_SIZE, CONCURRENT_REQUESTS, successCount.get(), timeoutCount.get(), avgDuration, maxDuration, totalTime);
 
         // 타임아웃 없이 전부 성공해야 한다
         assertThat(timeoutCount.get())
@@ -260,15 +247,8 @@ class BcryptConnectionTest {
 
         double improvementRate = (1.0 - (double) cost10Avg / cost12Avg) * 100;
 
-        System.out.println("========================================");
-        System.out.println("  BCrypt Cost 비교 (각 " + iterations + "회 반복)");
-        System.out.println("========================================");
-        System.out.println("  cost=12 평균     : " + cost12Avg + "ms");
-        System.out.println("  cost=12 총 시간  : " + cost12Total + "ms");
-        System.out.println("  cost=10 평균     : " + cost10Avg + "ms");
-        System.out.println("  cost=10 총 시간  : " + cost10Total + "ms");
-        System.out.println("  개선율           : " + String.format("%.1f", improvementRate) + "% 감소");
-        System.out.println("========================================");
+        log.info("BCrypt cost 비교(각 {}회) — cost=12 평균={}ms/총={}ms, cost=10 평균={}ms/총={}ms, 감소율={}%",
+                iterations, cost12Avg, cost12Total, cost10Avg, cost10Total, String.format("%.1f", improvementRate));
 
         // cost=10이 cost=12보다 빨라야 한다
         assertThat(cost10Avg)

@@ -1,5 +1,7 @@
 package ccommit.stylehub.order.service;
 
+import ccommit.stylehub.common.exception.BusinessException;
+import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.dto.request.OrderCreateRequest;
 import ccommit.stylehub.order.dto.request.OrderDetailRequest;
 import ccommit.stylehub.product.entity.ProductOption;
@@ -21,6 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author WonJin Bae
  * @created 2026/03/27
+ * @modified 2026/09/17 by WonJin - test: 결과 출력(System.out)을 검증문으로 교체, 재고 부족 실패가 INSUFFICIENT_STOCK 으로만 발생하는지 검증 추가
  *
  * <p>
  * 주문 시 재고 차감 동시성 테스트이다.
@@ -84,12 +87,8 @@ class OrderConcurrencyTest {
         // then
         ProductOption result = productOptionRepository.findById(optionId).orElseThrow();
 
-        System.out.println("=== 동시성 테스트 결과 ===");
-        System.out.println("성공: " + successCount.get());
-        System.out.println("실패: " + failCount.get());
-        System.out.println("최종 재고: " + result.getStockQuantity());
-
-        assertThat(successCount.get()).isEqualTo(10);
+        assertThat(successCount.get()).as("성공 수 (실패 %d건)", failCount.get()).isEqualTo(10);
+        assertThat(failCount.get()).isZero();
         assertThat(result.getStockQuantity()).isEqualTo(0);
     }
 
@@ -107,6 +106,7 @@ class OrderConcurrencyTest {
         CountDownLatch latch = new CountDownLatch(threadCount);
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
+        AtomicInteger otherFailCount = new AtomicInteger(0);
 
         // when — 10명이 동시에 1개씩 주문
         for (int i = 0; i < threadCount; i++) {
@@ -119,8 +119,14 @@ class OrderConcurrencyTest {
                     );
                     orderService.placeOrder(userId, request);
                     successCount.incrementAndGet();
+                } catch (BusinessException e) {
+                    if (e.getErrorCode() == ErrorCode.INSUFFICIENT_STOCK) {
+                        failCount.incrementAndGet();
+                    } else {
+                        otherFailCount.incrementAndGet();
+                    }
                 } catch (Exception e) {
-                    failCount.incrementAndGet();
+                    otherFailCount.incrementAndGet();
                 } finally {
                     latch.countDown();
                 }
@@ -133,13 +139,10 @@ class OrderConcurrencyTest {
         // then
         ProductOption result = productOptionRepository.findById(optionId).orElseThrow();
 
-        System.out.println("=== 재고 부족 동시성 테스트 결과 ===");
-        System.out.println("성공: " + successCount.get());
-        System.out.println("실패 (INSUFFICIENT_STOCK): " + failCount.get());
-        System.out.println("최종 재고: " + result.getStockQuantity());
-
+        // 재고 부족이 아닌 이유로 실패한 요청이 섞여도 합격하지 않도록 따로 센다
         assertThat(successCount.get()).isEqualTo(5);
-        assertThat(failCount.get()).isEqualTo(5);
+        assertThat(failCount.get()).as("INSUFFICIENT_STOCK 으로 거절된 수").isEqualTo(5);
+        assertThat(otherFailCount.get()).as("재고 부족 외의 이유로 실패한 수").isZero();
         assertThat(result.getStockQuantity()).isEqualTo(0);
     }
 }
