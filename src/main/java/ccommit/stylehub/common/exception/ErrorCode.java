@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
  * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
  * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
+ * @modified 2026/09/17 by WonJin - refactor: 무결성 위반(C005)·락 획득 실패(C006)·일시 장애(C007)·미지원 미디어 타입(C008) 코드 추가 — 500 으로 뭉치던 프레임워크 예외를 원인별로 구분
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -27,6 +28,13 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C002", "서버 내부 오류가 발생했습니다"),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C003", "지원하지 않는 HTTP 메서드입니다"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C004", "요청한 리소스를 찾을 수 없습니다"),
+    // 제약 이름·SQL 은 스키마 구조를 드러내므로 메시지에 담지 않는다. 동시 요청이 같은 값을 넣는 경합처럼 현재 데이터와의 충돌이라 409.
+    DATA_INTEGRITY_CONFLICT(HttpStatus.CONFLICT, "C005", "요청이 현재 데이터와 충돌해 처리할 수 없습니다"),
+    // 요청은 올바르지만 같은 데이터를 다른 요청이 잠그고 있어 처리하지 못했다. 잠시 뒤 재시도하면 성공할 수 있다.
+    LOCK_ACQUISITION_FAILED(HttpStatus.CONFLICT, "C006", "다른 요청이 같은 데이터를 처리하고 있습니다. 잠시 후 다시 시도해주세요"),
+    // Redis 연결 실패·명령 타임아웃처럼 재시도하면 회복될 수 있는 장애. 코드 결함(500)과 구분해 클라이언트가 재시도를 판단하게 한다.
+    SERVICE_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "C007", "일시적으로 요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요"),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "C008", "지원하지 않는 Content-Type 입니다"),
 
     // User
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 사용 중인 이메일입니다"),

@@ -9,6 +9,18 @@
   별도 환경변수 없이도 logs/ 하위에 쌓인다.
 -->
 <configuration>
+    <!--
+      요청 추적 ID(traceId)를 모든 로그 줄에 찍는다. TraceIdFilter 가 요청마다 MDC 에 넣는 값으로, 에러 응답의 traceId·
+      응답 헤더 X-Request-Id 와 같아 사용자가 받은 traceId 로 서버 로그를 바로 찾을 수 있다.
+      요청 밖에서 남는 로그(기동, 스케줄러)는 값이 없어 빈 괄호로 찍힌다.
+
+      콘솔: Boot 기본 패턴(CONSOLE_LOG_PATTERN)을 통째로 복사하지 않고, 기본 패턴이 레벨 자리에 쓰는 LOG_LEVEL_PATTERN
+      (logging.pattern.level 과 같은 자리)만 바꿔 레벨 뒤에 traceId 를 붙인다. Boot 가 기본 패턴을 바꿔도 따라간다.
+      defaults.xml 이 이 값을 읽어 콘솔 패턴을 만들므로 include 보다 먼저 선언해야 한다.
+      (Boot 가 비워 둔 LOG_CORRELATION_PATTERN 자리는 뒤에 공백이 필요한데, logback 이 property 값의 앞뒤 공백을 잘라 쓸 수 없다.)
+    -->
+    <property name="LOG_LEVEL_PATTERN" value="%5p [%X{traceId}]"/>
+
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
     <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
 
@@ -18,7 +30,7 @@
         <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
             <file>${LOG_DIR}/stylehub.log</file>
             <encoder>
-                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+                <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId}] %logger{36} - %msg%n</pattern>
             </encoder>
             <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
                 <!-- 하루 단위 + 50MB 초과 시 분할 회전, 14일 보관, 전체 1GB 넘으면 오래된 것부터 삭제 -->
