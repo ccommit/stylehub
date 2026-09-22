@@ -37,9 +37,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
  *
  * <p>
- * 배송지 규칙을 실제 H2 트랜잭션·락·FK 위에서 검증한다. 동시 등록 직렬화와 FK 위반 변환은 목으로 재현되지 않기 때문이다.
+ * 배송지 규칙을 실제 MySQL 트랜잭션·락·FK 위에서 검증한다. 동시 등록 직렬화와 FK 위반 변환은 목으로 재현되지 않기 때문이다.
  * 커밋된 데이터를 만들므로 @Transactional 롤백 대신 @AfterEach에서 직접 지운다.
  * </p>
  */

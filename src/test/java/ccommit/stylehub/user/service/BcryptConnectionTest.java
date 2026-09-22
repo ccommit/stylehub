@@ -1,6 +1,7 @@
 package ccommit.stylehub.user.service;
 
 import at.favre.lib.crypto.bcrypt.BCrypt;
+import ccommit.stylehub.support.container.SharedContainers;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.AfterAll;
@@ -28,9 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/09/17 by WonJin - test: 중복 Javadoc 3개를 헤더 하나로 합치고, 풀 크기·요청 수를 실제 상수와 맞추고, 측정 조건의 한계를 사실대로 정정(테스트 로직은 그대로)
  * @modified 2026/09/17 by WonJin - test: 측정값 출력을 System.out 에서 SLF4J(log.info)로 교체
+ * @modified 2026/09/18 by WonJin - test: H2 제거에 따라 공유 MySQL 컨테이너의 별도 데이터베이스로 접속
  *
  * <p>
- * BCrypt 해싱을 커넥션을 잡은 채 할 때와 얻기 전에 할 때의 풀 영향을 Spring 없이 HikariCP·H2로 비교한다.
+ * BCrypt 해싱을 커넥션을 잡은 채 할 때와 얻기 전에 할 때의 풀 영향을 Spring 없이 HikariCP·MySQL 컨테이너로 비교한다.
  * cost·DB·풀·쿼리가 운영과 달라 수치를 운영 성능으로 읽으면 안 되며, 실제 요청의 점유는 LoginConnectionHoldingOsivOnTest·LoginConnectionHoldingOsivOffTest가 측정한다.
  * </p>
  */
@@ -47,9 +49,9 @@ class BcryptConnectionTest {
     @BeforeAll
     static void setUp() {
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-        config.setUsername("sa");
-        config.setPassword("");
+        config.setJdbcUrl(SharedContainers.mysqlDatabaseUrl("bcrypt_connection_test"));
+        config.setUsername(SharedContainers.mysql().getUsername());
+        config.setPassword(SharedContainers.mysql().getPassword());
         config.setMaximumPoolSize(POOL_SIZE);
         config.setConnectionTimeout(CONNECTION_TIMEOUT_MS);
         config.setPoolName("TestPool");

@@ -60,6 +60,7 @@ import static org.mockito.Mockito.never;
  * @modified 2026/09/17 by WonJin - test: 결제 대기 주문만 취소하는 cancelUnpaidOrder 검증 추가
  * @modified 2026/09/17 by WonJin - test: CouponPort 목 추가, 쿠폰 사용 시 스토어별 주문 금액 전달·할인 반영 검증
  * @modified 2026/09/17 by WonJin - test: 포인트 사용 주문(주문 INSERT 전 차감, 규칙 판정 후 이력, 잔액 부족 시 재고·주문 미반영)과 취소 시 포인트 선복구 검증 추가
+ * @modified 2026/09/18 by WonJin - test: 여러 옵션 주문의 재고 차감이 optionId 오름차순인지 검증
  *
  * <p>
  * OrderService 의 주문 접수(포인트 차감·재고 차감·쿠폰 적용·이벤트 발행)와 결제 대기 주문 취소를 검증하는 단위 테스트이다.
@@ -217,6 +218,38 @@ class OrderServiceTest {
             then(productPort).should().decreaseStockWithLock(optionId, 5);
             then(productPort).should(never()).decreaseStockWithLock(optionId, 2);
             then(productPort).should(never()).decreaseStockWithLock(optionId, 3);
+        }
+
+        // 역순으로 차감하는 두 주문은 InnoDB 에서 데드락이 난다 (StockDecreaseDeadlockTest)
+        @Test
+        @DisplayName("요청한 옵션 순서와 무관하게 optionId 오름차순으로 재고를 차감한다")
+        void decreasesStockInAscendingOptionIdOrder() {
+            // given
+            Long userId = 1L;
+            Long addressId = 10L;
+            OrderCreateRequest request = new OrderCreateRequest(addressId, List.of(
+                    new OrderDetailRequest(300L, 1),
+                    new OrderDetailRequest(100L, 1),
+                    new OrderDetailRequest(200L, 1)
+            ), null);
+
+            stubAddressOwnedByUser(userId, addressId);
+            Order savedOrder = stubOrderSave(1L);
+            List<OrderDetail> details = new ArrayList<>();
+            for (long optionId : new long[]{100L, 200L, 300L}) {
+                ProductOption option = stubDecreaseStock(optionId, 1, 1_000);
+                details.add(stubOrderDetail(optionId, option, savedOrder, 1, 1_000));
+            }
+            given(orderDetailRepository.saveAll(anyList())).willReturn(details);
+
+            // when
+            orderService.placeOrder(userId, request);
+
+            // then
+            InOrder stockOrder = inOrder(productPort);
+            stockOrder.verify(productPort).decreaseStockWithLock(100L, 1);
+            stockOrder.verify(productPort).decreaseStockWithLock(200L, 1);
+            stockOrder.verify(productPort).decreaseStockWithLock(300L, 1);
         }
     }
 
