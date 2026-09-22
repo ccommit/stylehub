@@ -1,5 +1,7 @@
 package ccommit.stylehub.config;
 
+import ccommit.stylehub.support.OrderFixtureFactory;
+import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/17 by WonJin - test: 가입 회원 정리를 포인트 이력까지 지우는 OrderFixtureFactory.deleteByIds 로 변경 (로그인 적립이 이력을 남기게 됨)
  *
  * <p>
  * Boot 4에서 세션 자동 설정 모듈이 빠지면 설정이 조용히 무시되므로, 실제 쿠키와 Redis 키로 세션 설정 반영을 검증하는 통합 테스트이다.
@@ -61,6 +64,9 @@ class SessionConfigurationIntegrationTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
     private final List<String> createdEmails = new ArrayList<>();
 
     @AfterEach
@@ -69,7 +75,12 @@ class SessionConfigurationIntegrationTest {
         if (keys != null && !keys.isEmpty()) {
             redisTemplate.delete(keys);
         }
-        createdEmails.forEach(email -> userRepository.findByEmail(email).ifPresent(userRepository::delete));
+        // 로그인 적립 이력이 회원을 참조하므로 이력부터 지운다.
+        List<Long> userIds = createdEmails.stream()
+                .flatMap(email -> userRepository.findByEmail(email).stream())
+                .map(User::getUserId)
+                .toList();
+        fixtureFactory.deleteByIds(List.of(), List.of(), userIds);
         createdEmails.clear();
     }
 

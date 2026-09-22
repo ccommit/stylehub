@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @author WonJin Bae
  * @created 2026/09/17
  * @modified 2026/09/17 by WonJin - test: 주문번호 형식·길이·중복 없음 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 포인트 사용 규칙(음수 거절, 상품 금액 1만원 미만 거절, 최종 결제 금액 0원 이하 거절, 쿠폰 할인 반영) 검증 추가
  *
  * <p>
  * Order 엔티티의 취소 전이 규칙을 검증하는 단위 테스트이다.
@@ -70,6 +71,83 @@ class OrderTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ORDER_STATUS);
     }
 
+    @Test
+    @DisplayName("상품 금액 합계가 1만원 이상이면 포인트를 사용할 수 있고 최종 결제 금액에서 빠진다")
+    void appliesUsedPoint_whenOrderAmountMeetsMinimum() {
+        Order order = orderWithStatus(OrderStatus.PENDING);
+
+        order.applyUsedPoint(3_000, 10_000);
+
+        assertThat(order.getUsedPoint()).isEqualTo(3_000);
+        assertThat(order.calculateFinalAmount(10_000)).isEqualTo(7_000);
+    }
+
+    @Test
+    @DisplayName("상품 금액 합계가 1만원 미만이면 포인트 사용을 거절한다(POINT_MIN_ORDER_AMOUNT_NOT_MET)")
+    void rejectsUsedPoint_whenOrderAmountBelowMinimum() {
+        Order order = orderWithStatus(OrderStatus.PENDING);
+
+        assertThatThrownBy(() -> order.applyUsedPoint(100, Order.MIN_ORDER_AMOUNT_FOR_POINT - 1))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POINT_MIN_ORDER_AMOUNT_NOT_MET);
+        assertThat(order.getUsedPoint()).isZero();
+    }
+
+    // 최소 금액은 쿠폰 적용 전 상품 금액 합계로 판단한다. 할인 후 금액이 1만원 아래로 내려가도 포인트를 쓸 수 있다.
+    @Test
+    @DisplayName("최소 주문 금액은 할인 전 상품 금액 합계로 판단하고, 사용 한도는 쿠폰 할인 후 금액으로 판단한다")
+    void judgesMinimumBeforeDiscountAndLimitAfterDiscount() {
+        Order order = orderWithStatus(OrderStatus.PENDING);
+        order.applyDiscount(3_000);
+
+        order.applyUsedPoint(6_999, 10_000);
+        assertThat(order.calculateFinalAmount(10_000)).isEqualTo(1);
+
+        Order another = orderWithStatus(OrderStatus.PENDING);
+        another.applyDiscount(3_000);
+        assertThatThrownBy(() -> another.applyUsedPoint(7_000, 10_000))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POINT_EXCEEDS_PAYMENT_AMOUNT);
+    }
+
+    // 0원 결제는 PG 승인 없이 결제 완료로 넘기는 흐름이 없어 거절한다.
+    @Test
+    @DisplayName("사용 포인트가 결제 금액과 같거나 크면(최종 결제 금액 0원 이하) 거절한다(POINT_EXCEEDS_PAYMENT_AMOUNT)")
+    void rejectsUsedPoint_whenFinalAmountNotPositive() {
+        Order exact = orderWithStatus(OrderStatus.PENDING);
+        assertThatThrownBy(() -> exact.applyUsedPoint(10_000, 10_000))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POINT_EXCEEDS_PAYMENT_AMOUNT);
+
+        Order over = orderWithStatus(OrderStatus.PENDING);
+        assertThatThrownBy(() -> over.applyUsedPoint(15_000, 10_000))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.POINT_EXCEEDS_PAYMENT_AMOUNT);
+        assertThat(over.getUsedPoint()).isZero();
+    }
+
+    @Test
+    @DisplayName("음수 사용 포인트는 거절한다(INVALID_INPUT)")
+    void rejectsNegativeUsedPoint() {
+        Order order = orderWithStatus(OrderStatus.PENDING);
+
+        assertThatThrownBy(() -> order.applyUsedPoint(-1, 50_000))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_INPUT);
+    }
+
+    @Test
+    @DisplayName("포인트를 쓰지 않으면(0) 주문 금액이 1만원 미만이어도 통과한다")
+    void allowsZeroUsedPoint_regardlessOfAmount() {
+        Order order = orderWithStatus(OrderStatus.PENDING);
+
+        order.applyUsedPoint(0, 5_000);
+
+        assertThat(order.getUsedPoint()).isZero();
+        assertThat(order.calculateFinalAmount(5_000)).isEqualTo(5_000);
+    }
+
+    // 토스 orderId 규칙: 영문 대소문자·숫자·'-'·'_' 만, 6~64자. 컬럼 길이도 64다.
     @Test
     @DisplayName("주문번호는 ORD-날짜-32자리 16진수 형식이고 토스·컬럼 길이 제한(64자)을 넘지 않는다")
     void generatesPgOrderIdWithinTossRules() {

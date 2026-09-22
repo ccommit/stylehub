@@ -38,9 +38,11 @@ import java.util.function.Consumer;
  * @modified 2026/09/15 by WonJin - feat: getUserReference 추가 (선착순 쿠폰 발급에서 사용자 조회 쿼리 제거)
  * @modified 2026/09/17 by WonJin - fix: 로그인 시 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정을 모두 INVALID_PASSWORD 로 응답하고 더미 해시 검증으로 응답 시간을 맞춤(소셜 계정 NPE 500, 가입 여부 노출 해결)
  * @modified 2026/09/17 by WonJin - refactor: "BCrypt 를 트랜잭션 밖에서 실행해 커넥션 점유를 최소화한다" 주석을 실제 동작(회원가입/로그인 차이, OSIV 전제)에 맞게 정정
+ * @modified 2026/09/17 by WonJin - feat: 포인트 변경을 PointService(원자 UPDATE + 이력)에 위임 — 로그인 적립이 엔티티 값에 더해 동시 차감을 덮어쓰던 구조 제거, UserPort 포인트 차감·이력·복구 구현
  *
  * <p>
- * 회원, 스토어, 포인트의 비즈니스 로직을 처리한다. 회원가입의 BCrypt 해싱은 DB 접근 전이라 OSIV와 무관하게 커넥션을 쥐지 않는다.
+ * 회원, 스토어의 비즈니스 로직을 처리하고, 포인트 변경은 PointService 에 위임해 UserPort 로 노출한다.
+ * 회원가입의 BCrypt 해싱은 DB 접근 전이라 OSIV와 무관하게 커넥션을 쥐지 않는다.
  * 로그인 BCrypt 검증 중 커넥션이 풀로 돌아가는 것은 OSIV가 꺼져 있을 때뿐이다(운영 프로파일). 켜져 있으면 요청이 끝날 때까지 쥔다.
  * </p>
  */
@@ -48,12 +50,10 @@ import java.util.function.Consumer;
 @RequiredArgsConstructor
 public class UserService implements UserPort {
 
-    private static final int FIRST_LOGIN_POINT = 1000;
-    private static final int DAILY_LOGIN_POINT = 10;
-
     private final UserRepository userRepository;
     private final PasswordHasher passwordHasher;
     private final TransactionTemplate transactionTemplate;
+    private final PointService pointService;
 
     public User signUp(String name, String email, String password, LocalDate birthDate, UserRole role) {
         String hashedPassword = hashPassword(password);
@@ -253,23 +253,24 @@ public class UserService implements UserPort {
         return user;
     }
 
-    // login()이 self-invocation으로 호출해 @Transactional이 적용되지 않으므로 TransactionTemplate을 쓴다.
-    // 트랜잭션이 없으면 변경 감지가 동작하지 않아 포인트가 예외나 로그 없이 유실된다.
+    // login()이 같은 클래스에서 호출해도(self-invocation) 적립 트랜잭션은 다른 빈인 PointService 프록시에서 열려 적용된다.
+    // 이 메서드에 @Transactional 을 붙였을 때는 무시돼 포인트가 조용히 유실됐다(LoginPointPersistenceTest).
     public void rewardLoginPoint(Long userId, LocalDate today) {
-        transactionTemplate.executeWithoutResult(status -> {
-            User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        pointService.rewardLoginPoint(userId, today);
+    }
 
-            if (user.getRole() == UserRole.ADMIN) {
-                return;
-            }
+    @Override
+    public void deductPoint(Long userId, int amount) {
+        pointService.deductPoint(userId, amount);
+    }
 
-            if (user.getLastLoginDate() == null) {
-                user.addPoint(FIRST_LOGIN_POINT);
-            } else if (!user.getLastLoginDate().equals(today)) {
-                user.addPoint(DAILY_LOGIN_POINT);
-            }
-            user.updateLastLoginDate(today);
-        });
+    @Override
+    public void recordPointUse(Long userId, Long orderId, int amount) {
+        pointService.recordPointUse(userId, orderId, amount);
+    }
+
+    @Override
+    public void restoreUsedPoint(Long userId, Long orderId, int amount) {
+        pointService.restoreUsedPoint(userId, orderId, amount);
     }
 }
