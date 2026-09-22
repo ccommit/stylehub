@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
  * @modified 2026/03/16 18:16 by WonJin - feat: 회원 API 개발 (회원가입, 로그인, 구글 OAuth, 포인트 지급)
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/03/25 by WonJin - feat: STORE 역할 회원 생성 팩토리 메서드 추가
+ * @modified 2026/09/17 by WonJin - refactor: 메모리에서 포인트·로그인 날짜를 바꾸는 addPoint/updateLastLoginDate 제거 — 포인트는 UserRepository 원자 UPDATE 로만 변경(전체 컬럼 UPDATE 로 동시 차감을 덮어쓰는 lost update 차단)
  *
  * <p>
  * 회원 정보와 포인트, 등급, OAuth 연동을 관리하는 핵심 엔티티이다.
@@ -79,6 +80,8 @@ public class User extends BaseEntity {
     @Builder.Default
     private Long totalSpent = 0L;
 
+    // 이 값을 바꾸는 엔티티 메서드를 두지 않는다. 엔티티 값을 바꾸면 커밋 시 전체 컬럼 UPDATE 가 나가 다른 트랜잭션이 커밋한 차감·복구를 덮어쓴다.
+    // 변경은 UserRepository 의 원자 UPDATE 로만 하고, 변경 후 값은 findPointBalance 로 DB 에서 다시 읽는다(영속성 컨텍스트의 이 필드는 오래된 값일 수 있다).
     @Column(name = "point_balance", nullable = false)
     @Builder.Default
     private Integer pointBalance = 0;
@@ -113,14 +116,6 @@ public class User extends BaseEntity {
 
     @Column(name = "store_deleted_at")
     private LocalDateTime storeDeletedAt;
-
-    public void addPoint(int amount) {
-        this.pointBalance += amount;
-    }
-
-    public void updateLastLoginDate(LocalDate today) {
-        this.lastLoginDate = today;
-    }
 
     public void registerStore(String storeName, String storeDescription) {
         this.storeName = storeName;

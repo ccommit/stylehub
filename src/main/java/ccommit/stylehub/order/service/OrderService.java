@@ -51,6 +51,7 @@ import java.util.TreeMap;
  * @modified 2026/09/17 by WonJin - fix: cancelUnpaidOrder 추가 — 만료·결제 실패 처리는 결제 대기 주문만 취소 (이미 결제된 주문을 환불 없이 취소하던 경로 차단)
  * @modified 2026/09/17 by WonJin - fix: 결제 후 취소를 cancelPaidOrder 로 분리(배송 준비·배송 완료 주문 포함), 배송 상태 변경 시 주문 행 락
  * @modified 2026/09/17 by WonJin - fix: 쿠폰 할인 기준으로 스토어별 주문 금액 전달 (스토어 쿠폰이 다른 스토어 상품까지 할인하던 문제)
+ * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용(주문 INSERT 전 원자 차감 + 저장 후 이력)과 주문 취소 시 사용 포인트 복구 구현
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -74,11 +75,18 @@ public class OrderService {
     private final CouponPort couponPort;
     private final ApplicationEventPublisher eventPublisher;
 
-    // 주문 생성·재고 차감·결제 READY 저장은 한 트랜잭션에서 하고, 커밋 후 Redis 타임아웃(10분)이 등록된다
+    // 포인트 차감·주문 생성·재고 차감·쿠폰 사용·결제 READY 저장은 한 트랜잭션에서 하고, 커밋 후 Redis 타임아웃(10분)이 등록된다
+    // 포인트 차감을 주문 INSERT 보다 먼저 하는 이유: orders 가 users 를 참조해 INSERT 가 부모 행에 공유 락을 걸기 때문이다.
+    // 주문을 먼저 저장하면 같은 사용자의 주문 두 건이 서로의 공유 락 때문에 배타 락을 얻지 못해 교착 상태가 된다(H2 테스트라 MySQL 재현은 미확인).
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
         Address address = userPort.findAddressByOwner(userId, request.addressId());
+
+        int usedPoint = request.usedPointOrZero();
+        if (usedPoint > 0) {
+            userPort.deductPoint(userId, usedPoint);
+        }
 
         Order savedOrder = orderRepository.save(Order.create(address.getUser(), address));
         UserCoupon appliedCoupon = null;
@@ -100,8 +108,13 @@ public class OrderService {
             }
         }
 
-        // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
+        // 포인트 규칙은 쿠폰 할인 반영 뒤 주문이 판정한다. 위반이면 예외로 위의 포인트 차감까지 함께 롤백된다.
+        savedOrder.applyUsedPoint(usedPoint, totalAmount);
+        if (usedPoint > 0) {
+            userPort.recordPointUse(userId, savedOrder.getOrderId(), usedPoint);
+        }
 
+        // 결제(Payment.requestedAmount)는 이 최종 금액으로 만들어지고, 승인 시 PG 금액을 이 값과 비교한다.
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
         eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getOrderId(), totalAmount, finalAmount));
@@ -109,7 +122,7 @@ public class OrderService {
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    // 결제 취소 트랜잭션에 참여하므로 여기서 거절되면 PG 호출 전에 전체가 롤백된다.
+    // 결제 취소 트랜잭션에 참여하므로 여기서 거절되면 PG 호출 전에 전체가 롤백된다. 사용 포인트·재고·쿠폰을 함께 복구한다.
     // 만료 처리가 이 경로를 타면 결제된 주문을 환불 없이 취소하게 되므로 결제 전 취소(cancelUnpaidOrder)와 나눈다.
     @Transactional
     public void cancelPaidOrder(Long orderId) {
@@ -117,7 +130,7 @@ public class OrderService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         order.cancelPaid();
-        restoreStockAndCoupon(order);
+        restoreOrderResources(order);
     }
 
     // 주문 행을 잠근 뒤 상태를 보므로, 승인 반영이 먼저 커밋됐으면 PAID를 보고 아무것도 하지 않는다. 중복 호출에도 멱등하다.
@@ -130,13 +143,22 @@ public class OrderService {
             return false;
         }
         order.cancelUnpaid();
-        restoreStockAndCoupon(order);
+        restoreOrderResources(order);
         return true;
     }
 
-    private void restoreStockAndCoupon(Order order) {
+    // 호출자가 주문 행을 잠그고 CANCELLED 로 바꾼 뒤에만 호출하므로 같은 주문에 두 번 실행되지 않는다.
+    // 주문 생성과 같은 순서(사용자 → 재고 → 쿠폰)로 잠그도록 포인트를 먼저 복구해 반대 순서 대기를 막는다.
+    private void restoreOrderResources(Order order) {
+        restoreUsedPoint(order);
         restoreStock(order.getOrderId());
         restoreUserCoupon(order.getOrderId());  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+    }
+
+    private void restoreUsedPoint(Order order) {
+        if (order.getUsedPoint() > 0) {
+            userPort.restoreUsedPoint(order.getUser().getUserId(), order.getOrderId(), order.getUsedPoint());
+        }
     }
 
     // placeOrder가 쿠폰을 첫 주문 항목에만 연결하므로, 거기서 찾아 UNUSED로 복구한다
