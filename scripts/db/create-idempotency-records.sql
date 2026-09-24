@@ -16,9 +16,13 @@
 --
 -- 외래 키를 두지 않는 이유
 --   user_id 에 FK 를 걸면 InnoDB 가 INSERT 마다 users 행에 공유 락을 건다. 사용자 존재는 세션 인증이 보장하므로 값만 저장한다.
+--
+-- 배포 파이프라인이 적용한다
+--   scripts/db/apply-on-deploy.txt 에 올라가 있어, 배포 때 jar 를 교체하기 전에 실행된다.
+--   매 배포마다 다시 실행되므로 IF NOT EXISTS 로 두 번째 실행부터는 아무 일도 하지 않게 한다.
 -- =====================================================================
 
-CREATE TABLE idempotency_records (
+CREATE TABLE IF NOT EXISTS idempotency_records (
     idempotency_record_id BIGINT       NOT NULL AUTO_INCREMENT,
     user_id               BIGINT       NOT NULL,
     operation             ENUM ('ORDER_CREATE', 'PAYMENT_CANCEL') NOT NULL,

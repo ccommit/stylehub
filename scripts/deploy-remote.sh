@@ -20,6 +20,11 @@ JAR="$DEPLOY_DIR/$JAR_NAME"
 NEW_JAR="$JAR.new"
 PREV_JAR="$JAR.prev"
 
+# Jenkins 가 scripts/db 를 복사해 두는 위치와, 그 안의 적용 목록
+DDL_DIR=/tmp/stylehub-ddl
+DDL_MANIFEST="$DDL_DIR/apply-on-deploy.txt"
+ENV_FILE="$DEPLOY_DIR/.env"
+
 # actuator 는 관리 포트(127.0.0.1:9081)에서만 열린다. 롤백 대상인 이전 jar 도 같은 포트를 쓴다.
 HEALTH_URL=http://127.0.0.1:9081/actuator/health
 HEALTH_RETRIES=20
@@ -38,8 +43,77 @@ wait_for_health() {
     return 1
 }
 
+# 운영은 ddl-auto=validate 라 애플리케이션이 테이블을 만들지 않는다. 새 테이블이 필요한 버전을 그대로 배포하면
+# 스키마 검증에서 기동이 실패하고 롤백만 반복되므로, jar 를 교체하기 전에 목록의 DDL 을 먼저 적용한다.
+# 실패하면 jar 를 건드리지 않고 중단한다. 기존 버전은 계속 떠 있어 서비스에 영향이 없다.
+apply_pending_ddl() {
+    if [ ! -f "$DDL_MANIFEST" ]; then
+        echo "적용할 DDL 목록이 없습니다. 건너뜁니다."
+        return 0
+    fi
+
+    if ! command -v mysql > /dev/null 2>&1; then
+        echo "mysql 클라이언트가 없어 DDL 을 적용할 수 없습니다. 서버에 mysql-client 를 설치한 뒤 다시 배포하세요."
+        return 1
+    fi
+
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "$ENV_FILE 이 없어 DB 접속 정보를 읽을 수 없습니다."
+        return 1
+    fi
+
+    # .env 는 systemd EnvironmentFile 형식(KEY=VALUE)이라 그대로 읽을 수 있다
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+
+    db_host="${DB_HOST:-}"
+    db_port="${DB_PORT:-3306}"
+    db_name="${DB_NAME:-}"
+    db_user="${DB_USERNAME:-}"
+    db_password="${DB_PASSWORD:-}"
+    if [ -z "$db_host" ] || [ -z "$db_name" ] || [ -z "$db_user" ]; then
+        echo "DB_HOST·DB_NAME·DB_USERNAME 이 .env 에 없어 DDL 을 적용할 수 없습니다."
+        return 1
+    fi
+
+    # 비밀번호를 명령행에 두면 ps 로 보이므로 권한 600 임시 설정 파일로 넘긴다
+    cnf=$(mktemp) || return 1
+    chmod 600 "$cnf"
+    printf '[client]\nhost=%s\nport=%s\nuser=%s\npassword=%s\n' \
+        "$db_host" "$db_port" "$db_user" "$db_password" > "$cnf"
+
+    status=0
+    while IFS= read -r line; do
+        case "$line" in
+            ''|'#'*) continue ;;
+        esac
+        script="$DDL_DIR/$line"
+        if [ ! -f "$script" ]; then
+            echo "DDL 파일을 찾을 수 없습니다: $line"
+            status=1
+            break
+        fi
+        echo "DDL 적용: $line"
+        if ! mysql --defaults-extra-file="$cnf" "$db_name" < "$script"; then
+            echo "DDL 적용에 실패했습니다: $line"
+            status=1
+            break
+        fi
+    done < "$DDL_MANIFEST"
+
+    rm -f "$cnf"
+    return "$status"
+}
+
 if [ ! -f "$NEW_JAR" ]; then
     echo "배포할 산출물이 없습니다: $NEW_JAR"
+    exit 1
+fi
+
+if ! apply_pending_ddl; then
+    echo "스키마 반영에 실패해 배포를 중단합니다. 기존 버전은 그대로 떠 있습니다."
     exit 1
 fi
 
