@@ -13,10 +13,12 @@ import ccommit.stylehub.product.entity.ProductOption;
 import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.product.port.ProductPort;
+import ccommit.stylehub.product.repository.OptionStock;
 import ccommit.stylehub.product.repository.ProductOptionRepository;
 import ccommit.stylehub.product.repository.ProductQueryRepository;
 import ccommit.stylehub.product.repository.ProductRepository;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.StoreStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -34,6 +36,9 @@ import java.util.List;
  * @modified 2026/04/22 by WonJin - refactor: UserPort 의존 제거, 권한 검증은 ProductApplicationService로 이관 (도메인 서비스는 자기 도메인만 알도록 분리)
  * @modified 2026/05/01 by WonJin - refactor: @Cacheable 키 null 자리를 '*' sentinel 로 치환 (SpEL String concatenation 의 null → "null" 문자열 변환 방지
  * @modified 2026/05/03 by WonJin - perf: decreaseStockWithLock 을 SELECT FOR UPDATE 비관적 락에서 단일 atomic UPDATE 로 전환 (쿼리 2번 → 1번, 락을 쥐고 지나는 구간 단축)
+ * @modified 2026/09/17 by WonJin - fix: 재고 복구를 원자 UPDATE 로 전환 — 취소 트랜잭션이 먼저 읽어 둔 재고 값으로 동시 차감을 덮어쓰던 문제 해결
+ * @modified 2026/09/17 by WonJin - fix: updateStock 옵션 소속(상품·스토어) 검증으로 IDOR 차단, 정지·미승인 스토어 상품의 상세 노출·재고 차감 차단
+ * @modified 2026/09/17 by WonJin - fix: 재고 변경·품절 전환·상품 등록 시 커밋 후 캐시 무효화, 첫 페이지 캐시를 정규화된 기본 페이지 크기·비어 있지 않은 결과로 제한
  
  
  *
@@ -46,14 +51,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProductService implements ProductPort {
 
-    private static final int DEFAULT_PAGE_SIZE = 20;
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final ProductRepository productRepository;
     private final ProductOptionRepository productOptionRepository;
     private final ProductQueryRepository productQueryRepository;
+    private final ProductCacheEvictor productCacheEvictor;
 
     // 카테고리 조합 검증 후 상품과 옵션을 등록한다. 권한 검증은 상위 계층에서 수행된 상태라고 가정한다.
+    // 새 상품이 첫 페이지 캐시에 TTL 동안 빠져 보이지 않도록 커밋 후 첫 페이지 캐시를 비운다.
     @Transactional
     public ProductResponse registerProduct(User owner, ProductCreateRequest request) {
         validateCategoryCombination(request.mainCategory(), request.subCategory());
@@ -62,139 +66,117 @@ public class ProductService implements ProductPort {
                 request.subCategory(), request.description(), request.price(), request.imageUrl());
         List<ProductOption> savedOptions = saveOptions(savedProduct, request.options());
 
+        productCacheEvictor.clearFirstPageAfterCommit();
         return ProductResponse.from(savedProduct, savedOptions);
     }
 
-    /**
-     * 내 스토어 상품 목록을 커서 기반으로 조회한다.
-     */
+    // pageSize는 ProductPageSizePolicy로 정규화된 값이어야 한다
     @Transactional(readOnly = true)
-    public CursorResponse<ProductListResponse> getMyStoreProducts(Long storeId, Long cursor, Integer pageSize) {
-        int resolvedSize = resolvePageSize(pageSize);
-
+    public CursorResponse<ProductListResponse> getMyStoreProducts(Long storeId, Long cursor, int pageSize) {
         List<ProductListResponse> productList = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, resolvedSize + 1
+                cursor, storeId, pageSize + 1
         );
 
-        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
+        return CursorResponse.of(productList, pageSize, ProductListResponse::productId);
     }
 
-    // 지정 옵션의 재고 수량을 변경한다.
+    // 소속이 다르면 403 대신 없는 옵션과 같은 404로 응답한다. 403은 순번 optionId로 다른 스토어 옵션의 존재를 알려 준다.
+    // 수동 변경은 드물고 판매자가 결과를 바로 확인하므로 판매 가능 여부와 관계없이 커밋 후 상세 캐시를 지운다.
     @Transactional
-    public ProductOptionResponse updateStock(Long optionId, Integer stockQuantity) {
+    public ProductOptionResponse updateStock(Long storeId, Long productId, Long optionId, Integer stockQuantity) {
         ProductOption target = productOptionRepository
                 .findByIdWithLock(optionId)
+                .filter(option -> option.isOwnedBy(storeId, productId))
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
 
         target.updateStockQuantity(stockQuantity);
+        productCacheEvictor.evictDetailAfterCommit(productId);
         return ProductOptionResponse.from(target);
     }
 
-    /**
-     * 단일 atomic UPDATE 로 재고를 차감한다. 호출자의 트랜잭션에 참여한다.
-     *
-     * <p>이전 구현: SELECT FOR UPDATE 비관적 락 → 차감 → flush 시 UPDATE (쿼리 2번, 조회 시점부터 락 점유)
-     * <br>현재 구현: UPDATE WHERE stock >= qty 단일 쿼리 (쿼리 1번, UPDATE 시점부터 락 점유)
-     *
-     * <p><strong>락이 사라진 것은 아니다.</strong> UPDATE 도 해당 행에 배타 락을 걸고 커밋까지 유지하므로
-     * 동일 행에 대한 경합 한계는 비관적 락과 같다. 줄어든 것은 SELECT 왕복 한 번과, 락을 쥔 채로
-     * 지나는 구간의 길이다. 락 획득 시점이 트랜잭션 뒤로 밀린 만큼 다른 요청이 기다리는 시간이 짧아진다.
-     *
-     * <p>단일 UPDATE 는 DB 가 원자적으로 처리하므로 조회와 차감 사이에 다른 트랜잭션이 끼어드는
-     * Lost Update 가 발생하지 않는다. WHERE 절의 stock_quantity >= :qty 조건이 음수 재고 방지를 겸한다.
-     *
-     * <p>차감 후 OrderDetail 생성을 위해 ProductOption 엔티티 1회 조회 (단순 SELECT, 락 없음).
-     * 다음 단계 개선 영역: OrderDetail.create 시그니처를 productOptionId + price 로 단순화하면 이 SELECT 도 제거 가능.
-     *
-     * <p>TODO: 더 큰 트래픽 (100k+ TPS) 대응 시 Redis DECR 원자 연산으로 전환 검토
-     */
+    // 명시적 락은 없지만 차감 UPDATE의 행 배타 락이 호출자 트랜잭션 커밋까지 유지되므로 동일 행 경합 한계는 비관적 락과 같다.
+    // 수량이 1 이상이라 차감 후 0이면 이번 차감으로 품절된 것이다. 이 옵션을 미리 로딩한 트랜잭션에선 1차 캐시의 이전 값으로 판정된다.
+    // TODO: 더 큰 트래픽(100k+ TPS) 대응 시 Redis DECR 원자 연산으로 전환 검토
     @Override
     public ProductOption decreaseStockWithLock(Long optionId, int quantity) {
-        int updated = productOptionRepository.decreaseStockAtomic(optionId, quantity);
+        int updated = productOptionRepository.decreaseStockAtomic(optionId, quantity, StoreStatus.APPROVED);
         if (updated == 0) {
-            // 0건 = 옵션이 없거나 재고 부족 — 둘을 구분해서 정확한 에러 코드 반환
-            if (!productOptionRepository.existsById(optionId)) {
-                throw new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
-            }
-            throw new BusinessException(ErrorCode.INSUFFICIENT_STOCK);
+            throw new BusinessException(resolveDecreaseFailure(optionId));
         }
         // OrderDetail FK + getProductPrice() 호출을 위해 1회 조회 (단순 SELECT)
-        return productOptionRepository.findById(optionId)
+        ProductOption option = productOptionRepository.findById(optionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
+        if (option.isSoldOut()) {
+            evictDetailOnSaleStateChange(option.getProduct().getProductId());
+        }
+        return option;
     }
 
-    // 비관적 락으로 재고를 복구한다. 주문 취소 시 사용.
+    // 판매 중지면 재고와 무관하게 주문할 수 없으므로 재고 부족보다 먼저 알린다.
+    // UPDATE와 별개 조회라 그 사이 상태가 바뀌면 원인이 달리 보고될 수 있지만, 차감은 이미 거절돼 정합성엔 영향이 없다.
+    private ErrorCode resolveDecreaseFailure(Long optionId) {
+        return productOptionRepository.findByIdWithProductAndStore(optionId)
+                .map(option -> option.getProduct().isOnSale()
+                        ? ErrorCode.INSUFFICIENT_STOCK
+                        : ErrorCode.PRODUCT_NOT_ON_SALE)
+                .orElse(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+    }
+
+    // 취소 트랜잭션이 먼저 올려 둔 옵션 엔티티 값에 더하면 그 사이 커밋된 차감을 덮어쓰므로, DB 현재 값에 더하는 UPDATE로 복구한다.
+    // 같은 이유로 복구 후 재고는 DB에서 다시 읽는다. 행 락이 잡혀 있어 복구 수량과 같으면 복구 전 재고가 0이었다는 뜻이다.
     @Override
     public void increaseStock(Long optionId, int quantity) {
-        ProductOption option = productOptionRepository.findByIdWithLock(optionId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND));
-        option.increaseStock(quantity);
+        if (productOptionRepository.increaseStockAtomic(optionId, quantity) == 0) {
+            throw new BusinessException(ErrorCode.PRODUCT_OPTION_NOT_FOUND);
+        }
+        OptionStock restored = productOptionRepository.findOptionStock(optionId);
+        if (restored.stockQuantity() == quantity) {
+            evictDetailOnSaleStateChange(restored.productId());
+        }
     }
 
-    /**
-     * 커서 기반 상품 목록을 조회한다. 스토어, 카테고리 필터링 지원. (비인증 공개 API)
-     *
-     * 캐시 전략:
-     *   커서가 없는 "첫 페이지" 요청을 필터 조합별로 캐시한다.
-     *   - 필터 없음(첫 페이지): 전 사용자 동일 응답, 호출 빈도 1위
-     *   - by category: 카테고리별 첫 페이지, 전 사용자 동일 응답
-     *   - by store: 스토어별 첫 페이지, 해당 스토어 방문자 간 공유
-     *   cursor 가 있는 "다음 페이지" 는 스크롤 분포가 분산돼 캐시 효율이 낮아 제외.
-     *
-     *   sync = true: TTL 만료 순간 cache miss 가 동시에 쏟아지는 thundering herd 를 차단한다.
-     *   같은 키로 동시 miss 가 발생하면 한 스레드만 DB 로 가고 나머지는 결과를 기다린다.
-     *   TTL 60 초 — 신상품 반영 지연 허용 범위. 1000 users 구간에서 miss 빈도를 절반으로 낮추기 위해 30 → 60 상향.
-     *
-     *   key 의 null 자리는 '*' sentinel 로 치환한다. SpEL 의 String concatenation 은 null 을 문자열 "null" 로
-     *   변환하므로, "필터 없음" 의 의도가 키에서 모호해질 수 있고 디버깅·로그 가독성이 떨어진다.
-     *   '*' 는 Long·Enum 어느 타입에도 등장하지 않는 sentinel 이라 충돌 가능성이 없다.
-     */
+    // 주문마다 무효화하면 인기 상품일수록 상세 캐시가 계속 비워져 DB 조회가 돌아오므로 판매 가능 여부가 바뀔 때만 지운다.
+    // 그동안 캐시된 재고 수량이 최대 TTL 동안 실제보다 많게 보일 수 있지만, 주문 가능 여부는 차감 UPDATE가 DB 기준으로 판정한다.
+    private void evictDetailOnSaleStateChange(Long productId) {
+        productCacheEvictor.evictDetailAfterCommit(productId);
+    }
+
+    // 공개 파라미터로 키가 무한히 늘지 않게 첫 페이지 중 기본 크기·비지 않은 결과만 캐시한다. sync는 unless와 함께 쓸 수 없다.
+    // 적중 시 커넥션을 잡지 않도록 @Cacheable이 @Transactional 바깥에서 동작해야 한다. 키의 null은 SpEL이 "null"로 바꾸므로 '*'로 치환한다.
     @Cacheable(
-            value = "products:firstPage",
-            key = "'size=' + (#pageSize ?: 20) " +
+            value = ProductCacheEvictor.FIRST_PAGE_CACHE,
+            key = "'size=' + #pageSize " +
                   "+ '|store=' + (#storeId ?: '*') " +
                   "+ '|main=' + (#mainCategory ?: '*') " +
                   "+ '|sub=' + (#subCategory ?: '*')",
-            condition = "#cursor == null",
-            sync = true
+            condition = "#cursor == null " +
+                        "&& #pageSize == T(ccommit.stylehub.product.service.ProductPageSizePolicy).DEFAULT_PAGE_SIZE",
+            unless = "#result.items().isEmpty()"
     )
     @Transactional(readOnly = true)
     public CursorResponse<ProductListResponse> getProducts(Long cursor, Long storeId,
                                                            MainCategory mainCategory,
-                                                           SubCategory subCategory, Integer pageSize) {
-        int resolvedSize = resolvePageSize(pageSize);
-
+                                                           SubCategory subCategory, int pageSize) {
         List<ProductListResponse> productList = productQueryRepository.findProductsWithCursor(
-                cursor, storeId, mainCategory, subCategory, resolvedSize + 1
+                cursor, storeId, mainCategory, subCategory, pageSize + 1
         );
 
-        return CursorResponse.of(productList, resolvedSize, ProductListResponse::productId);
+        return CursorResponse.of(productList, pageSize, ProductListResponse::productId);
     }
 
-    /**
-     * 상품 상세 정보와 옵션 목록을 조회한다. (비인증 공개 API)
-     * Store와 Options를 JOIN FETCH로 한번에 조회한다.
-     *
-     * 캐시 전략:
-     *   productId 별로 캐시 (모든 사용자에게 동일 응답). TTL 60초.
-     *   2,000 users 구간에서 이 경로가 전체 요청의 17 % 를 차지해 DB 부하의 주요 원인이라 캐시 대상으로 편입.
-     *   sync = true: 동시 cache miss 에서 한 스레드만 DB 로 가고 나머지는 대기 (thundering herd 차단).
-     */
+    // 없거나 판매 중지된 상품은 예외로 끝나 캐시되지 않으므로 키가 쌓이지 않는다.
+    // sync = true지만 비잠금 RedisCacheWriter라 동시 miss를 합쳐 주지 않는다. 필요해지면 잠금 CacheWriter나 별도 락을 검토한다.
     @Cacheable(
-            value = "products:detail",
+            value = ProductCacheEvictor.DETAIL_CACHE,
             key = "#productId",
             sync = true
     )
     @Transactional(readOnly = true)
     public ProductResponse getProduct(Long productId) {
-        Product product = productRepository.findByIdWithUserAndOptions(productId)
+        Product product = productRepository.findByIdWithUserAndOptions(productId, StoreStatus.APPROVED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PRODUCT_NOT_FOUND));
 
         return ProductResponse.from(product, product.getOptions());
-    }
-
-    private int resolvePageSize(Integer size) {
-        return (size != null && size > 0) ? Math.min(size, MAX_PAGE_SIZE) : DEFAULT_PAGE_SIZE;
     }
 
     private Product saveProduct(User user, String name, MainCategory mainCategory,

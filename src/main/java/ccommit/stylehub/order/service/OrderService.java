@@ -48,6 +48,10 @@ import java.util.TreeMap;
  * @modified 2026/04/22 by WonJin - refactor: PaymentPort/OrderPaymentTimeout 직접 의존 제거, OrderPlacedEvent 발행으로 전환 (순환 참조 해소)
  * @modified 2026/04/22 by WonJin - refactor: cancelOrder/cancelPaidOrder 단일화 (Order 내부 상태 누수 제거)
  * @modified 2026/05/08 by WonJin - feat: 쿠폰 사용 주문 + 보상 트랜잭션 — placeOrder 가 CouponPort.useUserCoupon (비관적 락 + 검증 + 할인 + USED 전이) 호출, cancelOrder 에 restoreUserCoupon 추가 (결제 실패 시 UNUSED 복구). 시나리오 2-2 측정 위한 구현.
+ * @modified 2026/09/17 by WonJin - fix: cancelUnpaidOrder 추가 — 만료·결제 실패 처리는 결제 대기 주문만 취소 (이미 결제된 주문을 환불 없이 취소하던 경로 차단)
+ * @modified 2026/09/17 by WonJin - fix: 결제 후 취소를 cancelPaidOrder 로 분리(배송 준비·배송 완료 주문 포함), 배송 상태 변경 시 주문 행 락
+ * @modified 2026/09/17 by WonJin - fix: 쿠폰 할인 기준으로 스토어별 주문 금액 전달 (스토어 쿠폰이 다른 스토어 상품까지 할인하던 문제)
+ * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용(주문 INSERT 전 원자 차감 + 저장 후 이력)과 주문 취소 시 사용 포인트 복구 구현
  *
  * <p>
  * 주문 생성, 취소, 배송 상태 관리, 조회를 담당한다.
@@ -71,17 +75,18 @@ public class OrderService {
     private final CouponPort couponPort;
     private final ApplicationEventPublisher eventPublisher;
 
-    /**
-     * 주문을 접수한다.
-     * Order.create()는 엔티티 객체 생성, placeOrder()는 주문 접수 비즈니스 흐름을 담당한다.
-     * 1. 주문 생성 + 재고 차감 + Payment READY 상태로 저장
-     * 2. 트랜잭션 커밋 후: Redis 타임아웃 등록 (10분)
-     * 3. 프론트(샌드박스)에서 pgOrderId + totalAmount로 토스 결제창 진입
-     */
+    // 포인트 차감·주문 생성·재고 차감·쿠폰 사용·결제 READY 저장은 한 트랜잭션에서 하고, 커밋 후 Redis 타임아웃(10분)이 등록된다
+    // 포인트 차감을 주문 INSERT 보다 먼저 하는 이유: orders 가 users 를 참조해 INSERT 가 부모 행에 공유 락을 걸기 때문이다.
+    // 주문을 먼저 저장하면 같은 사용자의 주문 두 건이 서로의 공유 락 때문에 배타 락을 얻지 못해 교착 상태가 된다(H2 테스트라 MySQL 재현은 미확인).
     @ExecutionTimeCheck(threshold = 3000)
     @Transactional
     public OrderResponse placeOrder(Long userId, OrderCreateRequest request) {
         Address address = userPort.findAddressByOwner(userId, request.addressId());
+
+        int usedPoint = request.usedPointOrZero();
+        if (usedPoint > 0) {
+            userPort.deductPoint(userId, usedPoint);
+        }
 
         Order savedOrder = orderRepository.save(Order.create(address.getUser(), address));
         UserCoupon appliedCoupon = null;
@@ -91,11 +96,11 @@ public class OrderService {
                 .mapToInt(OrderDetail::getTotalPrice)
                 .sum();
 
-        // 쿠폰 사용 — 비관적 락으로 동시 사용 차단 + 검증 + 할인 적용 + UNUSED → USED
-        // 결제 실패 시 cancelOrder 가 보상으로 markUnused 호출
+        // 쿠폰은 비관적 락으로 동시 사용을 막고 USED로 바꾸며, 결제 실패·주문 취소 시 UNUSED로 복구된다.
+        // 할인 기준 금액은 쿠폰 유형(플랫폼/스토어)에 따라 쿠폰 도메인이 고르도록 스토어별 금액을 넘긴다.
         if (request.userCouponId() != null) {
             CouponUsageResult usage = couponPort.useUserCoupon(
-                    userId, request.userCouponId(), totalAmount);
+                    userId, request.userCouponId(), amountByStore(savedDetails));
             savedOrder.applyDiscount(usage.discountAmount());
             // OrderDetail 의 첫 번째 항목에 userCoupon 연결 (cancelOrder 보상 시 추적용)
             if (!savedDetails.isEmpty()) {
@@ -103,8 +108,13 @@ public class OrderService {
             }
         }
 
-        // TODO: 포인트 차감 처리 (User.pointBalance 차감 + PointHistory 기록)
+        // 포인트 규칙은 쿠폰 할인 반영 뒤 주문이 판정한다. 위반이면 예외로 위의 포인트 차감까지 함께 롤백된다.
+        savedOrder.applyUsedPoint(usedPoint, totalAmount);
+        if (usedPoint > 0) {
+            userPort.recordPointUse(userId, savedOrder.getOrderId(), usedPoint);
+        }
 
+        // 결제(Payment.requestedAmount)는 이 최종 금액으로 만들어지고, 승인 시 PG 금액을 이 값과 비교한다.
         int finalAmount = savedOrder.calculateFinalAmount(totalAmount);
 
         eventPublisher.publishEvent(new OrderPlacedEvent(savedOrder.getOrderId(), totalAmount, finalAmount));
@@ -112,26 +122,46 @@ public class OrderService {
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    /**
-     * 주문을 취소하고 재고를 복구한다.
-     * PENDING/PAID 상태 모두 허용되며, 상태 검증은 Order.cancel() 내부에서 수행한다.
-     * 호출자는 주문 상태를 몰라도 되도록 단일 메서드로 통합됐다.
-     */
+    // 결제 취소 트랜잭션에 참여하므로 여기서 거절되면 PG 호출 전에 전체가 롤백된다. 사용 포인트·재고·쿠폰을 함께 복구한다.
+    // 만료 처리가 이 경로를 타면 결제된 주문을 환불 없이 취소하게 되므로 결제 전 취소(cancelUnpaidOrder)와 나눈다.
     @Transactional
-    public void cancelOrder(Long orderId) {
+    public void cancelPaidOrder(Long orderId) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
-        order.cancel();
-        restoreStock(orderId);
-        restoreUserCoupon(orderId);  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+        order.cancelPaid();
+        restoreOrderResources(order);
     }
 
-    /**
-     * 주문 취소 시 사용된 UserCoupon 을 UNUSED 로 복구 (보상 트랜잭션).
-     * OrderDetail 의 첫 항목에서 userCoupon 추출 (placeOrder 시 첫 항목에만 attach).
-     * 쿠폰 미사용 주문이면 noop.
-     */
+    // 주문 행을 잠근 뒤 상태를 보므로, 승인 반영이 먼저 커밋됐으면 PAID를 보고 아무것도 하지 않는다. 중복 호출에도 멱등하다.
+    @Transactional
+    public boolean cancelUnpaidOrder(Long orderId) {
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+
+        if (!order.isAwaitingPayment()) {
+            return false;
+        }
+        order.cancelUnpaid();
+        restoreOrderResources(order);
+        return true;
+    }
+
+    // 호출자가 주문 행을 잠그고 CANCELLED 로 바꾼 뒤에만 호출하므로 같은 주문에 두 번 실행되지 않는다.
+    // 주문 생성과 같은 순서(사용자 → 재고 → 쿠폰)로 잠그도록 포인트를 먼저 복구해 반대 순서 대기를 막는다.
+    private void restoreOrderResources(Order order) {
+        restoreUsedPoint(order);
+        restoreStock(order.getOrderId());
+        restoreUserCoupon(order.getOrderId());  // 쿠폰 사용 주문이라면 UserCoupon UNUSED 로 복구 (보상)
+    }
+
+    private void restoreUsedPoint(Order order) {
+        if (order.getUsedPoint() > 0) {
+            userPort.restoreUsedPoint(order.getUser().getUserId(), order.getOrderId(), order.getUsedPoint());
+        }
+    }
+
+    // placeOrder가 쿠폰을 첫 주문 항목에만 연결하므로, 거기서 찾아 UNUSED로 복구한다
     private void restoreUserCoupon(Long orderId) {
         List<OrderDetail> details = orderDetailRepository.findByOrderIdWithDetails(orderId);
         details.stream()
@@ -158,18 +188,16 @@ public class OrderService {
     }
 
     // 배송 상태를 변경한다. 모든 검증은 DeliveryValidator에 위임한다.
+    // 결제 취소와 동시에 들어오면 취소된 주문을 배송 중으로 덮어쓸 수 있어 주문 행을 잠그고 검증한다.
     @Transactional
     public void updateDeliveryStatus(UpdateDeliveryStatusRequest request) {
-        Order order = orderRepository.findById(request.orderId())
+        Order order = orderRepository.findByIdWithLock(request.orderId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         deliveryValidator.validate(request, order);
         order.updateOrderStatus(request.newStatus());
     }
 
-    /**
-     * 내 주문 내역을 커서 기반으로 조회한다. (무한 스크롤)
-     */
     @Transactional(readOnly = true)
     public CursorResponse<OrderListResponse> getMyOrders(Long userId, Long cursor, Integer size) {
         int pageSize = resolvePageSize(size);
@@ -196,9 +224,6 @@ public class OrderService {
         return orderList;
     }
 
-    /**
-     * 주문 상세 정보를 조회한다. 본인 주문만 접근 가능.
-     */
     @Transactional(readOnly = true)
     public OrderResponse getOrder(Long userId, Long orderId) {
         Order order = findOrderByOwner(userId, orderId);
@@ -216,10 +241,7 @@ public class OrderService {
         return order;
     }
 
-    /**
-     * 같은 옵션 ID의 수량을 합산한 뒤, 재고를 차감하고 주문 항목을 생성한다.
-     * deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
-     */
+    // deadlock 방지를 위해 optionId 오름차순으로 락을 획득한다.
     private List<OrderDetail> decreaseStockAndCreateDetails(Order order, List<OrderDetailRequest> detailRequests, UserCoupon userCoupon) {
         List<OrderDetailRequest> merged = mergeAndSort(detailRequests);
 
@@ -236,6 +258,14 @@ public class OrderService {
         }
 
         return orderDetailRepository.saveAll(details);
+    }
+
+    private Map<Long, Integer> amountByStore(List<OrderDetail> details) {
+        Map<Long, Integer> amounts = new HashMap<>();
+        for (OrderDetail detail : details) {
+            amounts.merge(detail.getProductOption().getStoreId(), detail.getTotalPrice(), Integer::sum);
+        }
+        return amounts;
     }
 
     private List<OrderDetailRequest> mergeAndSort(List<OrderDetailRequest> detailRequests) {

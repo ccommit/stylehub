@@ -21,12 +21,14 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willAnswer;
@@ -37,6 +39,8 @@ import static org.mockito.Mockito.never;
  * @author WonJin Bae
  * @created 2026/04/24
  * @modified 2026/05/01 by WonJin - test: throws_whenEmailNotFound DisplayName 에 user enumeration 방지 의도 명시 — 코드 리뷰 시 INVALID_PASSWORD 반환이 버그처럼 보이지 않도록
+ * @modified 2026/09/17 by WonJin - test: 미존재 이메일·소셜 계정·비활성 계정이 INVALID_PASSWORD 로 응답하고 더미 해시 검증을 수행하는지 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 로그인 적립 검증을 PointService 위임 호출 확인으로 변경 (엔티티 addPoint 제거, 적립 규칙은 PointServiceTest·LoginPointPersistenceTest 에서 검증)
  *
  * <p>
  * UserService.login 의 단위 테스트이다.
@@ -56,6 +60,9 @@ class UserServiceTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private PointService pointService;
+
     @InjectMocks
     private UserService userService;
 
@@ -73,13 +80,12 @@ class UserServiceTest {
             given(user.getName()).willReturn("테스터");
             given(user.getEmail()).willReturn("user@test.com");
             given(user.getPassword()).willReturn("hashed-pw");
+            given(user.getActive()).willReturn(true);
             given(user.getRole()).willReturn(UserRole.USER);
-            given(user.getLastLoginDate()).willReturn(null);   // 최초 로그인 → 1000P 지급 경로
 
             stubTransactionTemplatePassthrough();
             given(userRepository.findByEmail("user@test.com")).willReturn(Optional.of(user));
             given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
-            given(userRepository.findById(1L)).willReturn(Optional.of(user));
 
             // when
             UserLoginResponse response = userService.login(request);
@@ -88,9 +94,7 @@ class UserServiceTest {
             assertThat(response.userId()).isEqualTo(1L);
             assertThat(response.email()).isEqualTo("user@test.com");
             assertThat(response.role()).isEqualTo(UserRole.USER);
-            then(userRepository).should().findById(1L);        // rewardLoginPoint 내부 호출 확인
-            then(user).should().addPoint(1000);                // 최초 로그인 포인트
-            then(user).should().updateLastLoginDate(any());
+            then(pointService).should().rewardLoginPoint(eq(1L), any(LocalDate.class));   // 적립 규칙·원자성은 PointService 가 맡는다
         }
 
         @Test
@@ -103,6 +107,7 @@ class UserServiceTest {
             given(storeUser.getName()).willReturn("스토어");
             given(storeUser.getEmail()).willReturn("store@test.com");
             given(storeUser.getPassword()).willReturn("hashed-pw");
+            given(storeUser.getActive()).willReturn(true);
             given(storeUser.getRole()).willReturn(UserRole.STORE);
 
             stubTransactionTemplatePassthrough();
@@ -114,8 +119,7 @@ class UserServiceTest {
 
             // then
             assertThat(response.role()).isEqualTo(UserRole.STORE);
-            then(userRepository).should(never()).findById(any());    // rewardLoginPoint 진입 안 함
-            then(storeUser).should(never()).addPoint(any(Integer.class));
+            then(pointService).should(never()).rewardLoginPoint(any(), any());
         }
 
         @Test
@@ -131,6 +135,54 @@ class UserServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
+            // 응답 시간으로 가입 여부가 드러나지 않도록 계정이 없어도 BCrypt 검증을 한 번 수행한다
+            then(passwordHasher).should().verifyDummy("raw-pw");
+            then(passwordHasher).should(never()).matches(any(), any());
+        }
+
+        @Test
+        @DisplayName("비밀번호가 없는 소셜 가입 계정은 NPE(500) 대신 INVALID_PASSWORD 로 응답하고 더미 검증을 수행한다")
+        void throws_whenSocialAccountHasNoPassword() {
+            // given — 구글로 가입한 회원은 password 가 null 이다
+            UserLoginRequest request = new UserLoginRequest("social@test.com", "raw-pw");
+            User socialUser = mock(User.class);
+            given(socialUser.getPassword()).willReturn(null);
+            given(socialUser.getActive()).willReturn(true);
+
+            stubTransactionTemplatePassthrough();
+            given(userRepository.findByEmail("social@test.com")).willReturn(Optional.of(socialUser));
+
+            // when / then
+            assertThatThrownBy(() -> userService.login(request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_PASSWORD);
+            then(passwordHasher).should().verifyDummy("raw-pw");
+            then(passwordHasher).should(never()).matches(any(), any());
+            then(pointService).should(never()).rewardLoginPoint(any(), any());   // 포인트 적립으로 넘어가지 않는다
+        }
+
+        @Test
+        @DisplayName("비활성 계정은 비밀번호가 맞아도 INVALID_PASSWORD 로 응답하고 더미 검증을 수행한다")
+        void throws_whenAccountInactive() {
+            // given
+            UserLoginRequest request = new UserLoginRequest("inactive@test.com", "raw-pw");
+            User inactiveUser = mock(User.class);
+            given(inactiveUser.getPassword()).willReturn("hashed-pw");
+            given(inactiveUser.getActive()).willReturn(false);
+
+            stubTransactionTemplatePassthrough();
+            given(userRepository.findByEmail("inactive@test.com")).willReturn(Optional.of(inactiveUser));
+            given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
+
+            // when / then
+            assertThatThrownBy(() -> userService.login(request))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_PASSWORD);
+            then(passwordHasher).should().verifyDummy("raw-pw");
+            then(passwordHasher).should(never()).matches(any(), any());
+            then(pointService).should(never()).rewardLoginPoint(any(), any());
         }
 
         @Test
@@ -140,6 +192,7 @@ class UserServiceTest {
             UserLoginRequest request = new UserLoginRequest("user@test.com", "wrong-pw");
             User user = mock(User.class);
             given(user.getPassword()).willReturn("hashed-pw");
+            given(user.getActive()).willReturn(true);
 
             stubTransactionTemplatePassthrough();
             given(userRepository.findByEmail("user@test.com")).willReturn(Optional.of(user));
@@ -150,19 +203,13 @@ class UserServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
+            then(passwordHasher).should(never()).verifyDummy(any());   // 실제 검증을 했으므로 더미 검증은 중복하지 않는다
         }
     }
 
     // ===== Helper =====
 
-    /**
-     * TransactionTemplate 를 "콜백을 즉시 실행하고 결과를 반환"하도록 스텁한다.
-     * 실제 트랜잭션 없이 내부 조회/검증 로직을 그대로 검증할 수 있다.
-     *
-     * <p>반환값이 있는 execute 와 없는 executeWithoutResult 를 모두 스텁한다.
-     * executeWithoutResult 는 TransactionOperations 의 default 메서드지만 목 객체에서는
-     * 기본 구현이 호출되지 않으므로, 스텁하지 않으면 콜백이 아예 실행되지 않는다.
-     */
+    // executeWithoutResult도 스텁한다. default 메서드지만 목에서는 기본 구현이 호출되지 않아 콜백이 실행되지 않는다.
     private void stubTransactionTemplatePassthrough() {
         given(transactionTemplate.execute(any())).willAnswer(invocation -> {
             TransactionCallback<?> callback = invocation.getArgument(0);

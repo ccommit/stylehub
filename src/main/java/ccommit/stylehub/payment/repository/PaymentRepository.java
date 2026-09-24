@@ -13,6 +13,8 @@ import java.util.Optional;
  * @author WonJin Bae
  * @created 2026/04/01
  * @modified 2026/05/01 by WonJin - feat: findByOrderPgOrderIdWithLock 추가 — 결제 콜백 멱등성을 위한 비관적 락 조회
+ * @modified 2026/09/17 by WonJin - feat: findByOrderOrderIdWithLock 추가 — 만료 직전 PG 대조 결과를 반영할 때 승인 경로와 직렬화
+ * @modified 2026/09/17 by WonJin - feat: findByIdWithLock 추가 — 같은 결제에 대한 동시 취소(부분 취소) 직렬화
  *
  * <p>
  * Payment 엔티티의 데이터 접근을 담당한다.
@@ -25,11 +27,18 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     // 주문 만료 처리에서 결제 상태를 대조할 때 사용한다.
     Optional<Payment> findByOrderOrderId(Long orderId);
 
-    /**
-     * 결제 승인 시 같은 paymentKey 의 콜백이 동시에 도착해도 1건만 승인되도록 비관적 락으로 조회한다.
-     * 2번째 스레드부터는 1번째 스레드의 commit 후 status=DONE 을 보고 validateApprovable 에서 거절된다.
-     */
+    // 같은 paymentKey의 콜백이 동시에 와도 1건만 승인되도록 잠근다. 뒤 요청은 앞 요청 커밋 후 상태를 보고 validateApprovable에서 거절된다.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.order.pgOrderId = :pgOrderId")
     Optional<Payment> findByOrderPgOrderIdWithLock(@Param("pgOrderId") String pgOrderId);
+
+    // 같은 결제에 부분 취소가 동시에 들어오면 같은 잔액으로 검증을 통과해 PG 에 중복 환불될 수 있어 락을 잡는다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.paymentId = :paymentId")
+    Optional<Payment> findByIdWithLock(@Param("paymentId") Long paymentId);
+
+    // 만료 직전 PG 대조 결과를 반영할 때, 같은 결제에 대한 승인·실패 콜백과 순서를 맞추기 위해 락을 잡는다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.order.orderId = :orderId")
+    Optional<Payment> findByOrderOrderIdWithLock(@Param("orderId") Long orderId);
 }

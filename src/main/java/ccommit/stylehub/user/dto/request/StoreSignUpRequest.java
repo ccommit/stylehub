@@ -2,7 +2,9 @@ package ccommit.stylehub.user.dto.request;
 
 import static ccommit.stylehub.common.constants.ValidationPatterns.EMAIL_MESSAGE;
 import static ccommit.stylehub.common.constants.ValidationPatterns.EMAIL_PATTERN;
+import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_MAX_LENGTH;
 import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_MESSAGE;
+import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_MIN_LENGTH;
 import static ccommit.stylehub.common.constants.ValidationPatterns.NAME_PATTERN;
 import static ccommit.stylehub.common.constants.ValidationPatterns.PASSWORD_MESSAGE;
 import static ccommit.stylehub.common.constants.ValidationPatterns.PASSWORD_PATTERN;
@@ -15,6 +17,7 @@ import jakarta.validation.constraints.Size;
 /**
  * @author WonJin Bae
  * @created 2026/03/25
+ * @modified 2026/09/17 by WonJin - refactor: 이름 길이 제한을 ValidationPatterns 상수로 참조 — 소셜 가입 닉네임 규칙과 같은 값을 쓰도록
  *
  * <p>
  * 스토어 회원가입 + 입점 신청을 동시에 처리하는 요청 DTO이다.
@@ -25,7 +28,7 @@ public record StoreSignUpRequest(
 
         // 회원 정보
         @NotBlank
-        @Size(min = 2, max = 10)
+        @Size(min = NAME_MIN_LENGTH, max = NAME_MAX_LENGTH)
         @Pattern(regexp = NAME_PATTERN, message = NAME_MESSAGE)
         String name,
 

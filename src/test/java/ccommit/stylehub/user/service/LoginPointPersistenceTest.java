@@ -1,7 +1,10 @@
 package ccommit.stylehub.user.service;
 
+import ccommit.stylehub.support.OrderFixtureFactory;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
+import ccommit.stylehub.user.dto.response.PointHistoryResponse;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.PointType;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -13,13 +16,21 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * @author WonJin Bae
  * @created 2026/09/05
+ * @modified 2026/09/17 by WonJin - test: 적립 이력(유형·금액·잔여 포인트) 검증, 동시 로그인 N건에도 하루 1회만 적립·이력 1건 검증 추가, 정리를 포인트 이력 포함 삭제로 변경
  *
  * <p>
  * 로그인 포인트 적립이 DB에 실제로 반영되는지 검증하는 회귀 테스트이다.
@@ -50,18 +61,22 @@ class LoginPointPersistenceTest {
     @Autowired
     private UserRepository userRepository;
 
-    /** 테스트가 만든 회원을 끝나고 지운다. 지우지 않으면 실행할 때마다 DB 에 행이 쌓인다. */
+    @Autowired
+    private PointService pointService;
+
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
+    // 테스트가 만든 회원을 끝나고 지운다. 지우지 않으면 실행할 때마다 DB 에 행이 쌓인다.
     private final List<Long> createdUserIds = new ArrayList<>();
 
-    /**
-     * 날짜를 테스트마다 한 번만 구해 재사용한다.
-     * LocalDate.now() 를 여러 번 부르면 자정을 걸칠 때 값이 달라져 테스트가 흔들린다.
-     */
+    // LocalDate.now() 를 여러 번 부르면 자정을 걸칠 때 값이 달라져 테스트가 흔들린다.
     private final LocalDate today = LocalDate.now();
 
+    // 적립 이력이 회원을 참조하므로 이력 → 회원 순서로 지운다.
     @AfterEach
     void cleanUp() {
-        createdUserIds.forEach(userRepository::deleteById);
+        fixtureFactory.deleteByIds(List.of(), List.of(), createdUserIds);
         createdUserIds.clear();
     }
 
@@ -82,6 +97,10 @@ class LoginPointPersistenceTest {
         User reloaded = reload(userId);
         assertThat(reloaded.getPointBalance()).isEqualTo(FIRST_LOGIN_POINT);
         assertThat(reloaded.getLastLoginDate()).isEqualTo(today);
+        assertThat(histories(userId))
+                .extracting(PointHistoryResponse::pointType, PointHistoryResponse::amount,
+                        PointHistoryResponse::balanceSnapshot, PointHistoryResponse::orderId)
+                .containsExactly(tuple(PointType.WELCOME, FIRST_LOGIN_POINT, FIRST_LOGIN_POINT, null));
     }
 
     @Test
@@ -112,8 +131,9 @@ class LoginPointPersistenceTest {
         // when — 같은 날 다시 로그인
         userService.login(new UserLoginRequest(signedUp.getEmail(), rawPassword()));
 
-        // then — 잔액이 그대로여야 한다
+        // then — 잔액이 그대로이고 이력도 늘지 않아야 한다
         assertThat(reload(userId).getPointBalance()).isEqualTo(afterFirst);
+        assertThat(histories(userId)).hasSize(1);
     }
 
     @Test
@@ -131,11 +151,70 @@ class LoginPointPersistenceTest {
         // then
         assertThat(reload(userId).getPointBalance()).isEqualTo(afterYesterday + DAILY_LOGIN_POINT);
         assertThat(reload(userId).getLastLoginDate()).isEqualTo(today);
+        assertThat(histories(userId))
+                .extracting(PointHistoryResponse::pointType, PointHistoryResponse::amount, PointHistoryResponse::balanceSnapshot)
+                .containsExactly(
+                        tuple(PointType.DAILY_LOGIN, DAILY_LOGIN_POINT, FIRST_LOGIN_POINT + DAILY_LOGIN_POINT),
+                        tuple(PointType.WELCOME, FIRST_LOGIN_POINT, FIRST_LOGIN_POINT));
+    }
+
+    // 조건부 UPDATE 가 없으면 동시 첫 로그인이 모두 "마지막 적립일 없음"을 읽고 각자 1000P 를 더한다.
+    @Test
+    @DisplayName("같은 회원의 첫 로그인이 동시에 여러 건 들어와도 웰컴 포인트는 한 번만 적립되고 이력도 1건이다")
+    void rewardsWelcomeOnce_whenFirstLoginsConcurrent() throws InterruptedException {
+        // given
+        Long userId = signUpUser().getUserId();
+
+        // when
+        List<Throwable> errors = rewardConcurrently(userId, today, 10);
+
+        // then
+        assertThat(errors).isEmpty();
+        assertThat(reload(userId).getPointBalance()).isEqualTo(FIRST_LOGIN_POINT);
+        assertThat(histories(userId))
+                .extracting(PointHistoryResponse::pointType)
+                .containsExactly(PointType.WELCOME);
+    }
+
+    @Test
+    @DisplayName("어제 적립받은 회원의 오늘 로그인이 동시에 여러 건 들어와도 일일 포인트는 한 번만 적립되고 이력도 1건 늘어난다")
+    void rewardsDailyOnce_whenLoginsConcurrent() throws InterruptedException {
+        // given — 어제 첫 로그인으로 웰컴 포인트를 받은 상태
+        Long userId = signUpUser().getUserId();
+        userService.rewardLoginPoint(userId, today.minusDays(1));
+
+        // when
+        List<Throwable> errors = rewardConcurrently(userId, today, 10);
+
+        // then
+        assertThat(errors).isEmpty();
+        assertThat(reload(userId).getPointBalance()).isEqualTo(FIRST_LOGIN_POINT + DAILY_LOGIN_POINT);
+        assertThat(reload(userId).getLastLoginDate()).isEqualTo(today);
+        assertThat(histories(userId))
+                .extracting(PointHistoryResponse::pointType)
+                .containsExactly(PointType.DAILY_LOGIN, PointType.WELCOME);
+    }
+
+    // 서버 간 시계 차이로 이미 기록된 날짜보다 이전 날짜로 호출돼도 날짜를 되돌리거나 다시 적립하지 않는다.
+    @Test
+    @DisplayName("마지막 적립일보다 이전 날짜로 호출되면 적립하지 않고 날짜도 되돌리지 않는다")
+    void doesNotReward_whenCalledWithEarlierDate() {
+        // given — 오늘 적립된 상태
+        Long userId = signUpUser().getUserId();
+        userService.rewardLoginPoint(userId, today);
+
+        // when
+        userService.rewardLoginPoint(userId, today.minusDays(1));
+
+        // then
+        assertThat(reload(userId).getPointBalance()).isEqualTo(FIRST_LOGIN_POINT);
+        assertThat(reload(userId).getLastLoginDate()).isEqualTo(today);
+        assertThat(histories(userId)).hasSize(1);
     }
 
     // ===== Helper =====
 
-    /** 매 실행마다 중복되지 않는 회원을 만든다. */
+    // 매 실행마다 중복되지 않는 회원을 만든다.
     private User signUpUser() {
         String unique = UUID.randomUUID().toString().substring(0, 8);
         User user = userService.signUp(
@@ -153,8 +232,38 @@ class LoginPointPersistenceTest {
         return "Test1234!";
     }
 
-    /** 영속성 컨텍스트가 아니라 DB 에서 다시 읽는다. */
+    // 영속성 컨텍스트가 아니라 DB 에서 다시 읽는다.
     private User reload(Long userId) {
         return userRepository.findById(userId).orElseThrow();
+    }
+
+    // 최신순 포인트 이력. 조회 API 와 같은 경로로 읽는다.
+    private List<PointHistoryResponse> histories(Long userId) {
+        return pointService.getMyPoints(userId, null, 100).histories().items();
+    }
+
+    // 같은 회원의 적립을 동시에 호출하고, 스레드에서 난 예외를 모아 돌려준다.
+    private List<Throwable> rewardConcurrently(Long userId, LocalDate date, int threads) throws InterruptedException {
+        ExecutorService executor = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threads);
+        Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
+
+        for (int i = 0; i < threads; i++) {
+            executor.submit(() -> {
+                try {
+                    start.await();
+                    userService.rewardLoginPoint(userId, date);
+                } catch (Throwable e) {
+                    errors.add(e);
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        start.countDown();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        executor.shutdown();
+        return List.copyOf(errors);
     }
 }

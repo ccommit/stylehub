@@ -14,6 +14,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -36,6 +37,11 @@ import java.util.UUID;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/04/22 by WonJin - refactor: cancel/cancelPaid 통합 (내부 상태 PENDING/PAID 모두 허용) — 호출자가 상태를 알 필요 없게 함
  * @modified 2026/05/08 by WonJin - feat: applyDiscount 추가 (쿠폰 사용 주문 시 할인 금액 반영)
+ * @modified 2026/09/17 by WonJin - fix: 결제 대기 여부 조회 추가 (만료 처리는 결제 대기 주문만 취소)
+ * @modified 2026/09/17 by WonJin - fix: 취소를 결제 전(cancelUnpaid)·결제 후 환불(cancelPaid)로 나누고 결제 후 취소 허용 상태를 한 곳에서 정의, 미사용 startDelivery 제거
+ * @modified 2026/09/17 by WonJin - fix: 주문번호 난수를 UUID 8자리(32비트)에서 전체 122비트로 확장 (대량 주문 시 유니크 충돌 방지)
+ * @modified 2026/09/17 by WonJin - fix: 내 주문 커서 페이징이 전제하는 (user_id, order_id) 인덱스를 @Table(indexes) 로 선언
+ * @modified 2026/09/17 by WonJin - feat: applyUsedPoint 추가 — 포인트 사용 규칙(상품 금액 1만원 이상, 결제 금액 0원 이하 불가)을 주문이 검증하고 반영
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -43,11 +49,18 @@ import java.util.UUID;
  * </p>
  */
 @Entity
-@Table(name = "orders")
+@Table(name = "orders", indexes = {
+        // OrderQueryRepository.findMyOrdersWithCursor(user_id = ? AND order_id < ? ORDER BY order_id DESC)가 전제하는 인덱스다.
+        // 운영 DB 는 ddl-auto=validate 라 이 선언으로 만들어지지 않는다. 운영 반영 DDL: scripts/db/create-cursor-paging-indexes.sql
+        @Index(name = "idx_orders_user_order_id", columnList = "user_id, order_id")
+})
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
+
+    // 기획서 "주문금액 1만원 이상". ErrorCode.POINT_MIN_ORDER_AMOUNT_NOT_MET 메시지의 금액과 함께 바꿔야 한다.
+    public static final int MIN_ORDER_AMOUNT_FOR_POINT = 10_000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -90,34 +103,67 @@ public class Order extends BaseEntity {
                 .build();
     }
 
+    // 충돌하면 pg_order_id 유니크 제약 위반으로 주문 생성이 실패하므로 UUID 난수 전체(122비트)를 쓴다.
+    // ORD-yyyyMMdd-32자리 16진수(45자)로 토스 orderId 규칙(영문·숫자·'-'·'_', 6~64자)과 컬럼 길이 64를 지킨다.
     private static String generatePgOrderId() {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String uuid = UUID.randomUUID().toString().substring(0, 8);
-        return "ORD-" + date + "-" + uuid;
+        String random = UUID.randomUUID().toString().replace("-", "");
+        return "ORD-" + date + "-" + random;
     }
 
     public int calculateFinalAmount(int totalAmount) {
         return totalAmount - this.discountAmount - this.usedPoint;
     }
 
-    /**
-     * 쿠폰 할인을 적용한다. 결제 실패 시 보상으로 0 으로 되돌림.
-     */
     public void applyDiscount(int discountAmount) {
         this.discountAmount = discountAmount;
     }
 
-    // 주문 취소 — PENDING(결제 전) 또는 PAID(결제 완료) 상태에서만 전환 가능
-    public void cancel() {
-        if (this.orderStatus != OrderStatus.PENDING && this.orderStatus != OrderStatus.PAID) {
+    // 사용 포인트를 검증해 반영한다. 쿠폰 할인(applyDiscount) 뒤, 잔액 차감 앞에 호출해 어긋난 요청이 잔액을 건드리지 않게 한다.
+    // 최소 주문 금액은 할인 전 상품 금액 합계로 판단하고, 최종 결제 금액이 0원 이하가 되는 사용은 PG 승인 흐름이 없어 거절한다.
+    public void applyUsedPoint(int usedPoint, int totalAmount) {
+        if (usedPoint < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        if (usedPoint == 0) {
+            return;
+        }
+        if (totalAmount < MIN_ORDER_AMOUNT_FOR_POINT) {
+            throw new BusinessException(ErrorCode.POINT_MIN_ORDER_AMOUNT_NOT_MET);
+        }
+        if (usedPoint >= totalAmount - this.discountAmount) {
+            throw new BusinessException(ErrorCode.POINT_EXCEEDS_PAYMENT_AMOUNT);
+        }
+        this.usedPoint = usedPoint;
+    }
+
+    // 결제 대기(PENDING) 주문인지 확인한다. 만료·결제 실패 처리는 이 상태의 주문만 취소한다.
+    public boolean isAwaitingPayment() {
+        return this.orderStatus == OrderStatus.PENDING;
+    }
+
+    // 결제 전 취소 — 결제 대기(PENDING) 주문만 가능하다. 결제 만료·실패 처리가 사용한다.
+    public void cancelUnpaid() {
+        if (!isAwaitingPayment()) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
         }
         this.orderStatus = OrderStatus.CANCELLED;
     }
 
-    // 결제 완료 시 배송 준비 상태로 전환
-    public void startDelivery() {
-        this.orderStatus = OrderStatus.PREPARING;
+    // 결제 검증과 주문 취소의 허용 상태가 다르면 PG 환불 뒤 주문 취소가 거절돼 어긋나므로 둘이 이 규칙을 함께 쓴다.
+    // 배송 완료(DELIVERED) 주문의 환불 기한은 결제 검증기가 따로 확인한다.
+    public boolean isCancelableAfterPayment() {
+        return this.orderStatus == OrderStatus.PAID
+                || this.orderStatus == OrderStatus.PREPARING
+                || this.orderStatus == OrderStatus.DELIVERED;
+    }
+
+    // 결제 후 취소(환불) — 결제 완료·배송 준비·배송 완료 주문만 가능하다. 배송 중에는 취소할 수 없다.
+    public void cancelPaid() {
+        if (!isCancelableAfterPayment()) {
+            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);
+        }
+        this.orderStatus = OrderStatus.CANCELLED;
     }
 
     // 주문 상태를 변경한다. 검증은 DeliveryValidator에서 처리.
@@ -125,7 +171,7 @@ public class Order extends BaseEntity {
         this.orderStatus = newStatus;
     }
 
-    // 결제 완료 처리 — PENDING → PAID + 배송 준비(PREPARING) 자동 설정
+    // 결제 완료 처리 — PENDING → PAID. 배송 준비(PREPARING)는 스토어가 주문을 확인하고 배송 상태 API 로 전환한다.
     public void markPaid() {
         if (this.orderStatus != OrderStatus.PENDING) {
             throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS);

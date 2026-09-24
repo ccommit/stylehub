@@ -3,12 +3,15 @@ package ccommit.stylehub.payment.service;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.order.entity.Order;
+import ccommit.stylehub.order.enums.OrderStatus;
+import ccommit.stylehub.payment.client.PaymentClient;
 import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.entity.Payment;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.port.PaymentPort;
+import ccommit.stylehub.payment.port.PaymentReconcileResult;
 import ccommit.stylehub.payment.event.PaymentApprovedEvent;
 import ccommit.stylehub.payment.event.PaymentFailedEvent;
 import ccommit.stylehub.payment.event.PaymentFullyCanceledEvent;
@@ -16,12 +19,17 @@ import ccommit.stylehub.payment.policy.PaymentValidator;
 import ccommit.stylehub.payment.repository.PaymentRepository;
 import ccommit.stylehub.user.enums.UserRole;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.Duration;
+import java.time.LocalDateTime;
 
 /**
  * @author WonJin Bae
@@ -33,6 +41,9 @@ import org.springframework.transaction.annotation.Transactional;
  * @modified 2026/05/01 by WonJin - fix: confirmPayment 동시 호출 멱등성 보장 — findByOrderPgOrderIdWithLock 으로 비관적 락 조회 도입 (PaymentIdempotencyTest.concurrentIdempotency 노출 버그 해소)
  * @modified 2026/09/17 by WonJin - fix: cancelPayment 에 요청자 권한 검증 추가 — 주문자 본인/관리자만 취소 가능 (타인 결제 취소 차단)
  * @modified 2026/09/17 by WonJin - fix: 실패 콜백을 승인 대기 결제에만 반영 — 승인된 결제가 환불 없이 ABORTED·주문 취소되던 문제 해결
+ * @modified 2026/09/17 by WonJin - fix: 승인을 선점·PG 호출·반영 3단계로 분리(PG 호출 중 커넥션·락 미점유), 만료·취소된 주문 승인 차단, 만료 직전 대조 결과 세분화
+ * @modified 2026/09/17 by WonJin - fix: 결제 취소를 결제·주문 행 락 → 검증 → DB 반영(flush) → PG 취소 순서로 변경 (PG 환불 후 DB 롤백·동시 부분 취소 중복 환불 차단)
+ * @modified 2026/09/18 by WonJin - feat: 결제 취소에 PG 멱등 키 전달, 같은 키 재요청 응답용 getPayment 추가
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -47,11 +58,20 @@ public class PaymentService implements PaymentPort {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
+    private static final String PG_TYPE = "TOSS";
+
+    // 승인 요청이 PG에서 아직 처리 중일 수 있다고 보는 시간으로, 연결(3초)+읽기(10초) 타임아웃보다 넉넉하게 잡았다.
+    // 이 시간이 지난 IN_PROGRESS 결제는 응답이 유실된 것으로 보고 PG 조회 결과로 결론 낸다.
+    static final Duration APPROVAL_IN_FLIGHT_GRACE = Duration.ofSeconds(60);
+
+    private static final String ORPHAN_APPROVAL_CANCEL_REASON = "결제 대기 시간이 지나 취소된 주문의 승인 건 자동 환불";
+
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
     private final PaymentValidator paymentValidator;
     private final ApplicationEventPublisher eventPublisher;
     private final EntityManager em;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public void createReady(Long orderId, int totalAmount, int finalAmount) {
@@ -61,50 +81,147 @@ public class PaymentService implements PaymentPort {
         ));
     }
 
-    // 만료 직전 PG 결제 상태를 대조해, 응답만 유실된 승인 결제가 취소되지 않게 한다.
+    // 만료 직전 PG 상태를 대조한다. PG 조회는 트랜잭션 밖에서 하고, 반영은 결제·주문 행을 잠근 뒤 상태를 다시 확인하고 한다.
     // 조회 실패는 그대로 던져 호출자가 다음 회차에 다시 시도하게 한다.
     @Override
-    @Transactional
-    public boolean reconcileIfApproved(Long orderId) {
-        Payment payment = paymentRepository.findByOrderOrderId(orderId).orElse(null);
+    public PaymentReconcileResult reconcileBeforeExpiry(Long orderId) {
+        ReconcileTarget target = transactionTemplate.execute(status ->
+                paymentRepository.findByOrderOrderId(orderId)
+                        .map(payment -> new ReconcileTarget(payment.getStatus(), payment.getOrder().getPgOrderId()))
+                        .orElse(null));
+
+        if (target == null) {
+            // 결제 레코드가 없으면 승인될 수 있는 결제도 없다.
+            return PaymentReconcileResult.NOT_APPROVED;
+        }
+        if (target.status() != PaymentStatus.READY && target.status() != PaymentStatus.IN_PROGRESS) {
+            return resultOfSettled(target.status());
+        }
+
+        // 응답을 기다리는 동안 커넥션과 행 락을 쥐지 않도록 트랜잭션 밖에서 조회한다.
+        PgPaymentSnapshot snapshot = paymentClientFactory.getClient(PG_TYPE).findPayment(target.pgOrderId());
+
+        ReconcileDecision decision = transactionTemplate.execute(status -> decideAfterLookup(orderId, snapshot));
+        if (decision.refundRequired()) {
+            refundOrphanApproval(snapshot.paymentKey(), target.pgOrderId());
+        }
+        return decision.result();
+    }
+
+    private ReconcileDecision decideAfterLookup(Long orderId, PgPaymentSnapshot snapshot) {
+        Payment payment = paymentRepository.findByOrderOrderIdWithLock(orderId).orElse(null);
         if (payment == null) {
-            return false;
+            return ReconcileDecision.of(PaymentReconcileResult.NOT_APPROVED);
+        }
+        Order order = lockOrder(payment);
+
+        if (!payment.isAwaitingApproval()) {
+            return ReconcileDecision.of(resultOfSettled(payment.getStatus()));
         }
 
-        // 이미 승인·취소 등으로 처리가 끝난 건은 대조 대상이 아니다.
-        if (payment.getStatus() != PaymentStatus.READY && payment.getStatus() != PaymentStatus.IN_PROGRESS) {
-            return false;
+        if (snapshot.approved()) {
+            paymentValidator.validateAmount(payment, snapshot.totalAmount());
+            if (order.getOrderStatus() != OrderStatus.PENDING) {
+                // PG 에서는 승인됐는데 주문은 이미 취소돼 재고가 다시 팔렸을 수 있다. 주문을 되살리지 않고 환불한다.
+                payment.expire();
+                return ReconcileDecision.refund();
+            }
+            approvePayment(payment, snapshot.paymentKey(), snapshot.totalAmount());
+            return ReconcileDecision.of(PaymentReconcileResult.APPROVED);
         }
 
-        PgPaymentSnapshot snapshot = paymentClientFactory.getClient("TOSS")
-                .findPayment(payment.getOrder().getPgOrderId());
-
-        if (!snapshot.approved()) {
-            return false;
+        if (payment.isApprovalInFlight(LocalDateTime.now(), APPROVAL_IN_FLIGHT_GRACE)) {
+            return ReconcileDecision.of(PaymentReconcileResult.IN_FLIGHT);
         }
 
-        paymentValidator.validateAmount(payment, snapshot.totalAmount());
-        approvePayment(payment, snapshot.paymentKey(), snapshot.totalAmount());
-        return true;
+        payment.expire();
+        return ReconcileDecision.of(PaymentReconcileResult.NOT_APPROVED);
     }
 
-    // 토스 결제를 확인하고 우리 DB에 승인 처리한다.
-    // 같은 paymentKey 콜백이 동시에 여러 번 도착해도 1건만 승인되도록 비관적 락으로 조회한다.
-    // 2번째 이후 스레드는 락 해제 시점에 status=DONE 을 보고 validateApprovable 에서 PAYMENT_ALREADY_PROCESSED 로 거절된다.
-    @Transactional
+    // 승인 대기가 아닌 결제: 만료·실패면 주문 취소 가능, 승인·취소(환불) 이력이 있으면 만료 처리 대상이 아니다.
+    private PaymentReconcileResult resultOfSettled(PaymentStatus status) {
+        if (status == PaymentStatus.EXPIRED || status == PaymentStatus.ABORTED) {
+            return PaymentReconcileResult.NOT_APPROVED;
+        }
+        return PaymentReconcileResult.APPROVED;
+    }
+
+    // 선점(IN_PROGRESS 커밋) → PG 호출 → 반영으로 나눠, PG 응답을 기다리는 동안 커넥션과 행 락을 쥐지 않는다.
+    // PG가 4xx로 거절하면 선점을 되돌리고, 결과를 모르면(5xx, 타임아웃) IN_PROGRESS로 남겨 만료 직전 PG 대조가 결론 낸다.
     public PaymentResponse confirmPayment(String paymentKey, String pgOrderId, Integer tossAmount) {
-        Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        PaymentClient pgClient = paymentClientFactory.getClient(PG_TYPE);
 
-        paymentValidator.validateApprovable(payment);
-        paymentValidator.validateAmount(payment, tossAmount);
+        transactionTemplate.executeWithoutResult(status -> {
+            Payment payment = findWithLock(pgOrderId);
+            Order order = lockOrder(payment);
+            paymentValidator.validateApprovable(payment);
+            paymentValidator.validateOrderPayable(order);
+            paymentValidator.validateAmount(payment, tossAmount);
+            payment.startApproval(paymentKey);
+        });
 
-        paymentClientFactory.getClient("TOSS").confirmPayment(paymentKey, pgOrderId, tossAmount);
+        requestApproval(pgClient, paymentKey, pgOrderId, tossAmount);
 
-        return approvePayment(payment, paymentKey, tossAmount);
+        ApprovalOutcome outcome = transactionTemplate.execute(status -> {
+            Payment payment = findWithLock(pgOrderId);
+            Order order = lockOrder(payment);
+            if (payment.getStatus() == PaymentStatus.DONE) {
+                return ApprovalOutcome.approved(PaymentResponse.from(payment));
+            }
+            if (payment.getStatus() != PaymentStatus.IN_PROGRESS || order.getOrderStatus() != OrderStatus.PENDING) {
+                if (payment.isAwaitingApproval()) {
+                    payment.expire();
+                }
+                return ApprovalOutcome.refund();
+            }
+            return ApprovalOutcome.approved(approvePayment(payment, paymentKey, tossAmount));
+        });
+
+        if (outcome.refundRequired()) {
+            refundOrphanApproval(paymentKey, pgOrderId);
+            throw new BusinessException(ErrorCode.ORDER_NOT_PAYABLE);
+        }
+        return outcome.response();
     }
 
-    // 토스 confirm 성공 후 우리 DB에 결제 승인을 반영한다.
+    private void requestApproval(PaymentClient pgClient, String paymentKey, String pgOrderId, Integer amount) {
+        try {
+            pgClient.confirmPayment(paymentKey, pgOrderId, amount);
+        } catch (BusinessException e) {
+            if (e.getErrorCode() == ErrorCode.PAYMENT_APPROVAL_FAILED) {
+                releaseApproval(pgOrderId, e);
+            }
+            throw e;
+        }
+    }
+
+    // PG 가 거절한 결제의 선점을 되돌린다. 되돌리지 못해도 IN_PROGRESS 결제는 만료 직전 PG 대조가 결론 내므로 거절 사유를 우선 전달한다.
+    private void releaseApproval(String pgOrderId, BusinessException cause) {
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                Payment payment = findWithLock(pgOrderId);
+                if (payment.getStatus() == PaymentStatus.IN_PROGRESS) {
+                    payment.revertApproval();
+                }
+            });
+        } catch (RuntimeException e) {
+            cause.addSuppressed(e);
+            log.error("PG 승인 거절 후 결제 선점 해제 실패: pgOrderId={}", pgOrderId, e);
+        }
+    }
+
+    // 만료·취소된 주문에 대해 PG 승인이 이뤄진 경우 환불한다. 실패하면 자동으로 수렴할 경로가 없어 사람이 확인해야 한다.
+    private void refundOrphanApproval(String paymentKey, String pgOrderId) {
+        try {
+            paymentClientFactory.getClient(PG_TYPE).cancelPayment(paymentKey, ORPHAN_APPROVAL_CANCEL_REASON, null, null);
+            log.warn("만료·취소된 주문에 승인된 결제를 환불: pgOrderId={}", pgOrderId);
+        } catch (RuntimeException e) {
+            log.error("[수동 환불 필요] 만료·취소된 주문에 승인된 결제 환불 실패: pgOrderId={}, paymentKey={}",
+                    pgOrderId, paymentKey, e);
+        }
+    }
+
+    // 결제·주문 승인 반영. 주문 결제 완료 전이와 이벤트 발행을 한 곳에서 처리한다.
     private PaymentResponse approvePayment(Payment payment, String paymentKey, Integer amount) {
         payment.approve(paymentKey, amount);
         payment.getOrder().markPaid();
@@ -113,21 +230,73 @@ public class PaymentService implements PaymentPort {
         return PaymentResponse.from(payment);
     }
 
-    // 토스 결제를 취소하고 우리 DB에 취소 처리한다.
+    private Payment findWithLock(String pgOrderId) {
+        return paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+    }
+
+    // 결제 → 주문 순서로 잠근다. 주문 취소 경로(OrderService)는 주문만 잠그므로 순환 대기가 생기지 않는다.
+    // 결제 조회 시점에 주문은 지연 로딩 전이라, 이 잠금 조회가 주문의 최신 상태를 읽어 온다.
+    private Order lockOrder(Payment payment) {
+        return em.createQuery("SELECT o FROM Order o WHERE o.orderId = :orderId", Order.class)
+                .setParameter("orderId", payment.getOrder().getOrderId())
+                .setLockMode(LockModeType.PESSIMISTIC_WRITE)
+                .getSingleResult();
+    }
+
+    private record ReconcileTarget(PaymentStatus status, String pgOrderId) {
+    }
+
+    private record ReconcileDecision(PaymentReconcileResult result, boolean refundRequired) {
+
+        static ReconcileDecision of(PaymentReconcileResult result) {
+            return new ReconcileDecision(result, false);
+        }
+
+        static ReconcileDecision refund() {
+            return new ReconcileDecision(PaymentReconcileResult.NOT_APPROVED, true);
+        }
+    }
+
+    private record ApprovalOutcome(PaymentResponse response, boolean refundRequired) {
+
+        static ApprovalOutcome approved(PaymentResponse response) {
+            return new ApprovalOutcome(response, false);
+        }
+
+        static ApprovalOutcome refund() {
+            return new ApprovalOutcome(null, true);
+        }
+    }
+
+    // DB 반영을 PG 취소보다 먼저 끝내 PG 환불 후 DB 만 롤백되는 불일치를 막고, 동시 부분 취소의 중복 환불을 막으려 PG 호출 동안 락을 유지한다.
     // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
+    // PG 응답이 유실돼 여기서 롤백되면 PG 에서만 환불됐을 수 있다. 같은 pgIdempotencyKey 로 재시도하면 PG 가 첫 결과를 돌려줘 이중 환불 없이 DB 가 따라간다.
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
-                                         String cancelReason, Integer cancelAmount) {
-        Payment payment = paymentRepository.findById(paymentId)
+                                         String cancelReason, Integer cancelAmount, String pgIdempotencyKey) {
+        Payment payment = paymentRepository.findByIdWithLock(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        lockOrder(payment);
 
         paymentValidator.validateCancelAuthority(payment, requesterId, requesterRole);
         paymentValidator.validateCancel(payment, cancelAmount);
 
-        paymentClientFactory.getClient("TOSS")
-                .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount);
+        PaymentResponse response = applyCancellation(payment, cancelReason, cancelAmount);
+        em.flush();
 
-        return applyCancellation(payment, cancelReason, cancelAmount);
+        paymentClientFactory.getClient(PG_TYPE)
+                .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount, pgIdempotencyKey);
+
+        return response;
+    }
+
+    // 같은 Idempotency-Key 로 다시 온 취소 요청에 현재 결제 상태를 돌려준다. 키는 요청자별이라 원래 요청의 권한 검증을 이미 통과했다.
+    @Transactional(readOnly = true)
+    public PaymentResponse getPayment(Long paymentId) {
+        return paymentRepository.findById(paymentId)
+                .map(PaymentResponse::from)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 
     // 토스 취소 성공 후 우리 DB에 취소를 반영한다.
@@ -140,14 +309,15 @@ public class PaymentService implements PaymentPort {
         return PaymentResponse.from(payment);
     }
 
-    // 인증 없이 열린 콜백이라 승인 전 결제에만 반영한다. 승인 콜백과 같은 락으로 조회해 둘 중 하나만 반영된다.
+    // 인증 없이 열린 콜백이라 결제창 단계(READY) 결제에만 반영한다. IN_PROGRESS 는 이미 PG 에 승인을 요청한 상태라 반영하면 승인된 결제를 잃는다.
+    // 승인 선점과 같은 락으로 조회해 둘 중 하나만 반영된다.
     @Transactional
     public void handlePaymentFailure(String pgOrderId) {
         Payment payment = paymentRepository.findByOrderPgOrderIdWithLock(pgOrderId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
 
-        if (!payment.isAwaitingApproval()) {
-            log.info("승인 대기 상태가 아닌 결제의 실패 콜백 무시: pgOrderId={}, status={}", pgOrderId, payment.getStatus());
+        if (payment.getStatus() != PaymentStatus.READY) {
+            log.info("결제창 단계가 아닌 결제의 실패 콜백 무시: pgOrderId={}, status={}", pgOrderId, payment.getStatus());
             return;
         }
 

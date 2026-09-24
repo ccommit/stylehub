@@ -25,6 +25,8 @@ import java.util.Map;
 /**
  * @author WonJin Bae
  * @created 2026/04/01
+ * @modified 2026/09/17 by WonJin - fix: 승인 실패를 PG 거절(4xx)과 결과 불명(5xx·타임아웃)으로 구분
+ * @modified 2026/09/18 by WonJin - feat: 결제 취소에 Idempotency-Key 헤더 전달 (응답 유실 후 재시도 시 이중 환불 차단)
  *
  * <p>
  * 토스페이먼츠 결제 승인/취소 API를 호출하는 클라이언트이다.
@@ -37,8 +39,8 @@ public class TossPaymentClient implements PaymentClient {
 
     private static final Logger log = LoggerFactory.getLogger(TossPaymentClient.class);
 
-    /** 토스 결제 상태 중 승인 완료를 뜻하는 값 */
     private static final String APPROVED_STATUS = "DONE";
+    private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
 
     private final TossPaymentProperties tossProperties;
     private final RestTemplate restTemplate;
@@ -61,22 +63,23 @@ public class TossPaymentClient implements PaymentClient {
             );
             log.info("토스 결제 승인 성공: orderId={}", orderId);
         } catch (HttpClientErrorException e) {
-            log.error("토스 결제 승인 실패: orderId={}, status={}, body={}", orderId, e.getStatusCode(), e.getResponseBodyAsString());
+            // 4xx 는 PG 가 요청을 거절했다는 명확한 응답이다. 결제는 일어나지 않았다.
+            log.error("토스 결제 승인 거절: orderId={}, status={}, body={}", orderId, e.getStatusCode(), e.getResponseBodyAsString());
             throw new BusinessException(ErrorCode.PAYMENT_APPROVAL_FAILED);
         } catch (RestClientException e) {
-            log.error("토스 결제 승인 실패: orderId={}, error={}", orderId, e.getMessage());
-            throw new BusinessException(ErrorCode.PAYMENT_APPROVAL_FAILED);
+            // 5xx·연결 실패·읽기 타임아웃은 PG 에서 승인이 끝났는지 알 수 없다. 거절과 섞으면 결제된 주문을 되돌리게 된다.
+            log.error("토스 결제 승인 결과 불명: orderId={}, error={}", orderId, e.getMessage());
+            throw new BusinessException(ErrorCode.PAYMENT_RESULT_UNKNOWN);
         }
     }
 
-    /**
-     * 토스페이먼츠 결제 취소/부분 취소 API를 호출한다.
-     * POST https://api.tosspayments.com/v1/payments/{paymentKey}/cancel
-     * cancelAmount가 null이면 전액 취소, 값이 있으면 부분 취소.
-     */
+    // cancelAmount가 null이면 전액 취소, 있으면 부분 취소. 토스는 같은 Idempotency-Key 재요청에 첫 응답을 그대로 돌려준다(15일 유효).
     @Override
-    public void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount) {
+    public void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount, String idempotencyKey) {
         HttpHeaders headers = createAuthHeaders();
+        if (idempotencyKey != null) {
+            headers.set(IDEMPOTENCY_KEY_HEADER, idempotencyKey);
+        }
 
         Map<String, Object> body = new HashMap<>();
         body.put("cancelReason", cancelReason);
@@ -103,15 +106,8 @@ public class TossPaymentClient implements PaymentClient {
         return "TOSS";
     }
 
-    /**
-     * 우리가 넘긴 주문 식별자로 토스에 결제 상태를 조회한다.
-     *
-     * <p>GET /v1/payments/orders/{orderId} — 응답의 status 가 DONE 이면 승인 완료다.
-     * 404 는 해당 주문으로 결제가 시작되지 않았다는 뜻이므로 오류가 아니라 "승인되지 않음" 으로 다룬다.
-     *
-     * <p>응답을 특정 타입으로 역직렬화하지 않고 Map 으로 받는다. 필요한 값이 세 개뿐이고,
-     * PG 응답 스키마가 바뀌어도 알 수 없는 필드 때문에 파싱이 깨지지 않게 하기 위해서다.
-     */
+    // 404는 이 주문으로 결제가 시작되지 않았다는 뜻이라 오류가 아니라 미승인으로 다룬다.
+    // PG 응답 스키마가 바뀌어도 파싱이 깨지지 않도록 필요한 세 값만 Map으로 받는다.
     @Override
     @SuppressWarnings("unchecked")
     public PgPaymentSnapshot findPayment(String pgOrderId) {

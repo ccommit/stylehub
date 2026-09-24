@@ -128,7 +128,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED.getCode()));
 
-        then(paymentClient).should(never()).cancelPayment(any(), any(), any());
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
     }
 
@@ -144,7 +144,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS.getCode()));
 
-        then(paymentClient).should(never()).cancelPayment(any(), any(), any());
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
     }
 
@@ -159,7 +159,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(ErrorCode.FORBIDDEN.getCode()));
 
-        then(paymentClient).should(never()).cancelPayment(any(), any(), any());
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
     }
 
@@ -175,7 +175,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(jsonPath("$.paymentId").value(paid.paymentId()))
                 .andExpect(jsonPath("$.status").value(PaymentStatus.CANCELED.name()));
 
-        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null);
+        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null, null);
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
     }
 
@@ -191,7 +191,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(PaymentStatus.CANCELED.name()));
 
-        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null);
+        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null, null);
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
     }
 
@@ -232,7 +232,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_INPUT.getCode()));
 
-        then(paymentClient).should(never()).cancelPayment(any(), any(), any());
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
     }
 

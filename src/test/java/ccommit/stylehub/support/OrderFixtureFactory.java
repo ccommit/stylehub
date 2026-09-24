@@ -15,16 +15,18 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.UUID;
 
 /**
  * @author WonJin Bae
  * @created 2026/09/04
+ * @modified 2026/09/17 by WonJin - test: 상품 소유자를 구매자와 분리된 승인 스토어로 생성 (재고 차감이 스토어 승인 상태를 요구하게 됨), 스토어·상품 단위 생성과 ID 기반 정리 메서드 추가
+ * @modified 2026/09/17 by WonJin - test: 정리 시 포인트 이력을 주문·회원보다 먼저 삭제 (로그인 적립·주문 포인트 사용이 이력을 남기게 됨)
  *
  * <p>
- * 주문 관련 @SpringBootTest 통합 테스트가 매번 존재를 가정해온 User/Address/Product/ProductOption을
- * 실제로 생성해 재현 가능한 상태로 만드는 테스트 전용 픽스처 팩토리이다.
- * Address는 전용 Repository가 없어(주소 CRUD API 미구현) EntityManager로 직접 저장한다.
+ * 주문 통합 테스트가 존재를 가정해온 User/Address/Product/ProductOption을 실제로 만드는 테스트 전용 픽스처 팩토리이다.
+ * 상품은 입점 승인된 스토어 소유로 만든다. 승인되지 않은 스토어의 상품은 조회·주문이 막히기 때문이다.
  * </p>
  */
 @Component
@@ -45,12 +47,27 @@ public class OrderFixtureFactory {
         this.entityManager = entityManager;
     }
 
-    public record Fixture(Long userId, Long addressId, Long optionId) {
+    public record Fixture(Long userId, Long addressId, Long storeId, Long productId, Long optionId) {
+    }
+
+    public record Buyer(Long userId, Long addressId) {
+    }
+
+    public record StoreProduct(Long storeId, Long productId, Long optionId) {
+    }
+
+    // 구매자(배송지 포함)와 승인 스토어의 상품 옵션 1개를 만든다.
+    @Transactional
+    public Fixture create(int initialStock) {
+        Buyer buyer = createBuyer();
+        StoreProduct storeProduct = createStoreProduct(initialStock);
+        return new Fixture(buyer.userId(), buyer.addressId(),
+                storeProduct.storeId(), storeProduct.productId(), storeProduct.optionId());
     }
 
     @Transactional
-    public Fixture create(int initialStock) {
-        String suffix = UUID.randomUUID().toString().substring(0, 8);
+    public Buyer createBuyer() {
+        String suffix = newSuffix();
 
         User user = userRepository.save(User.create(
                 "u" + suffix,
@@ -69,9 +86,64 @@ public class OrderFixtureFactory {
                 .streetAddress("테스트로 1")
                 .build();
         entityManager.persist(address);
+        entityManager.flush();
 
+        return new Buyer(user.getUserId(), address.getAddressId());
+    }
+
+    // 입점 승인된 스토어를 새로 만들고, 그 스토어의 상품과 옵션 1개를 만든다.
+    @Transactional
+    public StoreProduct createStoreProduct(int initialStock) {
+        User store = createApprovedStore();
+        return addProduct(store, initialStock);
+    }
+
+    // 기존 스토어에 상품과 옵션 1개를 추가한다.
+    @Transactional
+    public StoreProduct addProduct(Long storeId, int initialStock) {
+        User store = userRepository.findById(storeId).orElseThrow();
+        return addProduct(store, initialStock);
+    }
+
+    // deleteAll()은 같은 컨텍스트를 쓰는 다른 테스트 데이터까지 지우므로 ID로 범위를 한정해 외래키 의존 순서대로 지운다.
+    // 결제 → 주문 상세 → 포인트 이력(주문) → 주문 → 옵션 → 상품 → 포인트 이력(회원) → 배송지 → 회원 순서다.
+    @Transactional
+    public void deleteByIds(Collection<Long> orderIds, Collection<Long> productIds, Collection<Long> userIds) {
+        if (!orderIds.isEmpty()) {
+            deleteIn("DELETE FROM Payment p WHERE p.order.orderId IN :ids", orderIds);
+            deleteIn("DELETE FROM OrderDetail od WHERE od.order.orderId IN :ids", orderIds);
+            deleteIn("DELETE FROM PointHistory ph WHERE ph.order.orderId IN :ids", orderIds);
+            deleteIn("DELETE FROM Order o WHERE o.orderId IN :ids", orderIds);
+        }
+        if (!productIds.isEmpty()) {
+            deleteIn("DELETE FROM ProductOption po WHERE po.product.productId IN :ids", productIds);
+            deleteIn("DELETE FROM Product p WHERE p.productId IN :ids", productIds);
+        }
+        if (!userIds.isEmpty()) {
+            deleteIn("DELETE FROM PointHistory ph WHERE ph.user.userId IN :ids", userIds);
+            deleteIn("DELETE FROM Address a WHERE a.user.userId IN :ids", userIds);
+            deleteIn("DELETE FROM User u WHERE u.userId IN :ids", userIds);
+        }
+    }
+
+    private User createApprovedStore() {
+        String suffix = newSuffix();
+
+        User store = User.create(
+                "s" + suffix,
+                "s" + suffix + "@test.com",
+                "password",
+                LocalDate.of(2000, 1, 1),
+                UserRole.STORE
+        );
+        store.registerStore("스토어" + suffix, "테스트 스토어");
+        store.approveStore();
+        return userRepository.save(store);
+    }
+
+    private StoreProduct addProduct(User store, int initialStock) {
         Product product = productRepository.save(Product.create(
-                user, "테스트상품-" + suffix, MainCategory.TOP, SubCategory.T_SHIRT,
+                store, "테스트상품-" + newSuffix(), MainCategory.TOP, SubCategory.T_SHIRT,
                 "테스트 설명", 10000, "https://img/test"
         ));
 
@@ -84,6 +156,14 @@ public class OrderFixtureFactory {
 
         entityManager.flush();
 
-        return new Fixture(user.getUserId(), address.getAddressId(), option.getProductOptionId());
+        return new StoreProduct(store.getUserId(), product.getProductId(), option.getProductOptionId());
+    }
+
+    private void deleteIn(String jpql, Collection<Long> ids) {
+        entityManager.createQuery(jpql).setParameter("ids", ids).executeUpdate();
+    }
+
+    private static String newSuffix() {
+        return UUID.randomUUID().toString().substring(0, 8);
     }
 }

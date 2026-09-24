@@ -24,6 +24,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @author WonJin Bae
  * @created 2026/08/27
  * @modified 2026/09/17 by WonJin - test: validateCancelAuthority(주문자 본인/타인/관리자) 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 승인 시작은 READY 만 허용, 결제 대기 주문 검증 추가
+ * @modified 2026/09/17 by WonJin - test: 결제 취소 허용 주문 상태가 Order 규칙과 같은지 검증 추가
  *
  * <p>
  * PaymentValidator의 승인·취소 가능 여부, 금액 위변조, 취소 권한, 배송 상태별 취소 기한을 검증하는 단위 테스트이다.
@@ -49,28 +51,64 @@ class PaymentValidatorTest {
     @DisplayName("validateApprovable")
     class ValidateApprovable {
 
-        @ParameterizedTest
-        @DisplayName("READY 또는 IN_PROGRESS면 예외가 발생하지 않는다")
-        @EnumSource(value = PaymentStatus.class, names = {"READY", "IN_PROGRESS"})
-        void 승인가능_상태면_통과한다(PaymentStatus status) {
+        @Test
+        @DisplayName("READY 결제는 승인을 시작할 수 있다")
+        void READY면_통과한다() {
             // given
-            Payment payment = paymentWith(status, orderWithStatus(OrderStatus.PENDING, LocalDateTime.now()), 10000, 10000);
+            Payment payment = paymentWith(PaymentStatus.READY, orderWithStatus(OrderStatus.PENDING, LocalDateTime.now()), 10000, 10000);
 
             // when & then
             assertThatCode(() -> validator.validateApprovable(payment)).doesNotThrowAnyException();
         }
 
-        @Test
-        @DisplayName("이미 처리된 결제면 PAYMENT_ALREADY_PROCESSED 예외가 발생한다")
-        void 이미_처리된_결제면_예외() {
+        @ParameterizedTest
+        @DisplayName("승인 진행 중이거나 이미 처리된 결제면 PAYMENT_ALREADY_PROCESSED 예외가 발생한다")
+        @EnumSource(value = PaymentStatus.class, names = {"IN_PROGRESS", "DONE", "PARTIAL_CANCELED", "CANCELED"})
+        void 이미_처리된_결제면_예외(PaymentStatus status) {
             // given
-            Payment payment = paymentWith(PaymentStatus.DONE, orderWithStatus(OrderStatus.PAID, LocalDateTime.now()), 10000, 10000);
+            Payment payment = paymentWith(status, orderWithStatus(OrderStatus.PAID, LocalDateTime.now()), 10000, 10000);
 
             // when & then
             assertThatThrownBy(() -> validator.validateApprovable(payment))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_ALREADY_PROCESSED);
+        }
+
+        @ParameterizedTest
+        @DisplayName("만료·실패 처리된 결제면 ORDER_NOT_PAYABLE 예외가 발생한다")
+        @EnumSource(value = PaymentStatus.class, names = {"EXPIRED", "ABORTED"})
+        void 만료_실패된_결제면_예외(PaymentStatus status) {
+            // given
+            Payment payment = paymentWith(status, orderWithStatus(OrderStatus.CANCELLED, LocalDateTime.now()), 10000, 10000);
+
+            // when & then
+            assertThatThrownBy(() -> validator.validateApprovable(payment))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.ORDER_NOT_PAYABLE);
+        }
+    }
+
+    @Nested
+    @DisplayName("validateOrderPayable")
+    class ValidateOrderPayable {
+
+        @Test
+        @DisplayName("결제 대기(PENDING) 주문은 통과한다")
+        void PENDING이면_통과한다() {
+            assertThatCode(() -> validator.validateOrderPayable(orderWithStatus(OrderStatus.PENDING, LocalDateTime.now())))
+                    .doesNotThrowAnyException();
+        }
+
+        @ParameterizedTest
+        @DisplayName("결제 대기가 아닌 주문(만료 취소 등)이면 ORDER_NOT_PAYABLE 예외가 발생한다")
+        @EnumSource(value = OrderStatus.class, names = {"PENDING"}, mode = EnumSource.Mode.EXCLUDE)
+        void 결제대기가_아니면_예외(OrderStatus status) {
+            assertThatThrownBy(() -> validator.validateOrderPayable(orderWithStatus(status, LocalDateTime.now())))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.ORDER_NOT_PAYABLE);
         }
     }
 
@@ -165,6 +203,26 @@ class PaymentValidatorTest {
 
             // when & then
             assertThatCode(() -> validator.validateCancel(payment, null)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("결제 완료(PAID) 주문의 DONE 결제는 취소할 수 있다")
+        void 결제완료_주문은_통과한다() {
+            Payment payment = paymentWith(PaymentStatus.DONE, orderWithStatus(OrderStatus.PAID, LocalDateTime.now()), 10000, 10000);
+
+            assertThatCode(() -> validator.validateCancel(payment, null)).doesNotThrowAnyException();
+        }
+
+        @ParameterizedTest
+        @DisplayName("결제 후 취소 대상이 아닌 주문 상태(PENDING, CANCELLED)면 INVALID_ORDER_STATUS 예외가 발생한다")
+        @EnumSource(value = OrderStatus.class, names = {"PENDING", "CANCELLED"})
+        void 결제후_취소대상이_아니면_예외(OrderStatus status) {
+            Payment payment = paymentWith(PaymentStatus.DONE, orderWithStatus(status, LocalDateTime.now()), 10000, 10000);
+
+            assertThatThrownBy(() -> validator.validateCancel(payment, null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.INVALID_ORDER_STATUS);
         }
 
         @Test

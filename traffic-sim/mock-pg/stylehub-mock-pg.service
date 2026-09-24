@@ -1,0 +1,23 @@
+# 운영 서버에서 Mock PG 를 127.0.0.1:18090 으로 띄운다. install.sh 가 /etc/systemd/system 에 설치한다.
+[Unit]
+Description=StyleHub Mock PG (traffic simulation)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/stylehub-mock-pg/mock_pg.py
+Environment=PYTHONUNBUFFERED=1
+Environment=MOCK_PG_BIND=127.0.0.1
+Environment=MOCK_PG_PORT=18090
+Environment=MOCK_PG_LATENCY_MEDIAN_MS=300
+Environment=MOCK_PG_LATENCY_P99_MS=2000
+Environment=MOCK_PG_DECLINE_RATE=0.02
+Environment=MOCK_PG_LOSS_RATE=0.002
+Environment=MOCK_PG_LOSS_DELAY_S=12
+Environment=MOCK_PG_MAX_RECORDS=100000
+DynamicUser=yes
+# 승인 기록 100,000건에서 RSS 약 68MB(로컬 실측)라 여유를 두고 128M 로 제한한다
+MemoryMax=128M
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

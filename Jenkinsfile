@@ -82,9 +82,9 @@ pipeline {
             agent {
                 docker {
                     image 'eclipse-temurin:17-jdk-jammy'
-                    // 의존성 캐시 재사용 + 테스트가 로컬(Docker Desktop 호스트)의 Redis 에 붙도록 지정
-                    // (MySQL 은 테스트 시 H2 로 자동 폴백되어 별도 지정 불필요)
-                    args '-v $HOME/.gradle:/root/.gradle -e SPRING_DATA_REDIS_HOST=host.docker.internal'
+                    // 테스트가 Testcontainers 로 MySQL·Redis 를 띄우도록 호스트 Docker 소켓을 연결한다
+                    // 소켓 그룹이 root(0)라 에이전트 사용자에 0 그룹을 더하고, 띄운 컨테이너는 호스트 포트로 접속한다
+                    args '-v $HOME/.gradle:/root/.gradle -v /var/run/docker.sock:/var/run/docker.sock --group-add 0 -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal'
                     reuseNode true
                 }
             }
@@ -134,6 +134,9 @@ pipeline {
                             JAR_FILE=$(ls build/libs/*-SNAPSHOT.jar | grep -v plain)
                             scp -o StrictHostKeyChecking=no "$JAR_FILE" $DEPLOY_HOST:$DEPLOY_DIR/$JAR_NAME.new
                             scp -o StrictHostKeyChecking=no scripts/deploy-remote.sh $DEPLOY_HOST:/tmp/deploy-remote.sh
+                            # 운영은 ddl-auto=validate 라 스키마를 앱이 만들지 않는다. 배포 스크립트가 jar 교체 전에 적용한다
+                            ssh -o StrictHostKeyChecking=no $DEPLOY_HOST mkdir -p /tmp/stylehub-ddl
+                            scp -o StrictHostKeyChecking=no scripts/db/* $DEPLOY_HOST:/tmp/stylehub-ddl/
                             ssh -o StrictHostKeyChecking=no $DEPLOY_HOST bash /tmp/deploy-remote.sh
                         '''
                     }
@@ -158,7 +161,7 @@ pipeline {
                         sh '''
                             ssh -o StrictHostKeyChecking=no $DEPLOY_HOST "
                                 echo '--- 헬스체크 ---'
-                                curl -fsS http://localhost:8080/actuator/health
+                                curl -fsS http://127.0.0.1:9081/actuator/health
                                 echo
                                 echo '--- 배포된 JAR 시각 ---'
                                 stat -c '%y' $DEPLOY_DIR/$JAR_NAME
