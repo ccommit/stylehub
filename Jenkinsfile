@@ -134,6 +134,9 @@ pipeline {
                             JAR_FILE=$(ls build/libs/*-SNAPSHOT.jar | grep -v plain)
                             scp -o StrictHostKeyChecking=no "$JAR_FILE" $DEPLOY_HOST:$DEPLOY_DIR/$JAR_NAME.new
                             scp -o StrictHostKeyChecking=no scripts/deploy-remote.sh $DEPLOY_HOST:/tmp/deploy-remote.sh
+                            # 운영은 ddl-auto=validate 라 스키마를 앱이 만들지 않는다. 배포 스크립트가 jar 교체 전에 적용한다
+                            ssh -o StrictHostKeyChecking=no $DEPLOY_HOST mkdir -p /tmp/stylehub-ddl
+                            scp -o StrictHostKeyChecking=no scripts/db/* $DEPLOY_HOST:/tmp/stylehub-ddl/
                             ssh -o StrictHostKeyChecking=no $DEPLOY_HOST bash /tmp/deploy-remote.sh
                         '''
                     }
