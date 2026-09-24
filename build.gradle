@@ -50,6 +50,9 @@ dependencies {
  
     // Spring Cache (Redis 를 CacheManager 로 활용)
     implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+    // API 문서(OpenAPI 3 + Swagger UI). 3.0.x 가 Spring Boot 4.0.x 기준으로 빌드된다. 운영 프로파일에서는 끈다
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
  
 
     // QueryDSL
@@ -68,4 +71,6 @@ tasks.named('test') {
     useJUnitPlatform()
     // 백그라운드 스케줄러가 테스트가 직접 호출하는 만료 처리와 경합하지 않게 끈다 (SchedulingConfig)
     systemProperty 'stylehub.scheduling.enabled', 'false'
+    // -Dopenapi.update=true 로 실행하면 OpenApiDocumentTest 가 docs/api/openapi.json 을 현재 코드 기준으로 다시 쓴다
+    systemProperty 'openapi.update', System.getProperty('openapi.update', 'false')
 }

@@ -12,6 +12,8 @@ import ccommit.stylehub.common.dto.CursorResponse;
 import ccommit.stylehub.order.service.OrderApplicationService;
 import ccommit.stylehub.order.service.OrderService;
 import ccommit.stylehub.user.enums.UserRole;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/09/18 by WonJin - feat: 주문 생성에 Idempotency-Key 헤더 지원 (OrderApplicationService 경유)
  * @modified 2026/09/24 by WonJin - refactor: 경로 중복(/orders/orders) 제거, 배송 상태 변경을 세션 스토어 기준 /stores/me 로 이동
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 주문 관련 API를 제공한다.
@@ -40,6 +43,7 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
+@Tag(name = "주문", description = "주문 생성·조회와 스토어 배송 상태 변경")
 @RequiredArgsConstructor
 public class OrderController {
 
@@ -48,6 +52,7 @@ public class OrderController {
 
     //USER API
     // Idempotency-Key 를 보내면 같은 키의 재요청에 새 주문을 만들지 않고 처음 주문을 돌려준다
+    @Operation(summary = "주문 생성 — Idempotency-Key 로 재요청 시 중복 주문 방지")
     @PostMapping("/orders")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> createOrder(
@@ -59,6 +64,7 @@ public class OrderController {
                 .body(orderApplicationService.placeOrder(userId, idempotencyKey, request));
     }
 
+    @Operation(summary = "내 주문 목록 조회(커서 페이징)")
     @GetMapping("/orders")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<CursorResponse<OrderListResponse>> getMyOrders(
@@ -69,6 +75,7 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getMyOrders(userId, cursor, size));
     }
 
+    @Operation(summary = "내 주문 상세 조회")
     @GetMapping("/orders/{orderId}")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<OrderResponse> getOrder(
@@ -79,6 +86,7 @@ public class OrderController {
     }
 
     // STORE API (배송 상태 관리)
+    @Operation(summary = "배송 상태 변경(PAID → PREPARING → SHIPPING → DELIVERED)")
     @PatchMapping("/stores/me/orders/{orderId}/delivery")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<Void> updateDeliveryStatus(

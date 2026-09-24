@@ -5,6 +5,8 @@ import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.user.dto.response.MyPointResponse;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.service.PointService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 로그인한 구매자(USER)의 보유 포인트·포인트 이력 조회 API를 제공한다.
@@ -23,12 +26,14 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
+@Tag(name = "포인트", description = "내 포인트 잔액과 이력")
 @RequestMapping("/users/me/points")
 @RequiredArgsConstructor
 public class PointController {
 
     private final PointService pointService;
 
+    @Operation(summary = "내 포인트 잔액·이력 조회")
     @GetMapping
     @RequiredRole(UserRole.USER)
     public ResponseEntity<MyPointResponse> getMyPoints(

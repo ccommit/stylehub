@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @modified 2026/09/17 by WonJin - test: Redis 명령 타임아웃 설정 누락 검증 추가 (선착순 쿠폰 fail-closed 시 스레드 고갈 방지)
  * @modified 2026/09/17 by WonJin - test: Boot 4 세션 키(spring.session.data.redis.namespace, cookie.secure, spring.session.timeout) 존재와, 세션 키가 Boot 설정 메타데이터에 실제로 선언된(바인딩되는) 이름인지 검증 추가
  * @modified 2026/09/17 by WonJin - test: 운영 프로파일에서 OSIV(spring.jpa.open-in-view)가 꺼져 있는지 검증 추가
+ * @modified 2026/09/24 by WonJin - test: 운영 프로파일에서 springdoc 명세·Swagger UI 가 꺼져 있는지 검증
  *
  * <p>
  * application.properties는 gitignore되어 CI·배포 산출물에 없으므로, 운영 필수 키가 prod 프로파일에 남아 있는지 검증한다.
@@ -154,6 +155,15 @@ class ProdProfilePropertiesTest {
         assertThat(loadBootConfigurationMetadata())
                 .as("%s 가 Boot 설정 메타데이터에 없으면 이름이 바뀌어 값이 무시되고 있다는 뜻이다", key)
                 .containsEntry(key, "");
+    }
+
+    @Test
+    @DisplayName("운영 프로파일은 API 명세와 Swagger UI 를 끈다 (관리자 API 를 포함한 전체 경로를 공개 서버에 노출하지 않는다)")
+    void apiDocsAreDisabled() throws IOException {
+        Properties properties = loadProdProperties();
+
+        assertThat(properties.getProperty("springdoc.api-docs.enabled")).isEqualTo("false");
+        assertThat(properties.getProperty("springdoc.swagger-ui.enabled")).isEqualTo("false");
     }
 
     @Test

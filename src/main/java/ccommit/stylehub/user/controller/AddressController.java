@@ -6,6 +6,8 @@ import ccommit.stylehub.user.dto.request.AddressCreateRequest;
 import ccommit.stylehub.user.dto.response.AddressResponse;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.service.AddressService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import java.util.List;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 로그인한 구매자(USER)의 배송지 관리 API를 제공한다.
@@ -32,12 +35,14 @@ import java.util.List;
  * </p>
  */
 @RestController
+@Tag(name = "배송지", description = "내 배송지 관리")
 @RequestMapping("/users/me/addresses")
 @RequiredArgsConstructor
 public class AddressController {
 
     private final AddressService addressService;
 
+    @Operation(summary = "배송지 등록")
     @PostMapping
     @RequiredRole(UserRole.USER)
     public ResponseEntity<AddressResponse> registerAddress(
@@ -48,6 +53,7 @@ public class AddressController {
                 .body(addressService.registerAddress(userId, request));
     }
 
+    @Operation(summary = "내 배송지 목록 조회")
     @GetMapping
     @RequiredRole(UserRole.USER)
     public ResponseEntity<List<AddressResponse>> getAddresses(HttpServletRequest httpRequest) {
@@ -55,6 +61,7 @@ public class AddressController {
         return ResponseEntity.ok(addressService.getAddresses(userId));
     }
 
+    @Operation(summary = "기본 배송지 변경")
     @PatchMapping("/{addressId}/default")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<AddressResponse> changeDefaultAddress(
@@ -64,6 +71,7 @@ public class AddressController {
         return ResponseEntity.ok(addressService.changeDefaultAddress(userId, addressId));
     }
 
+    @Operation(summary = "배송지 삭제")
     @DeleteMapping("/{addressId}")
     @RequiredRole(UserRole.USER)
     public ResponseEntity<Void> deleteAddress(

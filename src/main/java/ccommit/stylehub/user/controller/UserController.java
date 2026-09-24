@@ -18,6 +18,8 @@ import ccommit.stylehub.user.enums.StoreStatus;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.service.OAuthService;
 import ccommit.stylehub.user.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,29 +42,34 @@ import java.util.Map;
  * @modified 2026/04/19 by WonJin - refactor: StoreController, StoreAdminController를 UserController로 통합
  * @modified 2026/09/17 by WonJin - fix: OAuth 인가 요청에 state 발급, 콜백에서 세션 state 를 검증한 뒤에만 로그인 세션 생성(로그인 CSRF 방지)
  * @modified 2026/09/24 by WonJin - refactor: 내 스토어 조회를 /stores/me 로 변경, 승인·거절·정지를 PATCH /admin/stores/{storeId}/status 하나로 통합
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 회원, 스토어, 관리자 API를 제공한다.
  * </p>
  */
 @RestController
+@Tag(name = "회원·스토어", description = "회원 가입·로그인, 내 스토어 조회, 관리자 스토어 관리")
 @RequiredArgsConstructor
 public class UserController {
 
     private final UserService userService;
     private final OAuthService oAuthService;
 
+    @Operation(summary = "일반 회원 가입")
     @PostMapping("/users/sign-up")
     public ResponseEntity<UserSignUpResponse> signUp(@Valid @RequestBody UserSignUpRequest request) {
         User user = userService.signUp(request.name(), request.email(), request.password(), request.birthDate(), UserRole.USER);
         return ResponseEntity.status(HttpStatus.CREATED).body(UserSignUpResponse.from(user));
     }
 
+    @Operation(summary = "스토어 입점 신청(스토어 회원 가입)")
     @PostMapping("/users/sign-up/store")
     public ResponseEntity<StoreSignUpResponse> signUpWithStore(@Valid @RequestBody StoreSignUpRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.signUpWithStore(request));
     }
 
+    @Operation(summary = "로그인 — 응답의 SESSION 쿠키로 이후 API 를 인증한다")
     @PostMapping("/users/login")
     public ResponseEntity<UserLoginResponse> login(
             @Valid @RequestBody UserLoginRequest request,
@@ -72,6 +79,7 @@ public class UserController {
         return ResponseEntity.ok(loginResult);
     }
 
+    @Operation(summary = "소셜 로그인 인가 URL 발급")
     @GetMapping("/users/oauth/{provider}")
     public ResponseEntity<Map<String, String>> authorizationUrl(
             @PathVariable OAuthProvider provider,
@@ -81,6 +89,7 @@ public class UserController {
         return ResponseEntity.ok(Map.of("authorizationUrl", url));
     }
 
+    @Operation(summary = "소셜 로그인 콜백")
     @GetMapping("/users/oauth/{provider}/callback")
     public ResponseEntity<OAuthLoginResponse> callback(
             @PathVariable OAuthProvider provider,
@@ -96,6 +105,7 @@ public class UserController {
         return ResponseEntity.ok(loginResult);
     }
 
+    @Operation(summary = "로그아웃")
     @PostMapping("/users/logout")
     public ResponseEntity<Void> logout(HttpServletRequest httpRequest) {
         SessionUtils.invalidateSession(httpRequest);
@@ -103,6 +113,7 @@ public class UserController {
     }
 
     // 스토어 API (STORE 역할)
+    @Operation(summary = "내 스토어 조회")
     @GetMapping("/stores/me")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<StoreResponse> getMyStore(HttpServletRequest httpRequest) {
@@ -111,6 +122,7 @@ public class UserController {
     }
 
     // 스토어 관리 API (ADMIN 역할)
+    @Operation(summary = "스토어 목록 조회(상태 필터)")
     @GetMapping("/admin/stores")
     @RequiredRole(UserRole.ADMIN)
     public ResponseEntity<List<StoreResponse>> getStores(
@@ -118,12 +130,14 @@ public class UserController {
         return ResponseEntity.ok(userService.getStoresByStatus(status));
     }
 
+    @Operation(summary = "스토어 상세 조회")
     @GetMapping("/admin/stores/{storeId}")
     @RequiredRole(UserRole.ADMIN)
     public ResponseEntity<StoreResponse> getStore(@PathVariable Long storeId) {
         return ResponseEntity.ok(userService.getStoreByUserId(storeId));
     }
 
+    @Operation(summary = "스토어 상태 변경(승인·거절·정지)")
     @PatchMapping("/admin/stores/{storeId}/status")
     @RequiredRole(UserRole.ADMIN)
     public ResponseEntity<StoreResponse> updateStoreStatus(
