@@ -41,6 +41,7 @@ import java.util.UUID;
  * @modified 2026/09/17 by WonJin - fix: 취소를 결제 전(cancelUnpaid)·결제 후 환불(cancelPaid)로 나누고 결제 후 취소 허용 상태를 한 곳에서 정의, 미사용 startDelivery 제거
  * @modified 2026/09/17 by WonJin - fix: 주문번호 난수를 UUID 8자리(32비트)에서 전체 122비트로 확장 (대량 주문 시 유니크 충돌 방지)
  * @modified 2026/09/17 by WonJin - fix: 내 주문 커서 페이징이 전제하는 (user_id, order_id) 인덱스를 @Table(indexes) 로 선언
+ * @modified 2026/09/17 by WonJin - feat: applyUsedPoint 추가 — 포인트 사용 규칙(상품 금액 1만원 이상, 결제 금액 0원 이하 불가)을 주문이 검증하고 반영
  *
  * <p>
  * 사용자의 주문 정보를 관리한다.
@@ -57,6 +58,9 @@ import java.util.UUID;
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends BaseEntity {
+
+    // 기획서 "주문금액 1만원 이상". ErrorCode.POINT_MIN_ORDER_AMOUNT_NOT_MET 메시지의 금액과 함께 바꿔야 한다.
+    public static final int MIN_ORDER_AMOUNT_FOR_POINT = 10_000;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -113,6 +117,24 @@ public class Order extends BaseEntity {
 
     public void applyDiscount(int discountAmount) {
         this.discountAmount = discountAmount;
+    }
+
+    // 사용 포인트를 검증해 반영한다. 쿠폰 할인(applyDiscount) 뒤, 잔액 차감 앞에 호출해 어긋난 요청이 잔액을 건드리지 않게 한다.
+    // 최소 주문 금액은 할인 전 상품 금액 합계로 판단하고, 최종 결제 금액이 0원 이하가 되는 사용은 PG 승인 흐름이 없어 거절한다.
+    public void applyUsedPoint(int usedPoint, int totalAmount) {
+        if (usedPoint < 0) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT);
+        }
+        if (usedPoint == 0) {
+            return;
+        }
+        if (totalAmount < MIN_ORDER_AMOUNT_FOR_POINT) {
+            throw new BusinessException(ErrorCode.POINT_MIN_ORDER_AMOUNT_NOT_MET);
+        }
+        if (usedPoint >= totalAmount - this.discountAmount) {
+            throw new BusinessException(ErrorCode.POINT_EXCEEDS_PAYMENT_AMOUNT);
+        }
+        this.usedPoint = usedPoint;
     }
 
     // 결제 대기(PENDING) 주문인지 확인한다. 만료·결제 실패 처리는 이 상태의 주문만 취소한다.

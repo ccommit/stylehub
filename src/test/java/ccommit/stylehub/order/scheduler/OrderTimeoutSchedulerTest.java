@@ -40,6 +40,7 @@ import static org.mockito.Mockito.mock;
  * @author WonJin Bae
  * @created 2026/04/29
  * @modified 2026/05/01 by WonJin - test: @AfterEach 에 DB 정리 로직 추가 (Order/OrderDetail/Payment) — 테스트 간 누적되던 행을 매 테스트 종료 시 제거해 isolation 강화
+ * @modified 2026/09/17 by WonJin - test: 결과 출력(System.out) 제거 — 같은 값을 이미 검증문으로 확인하고 있어 중복 출력만 남아 있었음
  *
  * <p>
  * 결제 타임아웃 스케줄러 통합 테스트.
@@ -174,10 +175,6 @@ class OrderTimeoutSchedulerTest {
 
         ProductOption restored = productOptionRepository.findById(optionId).orElseThrow();
 
-        System.out.println("=== 대량 만료 주문 복구 결과 ===");
-        System.out.println("CANCELLED 전이된 주문: " + cancelled);
-        System.out.println("최종 재고: " + restored.getStockQuantity());
-
         assertThat(cancelled).isEqualTo(orderCount);
         assertThat(restored.getStockQuantity()).isEqualTo(initialStock);
     }
@@ -223,11 +220,6 @@ class OrderTimeoutSchedulerTest {
         // then — 모든 주문이 CANCELLED, 재고가 정확히 초기값으로 복구
         long cancelled = countByStatus(orderIds, OrderStatus.CANCELLED);
         ProductOption restored = productOptionRepository.findById(optionId).orElseThrow();
-
-        System.out.println("=== 동시 스케줄러 실행 결과 ===");
-        System.out.println("CANCELLED 전이: " + cancelled);
-        System.out.println("스케줄러 예외: " + errorCount.get());
-        System.out.println("최종 재고: " + restored.getStockQuantity());
 
         assertThat(cancelled).isEqualTo(orderCount);
         assertThat(restored.getStockQuantity()).isEqualTo(initialStock);

@@ -19,10 +19,11 @@ import static org.assertj.core.api.Assertions.within;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
  *
  * <p>
  * CouponIssueCounter의 Lua 스크립트를 실제 Redis로 실행해 해제 멱등성, 한도 도달 시 무효화, 키 TTL을 검증한다.
- * DB를 쓰지 않으므로 H2 식별자와 겹치지 않는 큰 이벤트 ID를 쓰고 매번 키를 지운다.
+ * DB를 쓰지 않으므로 테스트 DB 식별자와 겹치지 않는 큰 이벤트 ID를 쓰고 매번 키를 지운다.
  * </p>
  */
 @SpringBootTest

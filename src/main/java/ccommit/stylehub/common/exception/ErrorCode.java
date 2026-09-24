@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - fix: 발급 수량 축소 오류(CP014)와 Redis 장애 시 선착순 발급 일시 중단(CP016, 503) 코드 추가
  * @modified 2026/09/17 by WonJin - fix: OAuth state 불일치·소셜 가입 닉네임 충돌·OAuth 제공자 통신 실패 코드 추가 — 500 으로 뭉치던 클라이언트 오류와 외부 장애를 구분
  * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
+ * @modified 2026/09/17 by WonJin - refactor: 무결성 위반(C005)·락 획득 실패(C006)·일시 장애(C007)·미지원 미디어 타입(C008) 코드 추가 — 500 으로 뭉치던 프레임워크 예외를 원인별로 구분
+ * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용 거절 코드 추가 — 잔액 부족(U008), 최소 주문 금액 미달(U009), 결제 금액 이상 사용(U010)
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -27,6 +29,13 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C002", "서버 내부 오류가 발생했습니다"),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "C003", "지원하지 않는 HTTP 메서드입니다"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "C004", "요청한 리소스를 찾을 수 없습니다"),
+    // 제약 이름·SQL 은 스키마 구조를 드러내므로 메시지에 담지 않는다. 동시 요청이 같은 값을 넣는 경합처럼 현재 데이터와의 충돌이라 409.
+    DATA_INTEGRITY_CONFLICT(HttpStatus.CONFLICT, "C005", "요청이 현재 데이터와 충돌해 처리할 수 없습니다"),
+    // 요청은 올바르지만 같은 데이터를 다른 요청이 잠그고 있어 처리하지 못했다. 잠시 뒤 재시도하면 성공할 수 있다.
+    LOCK_ACQUISITION_FAILED(HttpStatus.CONFLICT, "C006", "다른 요청이 같은 데이터를 처리하고 있습니다. 잠시 후 다시 시도해주세요"),
+    // Redis 연결 실패·명령 타임아웃처럼 재시도하면 회복될 수 있는 장애. 코드 결함(500)과 구분해 클라이언트가 재시도를 판단하게 한다.
+    SERVICE_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "C007", "일시적으로 요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요"),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "C008", "지원하지 않는 Content-Type 입니다"),
 
     // User
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 사용 중인 이메일입니다"),
@@ -37,6 +46,12 @@ public enum ErrorCode {
     // 입력값 자체는 유효하고 "이미 5개 보유"라는 현재 상태 때문에 거절되므로 400 이 아닌 409 로 둔다 (INSUFFICIENT_STOCK, COUPON_SOLD_OUT 과 같은 기준)
     ADDRESS_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "U006", "배송지는 최대 5개까지 등록할 수 있습니다"),
     ADDRESS_IN_USE(HttpStatus.CONFLICT, "U007", "주문에 사용된 배송지는 삭제할 수 없습니다"),
+    // 요청 값은 유효하지만 "현재 잔액"이라는 상태 때문에 거절되므로 409 (INSUFFICIENT_STOCK 과 같은 기준)
+    INSUFFICIENT_POINT(HttpStatus.CONFLICT, "U008", "보유 포인트가 부족합니다"),
+    // 요청 자체(주문 항목·사용 포인트)만으로 판정되는 규칙 위반이라 400 (MIN_ORDER_AMOUNT_NOT_MET, INVALID_CANCEL_AMOUNT 와 같은 기준)
+    // 금액은 Order.MIN_ORDER_AMOUNT_FOR_POINT 와 함께 바꿔야 한다
+    POINT_MIN_ORDER_AMOUNT_NOT_MET(HttpStatus.BAD_REQUEST, "U009", "상품 금액 합계가 10,000원 이상인 주문에만 포인트를 사용할 수 있습니다"),
+    POINT_EXCEEDS_PAYMENT_AMOUNT(HttpStatus.BAD_REQUEST, "U010", "사용 포인트는 쿠폰 할인 후 결제 금액보다 적어야 합니다"),
 
     // OAuth
     ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "O001", "이미 일반 회원가입으로 등록된 이메일입니다"),

@@ -1,6 +1,8 @@
 package ccommit.stylehub.user.service;
 
 import ccommit.stylehub.common.config.PasswordHasher;
+import ccommit.stylehub.support.OrderFixtureFactory;
+import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.repository.UserRepository;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.persistence.EntityManagerFactory;
@@ -43,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author WonJin Bae
  * @created 2026/09/15
  * @modified 2026/09/17 by WonJin - test: 측정값 출력을 System.out 에서 SLF4J 로 교체, 가입시킨 회원을 @AfterEach 로 정리
+ * @modified 2026/09/17 by WonJin - test: 가입 회원 정리를 포인트 이력까지 지우는 OrderFixtureFactory.deleteByIds 로 변경 (로그인 적립이 이력을 남기게 됨)
  *
  * <p>
  * BCrypt 해싱·검증 중 요청 스레드가 DB 커넥션을 쥐는지 실제 HTTP 요청으로 측정하는 공통 시나리오로, 하위 클래스는 OSIV 설정만 다르다.
@@ -77,6 +80,10 @@ abstract class LoginConnectionHoldingTestSupport {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
+    // 테스트가 가입시킨 회원 이메일. 끝나고 지워 실행할 때마다 행이 쌓이지 않게 한다.
     private final List<String> createdEmails = new ArrayList<>();
 
     protected abstract boolean osivEnabled();
@@ -89,7 +96,12 @@ abstract class LoginConnectionHoldingTestSupport {
     @AfterEach
     void cleanUp() {
         hasher.reset();
-        createdEmails.forEach(email -> userRepository.findByEmail(email).ifPresent(userRepository::delete));
+        // 로그인 적립 이력이 회원을 참조하므로 이력부터 지운다.
+        List<Long> userIds = createdEmails.stream()
+                .flatMap(email -> userRepository.findByEmail(email).stream())
+                .map(User::getUserId)
+                .toList();
+        fixtureFactory.deleteByIds(List.of(), List.of(), userIds);
         createdEmails.clear();
     }
 

@@ -36,6 +36,7 @@ import static org.mockito.Mockito.times;
  * @author WonJin Bae
  * @created 2026/04/29
  * @modified 2026/05/01 by WonJin - test: concurrentIdempotency 의 alreadyProcessed/otherFail 검증을 분리해 예상 못한 예외도 노출되도록 강화
+ * @modified 2026/09/17 by WonJin - test: 결과 출력(System.out) 제거 — 같은 값을 이미 검증문으로 확인하고 있어 중복 출력만 남아 있었음
  *
  * <p>
  * 결제 콜백 멱등성 통합 테스트
@@ -107,11 +108,6 @@ class PaymentIdempotencyTest {
         }
 
         // then
-        System.out.println("=== 순차 멱등성 테스트 결과 ===");
-        System.out.println("성공: " + successCount.get());
-        System.out.println("PAYMENT_ALREADY_PROCESSED: " + alreadyProcessedCount.get());
-        System.out.println("기타 실패: " + otherFailCount.get());
-
         assertThat(successCount.get()).isEqualTo(1);
         assertThat(alreadyProcessedCount.get()).isEqualTo(4);
         assertThat(otherFailCount.get()).isZero();
@@ -166,11 +162,6 @@ class PaymentIdempotencyTest {
         executor.shutdown();
 
         // then
-        System.out.println("=== 동시 멱등성 테스트 결과 ===");
-        System.out.println("성공: " + successCount.get());
-        System.out.println("PAYMENT_ALREADY_PROCESSED: " + alreadyProcessedCount.get());
-        System.out.println("기타 실패: " + otherFailCount.get());
-
         // 정확히 1건만 성공, 나머지는 모두 PAYMENT_ALREADY_PROCESSED 로만 거절되어야 한다.
         // OptimisticLockException·DataIntegrityViolationException 같은 예상 못한 예외가
         // 섞여 들어와도 합격하지 않도록 alreadyProcessed 와 otherFail 을 분리해 검증한다.
