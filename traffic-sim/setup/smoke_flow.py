@@ -82,7 +82,7 @@ def main():
     store_api = Api(args.base_url)
     store_api.login(data.store(store_index)["email"], password)
     for status in DELIVERY_STEPS:
-        store_api.update_delivery(store["userId"], order["orderId"], status)
+        store_api.update_delivery(order["orderId"], status)
         print(f"배송 상태 → {status}")
 
     final = buyer_api.get_order(order["orderId"])["orderStatus"]

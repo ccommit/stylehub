@@ -53,7 +53,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 class ProductSaleGuardIntegrationTest {
 
-    private static final String STOCK_URL = "/api/v1/stores/{storeId}/products/{productId}/options/{optionId}/stock";
+    private static final String STOCK_URL = "/api/v1/stores/me/products/{productId}/options/{optionId}/stock";
     private static final String PRODUCT_CACHE_PATTERN = "products:*";
 
     @Autowired
@@ -115,7 +115,7 @@ class ProductSaleGuardIntegrationTest {
         StoreProduct storeB = track(fixtureFactory.createStoreProduct(10));
 
         // when / then
-        mockMvc.perform(patch(STOCK_URL, storeA.storeId(), storeB.productId(), storeB.optionId())
+        mockMvc.perform(patch(STOCK_URL, storeB.productId(), storeB.optionId())
                         .session(storeSession(storeA.storeId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"stockQuantity\":0}"))
@@ -133,7 +133,7 @@ class ProductSaleGuardIntegrationTest {
         StoreProduct storeB = track(fixtureFactory.createStoreProduct(10));
 
         // when / then
-        mockMvc.perform(patch(STOCK_URL, storeA.storeId(), storeA.productId(), storeB.optionId())
+        mockMvc.perform(patch(STOCK_URL, storeA.productId(), storeB.optionId())
                         .session(storeSession(storeA.storeId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"stockQuantity\":0}"))
@@ -150,7 +150,7 @@ class ProductSaleGuardIntegrationTest {
         StoreProduct store = track(fixtureFactory.createStoreProduct(10));
 
         // when / then
-        mockMvc.perform(patch(STOCK_URL, store.storeId(), store.productId(), store.optionId())
+        mockMvc.perform(patch(STOCK_URL, store.productId(), store.optionId())
                         .session(storeSession(store.storeId()))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"stockQuantity\":3}"))

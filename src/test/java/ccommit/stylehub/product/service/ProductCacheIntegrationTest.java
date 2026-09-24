@@ -175,7 +175,7 @@ class ProductCacheIntegrationTest {
         assertThat(redisTemplate.hasKey(detailKey(sp.productId()))).isTrue();
 
         // when
-        productApplicationService.updateStock(sp.storeId(), sp.storeId(), sp.productId(), sp.optionId(), 3);
+        productApplicationService.updateStock(sp.storeId(), sp.productId(), sp.optionId(), 3);
 
         // then
         assertThat(redisTemplate.hasKey(detailKey(sp.productId()))).isFalse();
@@ -256,7 +256,7 @@ class ProductCacheIntegrationTest {
         assertThat(redisTemplate.hasKey(DEFAULT_FIRST_PAGE_KEY)).isTrue();
 
         // when
-        ProductResponse registered = productApplicationService.registerProduct(sp.storeId(), sp.storeId(),
+        ProductResponse registered = productApplicationService.registerProduct(sp.storeId(),
                 new ProductCreateRequest("신상품", MainCategory.TOP, SubCategory.T_SHIRT, "설명", 20000,
                         "https://img/new", List.of(new ProductOptionRequest("white", "L", 5, 0))));
         productIds.add(registered.productId());

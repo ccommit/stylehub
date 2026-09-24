@@ -224,7 +224,7 @@ class CouponOrderUser(HttpUser):
             payload["userCouponId"] = user_coupon_id
 
         with self.client.post(
-            "/api/v1/orders/orders",
+            "/api/v1/orders",
             json=payload,
             name=name,
             catch_response=True,

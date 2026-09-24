@@ -9,11 +9,12 @@ import ccommit.stylehub.user.entity.User;
  * @modified 2026/04/22 by WonJin - refactor: 검증 전용 메서드 validateApprovedStoreOwner 분리 (의도 명확화)
  * @modified 2026/09/15 by WonJin - feat: 조회 없이 참조만 얻는 getUserReference 추가
  * @modified 2026/09/17 by WonJin - feat: 주문 포인트 차감·사용 이력 기록·취소 복구 추가 (order 도메인이 포인트를 이 포트로만 변경)
+ * @modified 2026/09/24 by WonJin - refactor: 스토어 API 가 세션 스토어만 다루게 되어 storeId 비교를 없애고 승인 스토어 검증으로 단순화
  *
  * <p>
  * User 도메인이 외부에 제공하는 포트 인터페이스이다.
- * 배송지 조회, 유저 조회, 스토어 소유권 검증/조회를 제공한다.
- * 검증만 필요한 경우 validateApprovedStoreOwner, 소유자 User 객체가 필요한 경우 findApprovedStoreByOwner를 사용한다.
+ * 배송지 조회, 유저 조회, 승인 스토어 검증/조회를 제공한다.
+ * 검증만 필요한 경우 validateApprovedStore, 스토어 User 객체가 필요한 경우 findApprovedStore를 사용한다.
  * </p>
  */
 public interface UserPort {
@@ -25,9 +26,10 @@ public interface UserPort {
     // 조회 쿼리 없이 연관관계 설정용 참조만 얻는다. 존재가 이미 보장된 사용자(세션 사용자 등)에만 사용한다.
     User getUserReference(Long userId);
 
-    void validateApprovedStoreOwner(Long userId, Long storeId);
+    // 스토어는 users 행 자체라 세션 사용자 ID 가 곧 스토어 ID 다
+    void validateApprovedStore(Long storeUserId);
 
-    User findApprovedStoreByOwner(Long userId, Long storeId);
+    User findApprovedStore(Long storeUserId);
 
     // 포인트 사용 1단계 — 조건부 원자 UPDATE 로 차감하고 부족하면 INSUFFICIENT_POINT.
     // 사용자 행 배타 락을 커밋까지 쥐므로 주문 INSERT 보다 먼저 호출해야 한다(OrderService.placeOrder).

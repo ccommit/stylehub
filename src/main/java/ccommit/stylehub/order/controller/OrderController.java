@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @modified 2026/04/02 by WonJin - refactor: 배송상태 API 추가
  * @modified 2026/04/16 by WonJin - refactor: DeliveryStatus를 OrderStatus로 통합
  * @modified 2026/09/18 by WonJin - feat: 주문 생성에 Idempotency-Key 헤더 지원 (OrderApplicationService 경유)
+ * @modified 2026/09/24 by WonJin - refactor: 경로 중복(/orders/orders) 제거, 배송 상태 변경을 세션 스토어 기준 /stores/me 로 이동
  *
  * <p>
  * 주문 관련 API를 제공한다.
@@ -40,7 +40,6 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
-@RequestMapping("/orders")
 @RequiredArgsConstructor
 public class OrderController {
 
@@ -80,16 +79,15 @@ public class OrderController {
     }
 
     // STORE API (배송 상태 관리)
-    @PatchMapping("/stores/{storeId}/orders/{orderId}/delivery")
+    @PatchMapping("/stores/me/orders/{orderId}/delivery")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<Void> updateDeliveryStatus(
-            @PathVariable Long storeId,
             @PathVariable Long orderId,
             @Valid @RequestBody DeliveryStatusRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         orderService.updateDeliveryStatus(
-                new UpdateDeliveryStatusRequest(userId, storeId, orderId, request.orderStatus()));
+                new UpdateDeliveryStatusRequest(userId, orderId, request.orderStatus()));
         return ResponseEntity.ok().build();
     }
 }

@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @modified 2026/03/27 by WonJin - feat: 커서 기반 전체 상품 목록 조회 API 추가
  * @modified 2026/04/01 by WonJin - refactor: ProductViewController를 ProductController로 통합
  * @modified 2026/09/17 by WonJin - fix: 재고 변경 API 가 경로의 productId 를 바인딩해 옵션 소속 검증에 사용 (IDOR 차단)
+ * @modified 2026/09/24 by WonJin - refactor: 스토어 API 를 세션 스토어 기준 /stores/me 로 변경 (경로의 storeId 제거)
  *
  * <p>
  * 상품 관련 API를 제공한다.
@@ -60,38 +61,35 @@ public class ProductController {
     }
 
     //  스토어 API (STORE 권한 필요)
-    @GetMapping("/stores/{storeId}/products")
+    @GetMapping("/stores/me/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<CursorResponse<ProductListResponse>> getMyStoreProducts(
-            @PathVariable Long storeId,
             @RequestParam(required = false) Long cursor,
             @RequestParam(required = false) Integer pageSize,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
-        return ResponseEntity.ok(productApplicationService.getMyStoreProducts(userId, storeId, cursor, pageSize));
+        return ResponseEntity.ok(productApplicationService.getMyStoreProducts(userId, cursor, pageSize));
     }
 
-    @PostMapping("/stores/{storeId}/products")
+    @PostMapping("/stores/me/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductResponse> registerProduct(
-            @PathVariable Long storeId,
             @Valid @RequestBody ProductCreateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(productApplicationService.registerProduct(userId, storeId, request));
+                .body(productApplicationService.registerProduct(userId, request));
     }
 
-    @PatchMapping("/stores/{storeId}/products/{productId}/options/{optionId}/stock")
+    @PatchMapping("/stores/me/products/{productId}/options/{optionId}/stock")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductOptionResponse> updateStock(
-            @PathVariable Long storeId,
             @PathVariable Long productId,
             @PathVariable Long optionId,
             @Valid @RequestBody StockUpdateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.ok(productApplicationService.updateStock(
-                userId, storeId, productId, optionId, request.stockQuantity()));
+                userId, productId, optionId, request.stockQuantity()));
     }
 }

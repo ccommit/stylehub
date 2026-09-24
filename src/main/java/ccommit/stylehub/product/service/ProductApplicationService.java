@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
  * @created 2026/04/22
  * @modified 2026/09/17 by WonJin - fix: updateStock 이 storeId·productId 를 도메인 서비스로 넘겨 옵션 소속까지 검증 (IDOR 차단)
  * @modified 2026/09/17 by WonJin - fix: 캐시 조회 유스케이스의 바깥 트랜잭션 제거(캐시 적중 시 커넥션 미사용), 페이지 크기를 먼저 정규화해 캐시 키 통일
+ * @modified 2026/09/24 by WonJin - refactor: 스토어 유스케이스가 storeId 를 받지 않고 세션 스토어(userId)만 다룸
  *
  * <p>
  * Product 유스케이스를 오케스트레이션하는 Application 계층 서비스이다.
@@ -33,24 +34,22 @@ public class ProductApplicationService {
     private final ProductService productService;
 
     @Transactional
-    public ProductResponse registerProduct(Long userId, Long storeId, ProductCreateRequest request) {
-        User owner = userPort.findApprovedStoreByOwner(userId, storeId);
+    public ProductResponse registerProduct(Long userId, ProductCreateRequest request) {
+        User owner = userPort.findApprovedStore(userId);
         return productService.registerProduct(owner, request);
     }
 
     @Transactional(readOnly = true)
-    public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long storeId,
-                                                                  Long cursor, Integer pageSize) {
-        userPort.validateApprovedStoreOwner(userId, storeId);
-        return productService.getMyStoreProducts(storeId, cursor, ProductPageSizePolicy.resolve(pageSize));
+    public CursorResponse<ProductListResponse> getMyStoreProducts(Long userId, Long cursor, Integer pageSize) {
+        userPort.validateApprovedStore(userId);
+        return productService.getMyStoreProducts(userId, cursor, ProductPageSizePolicy.resolve(pageSize));
     }
 
-    // 자기 storeId로 소유권 검증을 통과한 뒤 다른 스토어의 optionId를 넣을 수 있어, 옵션 소속은 ProductService가 다시 확인한다.
+    // 경로의 optionId 는 다른 스토어 것일 수 있어, 옵션 소속은 ProductService 가 세션 스토어 기준으로 다시 확인한다.
     @Transactional
-    public ProductOptionResponse updateStock(Long userId, Long storeId, Long productId,
-                                             Long optionId, Integer stockQuantity) {
-        userPort.validateApprovedStoreOwner(userId, storeId);
-        return productService.updateStock(storeId, productId, optionId, stockQuantity);
+    public ProductOptionResponse updateStock(Long userId, Long productId, Long optionId, Integer stockQuantity) {
+        userPort.validateApprovedStore(userId);
+        return productService.updateStock(userId, productId, optionId, stockQuantity);
     }
 
     // 여기서 트랜잭션을 열면 캐시 적중 요청도 커넥션을 먼저 가져오므로, 트랜잭션은 캐시 안쪽인 ProductService에만 둔다.

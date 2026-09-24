@@ -20,6 +20,7 @@ import java.util.List;
  * @modified 2026/04/16 by WonJin - refactor: DeliveryPolicy를 DeliveryValidator로 변경 (검증 역할만 수행하므로)
  * @modified 2026/04/16 by WonJin - refactor: 배송 상태 변경 관련 검증을 모두 validator로 통합 (스토어 소유권, 주문-스토어 매칭, 상태 전이)
  * @modified 2026/09/17 by WonJin - fix: PAID → PREPARING 전이 추가, 주문의 모든 상품이 요청 스토어 소유일 때만 허용, 레거시 OrderItem 대신 OrderDetail 조회
+ * @modified 2026/09/24 by WonJin - refactor: 요청 storeId 대신 세션 스토어(userId) 기준으로 검증
  *
  * <p>
  * 배송 상태 변경 시 스토어 소유권, 주문 상품의 스토어 소속, 상태 전이 규칙(PAID → PREPARING → SHIPPING → DELIVERED)을 검증한다.
@@ -33,8 +34,8 @@ public class DeliveryValidator {
     private final OrderDetailRepository orderDetailRepository;
 
     public void validate(UpdateDeliveryStatusRequest request, Order order) {
-        userPort.validateApprovedStoreOwner(request.userId(), request.storeId());
-        validateStoreOrder(request.storeId(), request.orderId());
+        userPort.validateApprovedStore(request.userId());
+        validateStoreOrder(request.userId(), request.orderId());
         validateTransition(order.getOrderStatus(), request.newStatus());
     }
 

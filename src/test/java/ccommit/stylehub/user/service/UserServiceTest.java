@@ -4,8 +4,10 @@ import ccommit.stylehub.common.config.PasswordHasher;
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
+import ccommit.stylehub.user.dto.response.StoreResponse;
 import ccommit.stylehub.user.dto.response.UserLoginResponse;
 import ccommit.stylehub.user.entity.User;
+import ccommit.stylehub.user.enums.StoreStatus;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -41,9 +43,10 @@ import static org.mockito.Mockito.never;
  * @modified 2026/05/01 by WonJin - test: throws_whenEmailNotFound DisplayName 에 user enumeration 방지 의도 명시 — 코드 리뷰 시 INVALID_PASSWORD 반환이 버그처럼 보이지 않도록
  * @modified 2026/09/17 by WonJin - test: 미존재 이메일·소셜 계정·비활성 계정이 INVALID_PASSWORD 로 응답하고 더미 해시 검증을 수행하는지 검증 추가
  * @modified 2026/09/17 by WonJin - test: 로그인 적립 검증을 PointService 위임 호출 확인으로 변경 (엔티티 addPoint 제거, 적립 규칙은 PointServiceTest·LoginPointPersistenceTest 에서 검증)
+ * @modified 2026/09/24 by WonJin - test: 관리자 스토어 상태 변경 단일 진입점(updateStoreStatus)의 상태별 분기와 PENDING 거절 검증 추가
  *
  * <p>
- * UserService.login 의 단위 테스트이다.
+ * UserService.login 과 관리자 스토어 상태 변경의 단위 테스트이다.
  * TransactionTemplate 은 콜백을 즉시 실행하도록 스텁해 트랜잭션 없이도 내부 로직이 그대로 동작하도록 한다.
  * </p>
  */
@@ -204,6 +207,87 @@ class UserServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
             then(passwordHasher).should(never()).verifyDummy(any());   // 실제 검증을 했으므로 더미 검증은 중복하지 않는다
+        }
+    }
+
+    @Nested
+    @DisplayName("updateStoreStatus")
+    class UpdateStoreStatus {
+
+        private static final Long STORE_ID = 10L;
+
+        @Test
+        @DisplayName("입점 심사 중인 스토어에 APPROVED 를 요청하면 승인된다")
+        void approves_whenPending() {
+            // given
+            stubStore(StoreStatus.PENDING);
+
+            // when
+            StoreResponse response = userService.updateStoreStatus(STORE_ID, StoreStatus.APPROVED);
+
+            // then
+            assertThat(response.status()).isEqualTo(StoreStatus.APPROVED);
+        }
+
+        @Test
+        @DisplayName("입점 심사 중인 스토어에 REJECTED 를 요청하면 거절된다")
+        void rejects_whenPending() {
+            // given
+            stubStore(StoreStatus.PENDING);
+
+            // when
+            StoreResponse response = userService.updateStoreStatus(STORE_ID, StoreStatus.REJECTED);
+
+            // then
+            assertThat(response.status()).isEqualTo(StoreStatus.REJECTED);
+        }
+
+        @Test
+        @DisplayName("승인된 스토어에 SUSPENDED 를 요청하면 정지된다")
+        void suspends_whenApproved() {
+            // given
+            stubStore(StoreStatus.APPROVED);
+
+            // when
+            StoreResponse response = userService.updateStoreStatus(STORE_ID, StoreStatus.SUSPENDED);
+
+            // then
+            assertThat(response.status()).isEqualTo(StoreStatus.SUSPENDED);
+        }
+
+        @Test
+        @DisplayName("현재 상태에서 허용되지 않는 전이는 INVALID_STORE_STATUS 로 거절한다 (정지 스토어 재승인)")
+        void throws_whenTransitionNotAllowed() {
+            // given
+            stubStore(StoreStatus.SUSPENDED);
+
+            // when / then
+            assertThatThrownBy(() -> userService.updateStoreStatus(STORE_ID, StoreStatus.APPROVED))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_STORE_STATUS);
+        }
+
+        @Test
+        @DisplayName("PENDING 은 입점 신청으로만 들어가는 상태라 조회 없이 INVALID_STORE_STATUS 로 거절한다")
+        void throws_whenTargetIsPending() {
+            // when / then
+            assertThatThrownBy(() -> userService.updateStoreStatus(STORE_ID, StoreStatus.PENDING))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.INVALID_STORE_STATUS);
+            then(userRepository).should(never()).findById(any());
+        }
+
+        private void stubStore(StoreStatus status) {
+            User store = User.builder()
+                    .userId(STORE_ID)
+                    .role(UserRole.STORE)
+                    .storeName("테스트스토어")
+                    .storeStatus(status)
+                    .build();
+            stubTransactionTemplatePassthrough();
+            given(userRepository.findById(STORE_ID)).willReturn(Optional.of(store));
         }
     }
 

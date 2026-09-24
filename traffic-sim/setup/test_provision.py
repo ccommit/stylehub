@@ -67,8 +67,10 @@ class FakeApi:
         self._call("approve_store")
         self.server.store_status[store_id] = "APPROVED"
 
-    def register_product(self, store_id, product):
+    # 실제 API 처럼 경로에 스토어 ID 가 없고 로그인한 스토어 자신에게 등록한다
+    def register_product(self, product):
         self._call("register_product")
+        store_id = self.user_id
         if self.server.store_status.get(store_id) != "APPROVED":
             raise ApiError(403, "P001", "")
         self.server.register_calls += 1
@@ -89,14 +91,14 @@ class FakeApi:
                     return {"options": item["options"]}
         raise ApiError(404, "PR001", "")
 
-    def store_products(self, store_id, cursor=None):
+    def store_products(self, cursor=None):
         items = [{"productId": item["productId"], "name": item["name"]}
-                 for item in self.server.products.get(store_id, [])]
+                 for item in self.server.products.get(self.user_id, [])]
         return {"items": items, "nextCursor": None, "hasNext": False}
 
-    def create_coupon_event(self, store_id, event):
+    def create_coupon_event(self, event):
         self._call("create_coupon_event")
-        if self.server.store_status.get(store_id) != "APPROVED":
+        if self.server.store_status.get(self.user_id) != "APPROVED":
             raise ApiError(403, "P001", "")
         if event["name"] in self.server.fail_coupon_names:
             raise ApiError(400, "CP008", "")

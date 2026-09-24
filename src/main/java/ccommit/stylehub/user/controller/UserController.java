@@ -4,6 +4,7 @@ import ccommit.stylehub.common.config.RequiredRole;
 import ccommit.stylehub.common.util.OAuthStateUtils;
 import ccommit.stylehub.common.util.SessionUtils;
 import ccommit.stylehub.user.dto.request.StoreSignUpRequest;
+import ccommit.stylehub.user.dto.request.StoreStatusUpdateRequest;
 import ccommit.stylehub.user.dto.request.UserLoginRequest;
 import ccommit.stylehub.user.dto.request.UserSignUpRequest;
 import ccommit.stylehub.user.dto.response.OAuthLoginResponse;
@@ -38,6 +39,7 @@ import java.util.Map;
  * @created 2026/03/21 08:17
  * @modified 2026/04/19 by WonJin - refactor: StoreController, StoreAdminController를 UserController로 통합
  * @modified 2026/09/17 by WonJin - fix: OAuth 인가 요청에 state 발급, 콜백에서 세션 state 를 검증한 뒤에만 로그인 세션 생성(로그인 CSRF 방지)
+ * @modified 2026/09/24 by WonJin - refactor: 내 스토어 조회를 /stores/me 로 변경, 승인·거절·정지를 PATCH /admin/stores/{storeId}/status 하나로 통합
  *
  * <p>
  * 회원, 스토어, 관리자 API를 제공한다.
@@ -101,7 +103,7 @@ public class UserController {
     }
 
     // 스토어 API (STORE 역할)
-    @GetMapping("/stores/my")
+    @GetMapping("/stores/me")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<StoreResponse> getMyStore(HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
@@ -122,21 +124,11 @@ public class UserController {
         return ResponseEntity.ok(userService.getStoreByUserId(storeId));
     }
 
-    @PatchMapping("/admin/stores/{storeId}/approve")
+    @PatchMapping("/admin/stores/{storeId}/status")
     @RequiredRole(UserRole.ADMIN)
-    public ResponseEntity<StoreResponse> approve(@PathVariable Long storeId) {
-        return ResponseEntity.ok(userService.approveStore(storeId));
-    }
-
-    @PatchMapping("/admin/stores/{storeId}/reject")
-    @RequiredRole(UserRole.ADMIN)
-    public ResponseEntity<StoreResponse> reject(@PathVariable Long storeId) {
-        return ResponseEntity.ok(userService.rejectStore(storeId));
-    }
-
-    @PatchMapping("/admin/stores/{storeId}/suspend")
-    @RequiredRole(UserRole.ADMIN)
-    public ResponseEntity<StoreResponse> suspend(@PathVariable Long storeId) {
-        return ResponseEntity.ok(userService.suspendStore(storeId));
+    public ResponseEntity<StoreResponse> updateStoreStatus(
+            @PathVariable Long storeId,
+            @Valid @RequestBody StoreStatusUpdateRequest request) {
+        return ResponseEntity.ok(userService.updateStoreStatus(storeId, request.status()));
     }
 }

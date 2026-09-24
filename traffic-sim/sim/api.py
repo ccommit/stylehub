@@ -90,16 +90,17 @@ class Api:
         return self.request("GET", f"/admin/stores/{store_id}")
 
     def approve_store(self, store_id):
-        return self.request("PATCH", f"/admin/stores/{store_id}/approve")
+        return self.request("PATCH", f"/admin/stores/{store_id}/status", {"status": "APPROVED"})
 
-    def register_product(self, store_id, product):
-        return self.request("POST", f"/stores/{store_id}/products", product)
+    # 스토어 API 는 로그인한 스토어 자신(/stores/me)만 다룬다
+    def register_product(self, product):
+        return self.request("POST", "/stores/me/products", product)
 
     def get_product(self, product_id):
         return self.request("GET", f"/products/{product_id}")
 
-    def create_coupon_event(self, store_id, event):
-        return self.request("POST", f"/stores/{store_id}/coupon-events", event)
+    def create_coupon_event(self, event):
+        return self.request("POST", "/stores/me/coupon-events", event)
 
     def add_address(self, address):
         return self.request("POST", "/users/me/addresses", address)
@@ -107,19 +108,18 @@ class Api:
     def addresses(self):
         return self.request("GET", "/users/me/addresses")
 
-    # OrderController 는 클래스 레벨 @RequestMapping("/orders") 위에 메서드 레벨 "/orders" 를 또 붙여 실제 경로가 두 번 겹친다
     def place_order(self, address_id, details, user_coupon_id=None):
-        return self.request("POST", "/orders/orders", {"addressId": address_id, "details": details, "userCouponId": user_coupon_id})
+        return self.request("POST", "/orders", {"addressId": address_id, "details": details, "userCouponId": user_coupon_id})
 
     def get_order(self, order_id):
-        return self.request("GET", f"/orders/orders/{order_id}")
+        return self.request("GET", f"/orders/{order_id}")
 
     def pay_success(self, payment_key, pg_order_id, amount):
         return self.request("GET", "/payments/success",
                             query={"paymentKey": payment_key, "orderId": pg_order_id, "amount": amount})
 
-    def update_delivery(self, store_id, order_id, status):
-        return self.request("PATCH", f"/orders/stores/{store_id}/orders/{order_id}/delivery", {"orderStatus": status})
+    def update_delivery(self, order_id, status):
+        return self.request("PATCH", f"/stores/me/orders/{order_id}/delivery", {"orderStatus": status})
 
-    def store_products(self, store_id, cursor=None):
-        return self.request("GET", f"/stores/{store_id}/products", query={"cursor": cursor, "pageSize": 100})
+    def store_products(self, cursor=None):
+        return self.request("GET", "/stores/me/products", query={"cursor": cursor, "pageSize": 100})
