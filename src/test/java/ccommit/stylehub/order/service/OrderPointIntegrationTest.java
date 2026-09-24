@@ -231,17 +231,17 @@ class OrderPointIntegrationTest {
         PaymentResponse paid = paymentService.confirmPayment(paymentKey, placed.pgOrderId(), placed.finalAmount());
 
         // when — 전액 환불(이벤트 → cancelPaidOrder) 뒤 같은 주문에 대한 재요청
-        paymentService.cancelPayment(paid.paymentId(), fx.userId(), UserRole.USER, CANCEL_REASON, null);
+        paymentService.cancelPayment(paid.paymentId(), fx.userId(), UserRole.USER, CANCEL_REASON, null, null);
 
         assertThatThrownBy(() -> orderService.cancelPaidOrder(placed.orderId()))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_ORDER_STATUS);
-        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), fx.userId(), UserRole.USER, CANCEL_REASON, null))
+        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), fx.userId(), UserRole.USER, CANCEL_REASON, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_ALREADY_PROCESSED);
 
         // then — PG 환불은 한 번, 포인트 복구도 한 번
-        then(paymentClient).should(times(1)).cancelPayment(paymentKey, CANCEL_REASON, null);
+        then(paymentClient).should(times(1)).cancelPayment(paymentKey, CANCEL_REASON, null, null);
         assertThat(orderStatusOf(placed.orderId())).isEqualTo(OrderStatus.CANCELLED);
         assertThat(balanceOf(fx.userId())).isEqualTo(WELCOME_POINT);
         assertThat(historiesOfOrder(fx.userId(), placed.orderId()))

@@ -161,7 +161,7 @@ class PaymentServiceTest {
                     .when(paymentValidator).validateCancelAuthority(payment, 2L, UserRole.USER);
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(1L, 2L, UserRole.USER, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, 2L, UserRole.USER, "사유", null, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.UNAUTHORIZED_PAYMENT_ACCESS);
@@ -182,11 +182,11 @@ class PaymentServiceTest {
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
-            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "단순 변심", null);
+            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "단순 변심", null, null);
 
             // then
             assertThat(response.status()).isEqualTo(PaymentStatus.CANCELED);
-            verify(tossClient).cancelPayment(payment.getPaymentKey(), "단순 변심", null);
+            verify(tossClient).cancelPayment(payment.getPaymentKey(), "단순 변심", null, null);
             verify(eventPublisher).publishEvent(new PaymentFullyCanceledEvent(1L));
         }
 
@@ -201,7 +201,7 @@ class PaymentServiceTest {
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
 
             // when
-            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "부분 반품", 3000);
+            PaymentResponse response = paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "부분 반품", 3000, null);
 
             // then
             assertThat(response.status()).isEqualTo(PaymentStatus.PARTIAL_CANCELED);
@@ -215,7 +215,7 @@ class PaymentServiceTest {
             when(paymentRepository.findByIdWithLock(999L)).thenReturn(Optional.empty());
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(999L, REQUESTER_ID, UserRole.USER, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(999L, REQUESTER_ID, UserRole.USER, "사유", null, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_NOT_FOUND);
@@ -233,7 +233,7 @@ class PaymentServiceTest {
                     .when(paymentValidator).validateCancel(payment, null);
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING);
@@ -251,17 +251,17 @@ class PaymentServiceTest {
             stubOrderLock(order);
             when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
             doThrow(new BusinessException(ErrorCode.PAYMENT_CANCEL_FAILED))
-                    .when(tossClient).cancelPayment(any(), any(), any());
+                    .when(tossClient).cancelPayment(any(), any(), any(), any());
 
             // when & then
-            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null))
+            assertThatThrownBy(() -> paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null, null))
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_CANCEL_FAILED);
             InOrder inOrder = inOrder(eventPublisher, em, tossClient);
             inOrder.verify(eventPublisher).publishEvent(new PaymentFullyCanceledEvent(1L));
             inOrder.verify(em).flush();
-            inOrder.verify(tossClient).cancelPayment(any(), any(), any());
+            inOrder.verify(tossClient).cancelPayment(any(), any(), any(), any());
         }
     }
 
@@ -480,7 +480,7 @@ class PaymentServiceTest {
             assertThatThrownBy(() -> paymentService.confirmPayment(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ORDER_NOT_PAYABLE);
-            then(tossClient).should().cancelPayment(eq(PAYMENT_KEY), anyString(), isNull());
+            then(tossClient).should().cancelPayment(eq(PAYMENT_KEY), anyString(), isNull(), isNull());
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.EXPIRED);
             then(eventPublisher).should(never()).publishEvent(any());
         }
@@ -634,7 +634,7 @@ class PaymentServiceTest {
             // then
             assertThat(result).isEqualTo(PaymentReconcileResult.NOT_APPROVED);
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.EXPIRED);
-            then(tossClient).should().cancelPayment(eq("pk-late"), anyString(), isNull());
+            then(tossClient).should().cancelPayment(eq("pk-late"), anyString(), isNull(), isNull());
         }
     }
 

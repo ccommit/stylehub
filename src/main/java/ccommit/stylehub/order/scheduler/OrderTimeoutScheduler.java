@@ -28,13 +28,11 @@ import java.util.List;
  * @modified 2026/03/29 by WonJin - refactor: OrderTransactionService → OrderService 통합에 따른 의존성 변경
  * @modified 2026/09/08 by WonJin - feat: 취소 직전 PG 결제 상태 대조 추가 (승인 응답 유실 구간 축소)
  * @modified 2026/09/17 by WonJin - fix: 결론을 못 낸 주문은 타이머 재등록, 승인 진행 중 주문은 취소 보류, 보정 스케줄러도 PG 대조 경로 사용
+ * @modified 2026/09/18 by WonJin - fix: 만료 폴링을 1분에서 1초로 줄여 만료 주문 적체와 재고 반환 지연 해소
  *
  * <p>
  * Redis ZSET 기반 주문 타임아웃 처리 + DB 보정 스케줄러.
- * 1분마다 Redis에서 만료 주문을 탐색하고, 1시간마다 DB에서 누락 주문을 보정한다.
- *
- * 폴링 주기는 취소가 실행되는 시점에만 영향을 준다. 만료 판정 자체는 ZSET score 로 정확하므로
- * 주기를 줄여도 정확도가 올라가지 않고 Redis 왕복만 늘어난다.
+ * 1초마다 Redis 에서 만료 주문을 꺼내 처리하고, 1시간마다 DB 에서 타이머가 빠진 주문을 보정한다.
  * </p>
  */
 @Component
@@ -47,7 +45,10 @@ public class OrderTimeoutScheduler {
     private static final int TIMEOUT_MINUTES = 10;
     private static final int BATCH_SIZE = 100;
 
-    // 결론을 미룬 주문을 다시 확인하기까지의 간격. 폴링 주기(1분)와 맞췄다.
+    // 한 회차는 BATCH_SIZE 건만 꺼낸다. 주기가 1분이면 분당 100건이 처리 상한이라, 그보다 많이 만료되면 적체되고 그동안 재고가 묶인다.
+    private static final long POLL_DELAY_MILLIS = 1_000;
+
+    // 결론을 미룬 주문을 PG 에 다시 조회하기까지의 간격. 폴링 주기와 별개로, 같은 주문의 PG 재조회가 몰리지 않게 1분 뒤로 미룬다.
     private static final long RETRY_DELAY_MILLIS = 60_000;
 
     // Lua 스크립트: ZRANGEBYSCORE + ZREM을 원자적으로 실행하여 다중 서버 중복 처리를 방지한다.
@@ -72,7 +73,7 @@ public class OrderTimeoutScheduler {
     private final OrderPaymentTimeout orderPaymentTimeout;
 
     // TODO: 주문 취소 시 유저 메일 발송 추가 필요
-    @Scheduled(fixedDelay = 60000)
+    @Scheduled(fixedDelay = POLL_DELAY_MILLIS)
     @SuppressWarnings("unchecked")
     public void cancelExpiredOrders() {
         long now = System.currentTimeMillis();

@@ -5,6 +5,7 @@ import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 /**
  * @author WonJin Bae
  * @created 2026/04/01
+ * @modified 2026/09/18 by WonJin - feat: cancelPayment 에 PG 멱등 키 인자 추가
  *
  * <p>
  * PG사 결제 승인 API의 공통 인터페이스이다.
@@ -15,12 +16,10 @@ public interface PaymentClient {
 
     void confirmPayment(String paymentKey, String orderId, Integer amount);
 
-    void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount);
+    // idempotencyKey 가 있으면 같은 키의 재요청을 PG 가 한 번만 처리한다. 응답을 못 받은 취소를 다시 보내도 이중 환불되지 않는다.
+    void cancelPayment(String paymentKey, String cancelReason, Integer cancelAmount, String idempotencyKey);
 
-    /**
-     * 우리가 PG 에 넘긴 주문 식별자로 결제 현재 상태를 조회한다.
-     * 승인 요청은 보냈으나 응답을 받지 못한 경우, PG 쪽 상태를 확인하는 유일한 수단이다.
-     */
+    // 우리가 PG 에 넘긴 주문 식별자로 결제 상태를 조회한다. 승인 응답을 받지 못했을 때 PG 쪽 상태를 확인하는 유일한 수단이다.
     PgPaymentSnapshot findPayment(String pgOrderId);
 
     // 팩토리에서 구현체를 식별하기 위한 PG사 타입

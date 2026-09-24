@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - feat: 배송지 개수 초과(U006)·주문에 사용 중인 배송지 삭제(U007) 에러코드 추가
  * @modified 2026/09/17 by WonJin - refactor: 무결성 위반(C005)·락 획득 실패(C006)·일시 장애(C007)·미지원 미디어 타입(C008) 코드 추가 — 500 으로 뭉치던 프레임워크 예외를 원인별로 구분
  * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용 거절 코드 추가 — 잔액 부족(U008), 최소 주문 금액 미달(U009), 결제 금액 이상 사용(U010)
+ * @modified 2026/09/18 by WonJin - feat: Idempotency-Key 형식 오류(C009)·다른 요청에 키 재사용(C010, 422)·같은 키 처리 중(C011) 코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -36,6 +37,10 @@ public enum ErrorCode {
     // Redis 연결 실패·명령 타임아웃처럼 재시도하면 회복될 수 있는 장애. 코드 결함(500)과 구분해 클라이언트가 재시도를 판단하게 한다.
     SERVICE_TEMPORARILY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "C007", "일시적으로 요청을 처리할 수 없습니다. 잠시 후 다시 시도해주세요"),
     UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "C008", "지원하지 않는 Content-Type 입니다"),
+    INVALID_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST, "C009", "Idempotency-Key 는 영문·숫자·-·_ 로 된 64자 이하 값이어야 합니다"),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_CONTENT, "C010", "이미 다른 요청에 사용한 Idempotency-Key 입니다"),
+    // 앞선 같은 키 요청이 아직 커밋 전이라 결과를 돌려줄 수 없다. C006 과 달리 같은 키의 중복 요청에만 쓴다.
+    IDEMPOTENT_REQUEST_IN_PROGRESS(HttpStatus.CONFLICT, "C011", "같은 Idempotency-Key 요청을 처리하고 있습니다. 잠시 후 다시 시도해주세요"),
 
     // User
     DUPLICATE_EMAIL(HttpStatus.CONFLICT, "U001", "이미 사용 중인 이메일입니다"),
