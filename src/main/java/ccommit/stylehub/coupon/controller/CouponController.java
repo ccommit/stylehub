@@ -26,6 +26,7 @@ import java.util.List;
  * @author WonJin Bae
  * @created 2026/04/09
  * @modified 2026/09/17 by WonJin - feat: 선착순 발급 카운터 재동기화 관리자 API 추가 (Redis 자리 누수 복구 수단)
+ * @modified 2026/09/24 by WonJin - refactor: 스토어 쿠폰 이벤트 생성을 /stores/me 로 변경, 활성 쿠폰 이벤트 목록을 공개 API 로 전환
  *
  * <p>
  * 쿠폰 이벤트 생성(STORE/ADMIN) 및 선착순 발급(USER) API를 제공한다.
@@ -38,15 +39,14 @@ public class CouponController {
     private final CouponApplicationService couponApplicationService;
 
     // STORE: 스토어 쿠폰 이벤트 생성
-    @PostMapping("/stores/{storeId}/coupon-events")
+    @PostMapping("/stores/me/coupon-events")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<CouponEventResponse> createStoreCouponEvent(
-            @PathVariable Long storeId,
             @Valid @RequestBody CouponEventCreateRequest request,
             HttpServletRequest httpRequest) {
         Long userId = SessionUtils.getUserId(httpRequest);
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(couponApplicationService.createStoreCouponEvent(userId, storeId, request));
+                .body(couponApplicationService.createStoreCouponEvent(userId, request));
     }
 
     // ADMIN: 플랫폼 쿠폰 이벤트 생성

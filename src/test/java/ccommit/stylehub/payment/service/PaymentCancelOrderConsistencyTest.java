@@ -249,7 +249,7 @@ class PaymentCancelOrderConsistencyTest {
 
         // when & then
         assertThatThrownBy(() -> orderService.updateDeliveryStatus(new UpdateDeliveryStatusRequest(
-                storeA.storeId(), storeA.storeId(), placed.orderId(), OrderStatus.PREPARING)))
+                storeA.storeId(), placed.orderId(), OrderStatus.PREPARING)))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.UNAUTHORIZED_DELIVERY_ACCESS);
         assertThat(orderStatusOf(placed.orderId())).isEqualTo(OrderStatus.PAID);
@@ -270,7 +270,7 @@ class PaymentCancelOrderConsistencyTest {
     }
 
     private void changeStatus(PaidOrder paid, OrderStatus next) {
-        orderService.updateDeliveryStatus(new UpdateDeliveryStatusRequest(paid.storeId(), paid.storeId(), paid.orderId(), next));
+        orderService.updateDeliveryStatus(new UpdateDeliveryStatusRequest(paid.storeId(), paid.orderId(), next));
     }
 
     private OrderStatus orderStatusOf(Long orderId) {

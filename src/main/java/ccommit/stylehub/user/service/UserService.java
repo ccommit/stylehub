@@ -39,6 +39,7 @@ import java.util.function.Consumer;
  * @modified 2026/09/17 by WonJin - fix: 로그인 시 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정을 모두 INVALID_PASSWORD 로 응답하고 더미 해시 검증으로 응답 시간을 맞춤(소셜 계정 NPE 500, 가입 여부 노출 해결)
  * @modified 2026/09/17 by WonJin - refactor: "BCrypt 를 트랜잭션 밖에서 실행해 커넥션 점유를 최소화한다" 주석을 실제 동작(회원가입/로그인 차이, OSIV 전제)에 맞게 정정
  * @modified 2026/09/17 by WonJin - feat: 포인트 변경을 PointService(원자 UPDATE + 이력)에 위임 — 로그인 적립이 엔티티 값에 더해 동시 차감을 덮어쓰던 구조 제거, UserPort 포인트 차감·이력·복구 구현
+ * @modified 2026/09/24 by WonJin - refactor: 승인 스토어 검증에서 storeId 비교 제거, 관리자 스토어 상태 변경을 단일 진입점(updateStoreStatus)으로 통합
  *
  * <p>
  * 회원, 스토어의 비즈니스 로직을 처리하고, 포인트 변경은 PointService 에 위임해 UserPort 로 노출한다.
@@ -170,18 +171,14 @@ public class UserService implements UserPort {
     }
 
     @Override
-    public void validateApprovedStoreOwner(Long userId, Long storeId) {
-        findApprovedStoreByOwner(userId, storeId);
+    public void validateApprovedStore(Long storeUserId) {
+        findApprovedStore(storeUserId);
     }
 
     @Override
-    public User findApprovedStoreByOwner(Long userId, Long storeId) {
-        User user = userRepository.findById(storeId)
+    public User findApprovedStore(Long storeUserId) {
+        User user = userRepository.findById(storeUserId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.STORE_NOT_FOUND));
-
-        if (!user.getUserId().equals(userId)) {
-            throw new BusinessException(ErrorCode.UNAUTHORIZED_STORE_ACCESS);
-        }
 
         if (user.getStoreStatus() != StoreStatus.APPROVED) {
             throw new BusinessException(ErrorCode.STORE_NOT_APPROVED);
@@ -217,6 +214,16 @@ public class UserService implements UserPort {
     public StoreResponse getStoreByUserId(Long userId) {
         User user = findStoreUser(userId);
         return StoreResponse.from(user);
+    }
+
+    // PENDING 은 입점 신청으로만 들어가는 초기 상태라 관리자가 되돌릴 수 없다
+    public StoreResponse updateStoreStatus(Long userId, StoreStatus status) {
+        return switch (status) {
+            case APPROVED -> approveStore(userId);
+            case REJECTED -> rejectStore(userId);
+            case SUSPENDED -> suspendStore(userId);
+            case PENDING -> throw new BusinessException(ErrorCode.INVALID_STORE_STATUS);
+        };
     }
 
     public StoreResponse approveStore(Long userId) {

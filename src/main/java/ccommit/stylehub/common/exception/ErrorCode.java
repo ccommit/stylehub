@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - refactor: 무결성 위반(C005)·락 획득 실패(C006)·일시 장애(C007)·미지원 미디어 타입(C008) 코드 추가 — 500 으로 뭉치던 프레임워크 예외를 원인별로 구분
  * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용 거절 코드 추가 — 잔액 부족(U008), 최소 주문 금액 미달(U009), 결제 금액 이상 사용(U010)
  * @modified 2026/09/18 by WonJin - feat: Idempotency-Key 형식 오류(C009)·다른 요청에 키 재사용(C010, 422)·같은 키 처리 중(C011) 코드 추가
+ * @modified 2026/09/24 by WonJin - remove: 스토어 API 에서 storeId 입력이 사라져 쓰이지 않는 UNAUTHORIZED_STORE_ACCESS(S004) 제거
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -71,7 +72,6 @@ public enum ErrorCode {
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND, "S001", "존재하지 않는 스토어입니다"),
     STORE_ALREADY_EXISTS(HttpStatus.CONFLICT, "S002", "이미 입점 신청한 스토어가 존재합니다"),
     INVALID_STORE_STATUS(HttpStatus.BAD_REQUEST, "S003", "현재 상태에서는 처리할 수 없습니다"),
-    UNAUTHORIZED_STORE_ACCESS(HttpStatus.FORBIDDEN, "S004", "본인 스토어만 접근할 수 있습니다"),
 
     // Product
     STORE_NOT_APPROVED(HttpStatus.FORBIDDEN, "P001", "입점 승인된 스토어만 상품을 등록할 수 있습니다"),

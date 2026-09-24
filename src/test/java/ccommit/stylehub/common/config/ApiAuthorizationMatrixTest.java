@@ -64,6 +64,7 @@ class ApiAuthorizationMatrixTest {
             "GET /api/v1/users/oauth/{provider}/callback",
             "GET /api/v1/products",
             "GET /api/v1/products/{productId}",
+            "GET /api/v1/coupon-events",
             // 토스 결제창이 리다이렉트하는 콜백이라 세션을 기대할 수 없다
             "GET /api/v1/payments/success",
             "GET /api/v1/payments/fail"
@@ -71,9 +72,7 @@ class ApiAuthorizationMatrixTest {
 
     // 로그인만 요구하고 @RequiredRole 을 두지 않는 API. 역할 제한을 빠뜨린 API 가 조용히 모든 역할에 열리지 않게 명시한다.
     private static final Set<String> LOGIN_ONLY_APIS = Set.of(
-            "POST /api/v1/users/logout",
-            // 컨트롤러 주석은 "공개"지만 인증 제외 목록에 없어 비로그인 시 401 이다. 공개 전환은 #100 에서 한다.
-            "GET /api/v1/coupon-events"
+            "POST /api/v1/users/logout"
     );
 
     // 경로 변수는 인터셉터가 거절하기 전 매핑만 되면 되므로 숫자 1 을 넣는다. provider 는 enum 이라 실제 값을 쓴다.

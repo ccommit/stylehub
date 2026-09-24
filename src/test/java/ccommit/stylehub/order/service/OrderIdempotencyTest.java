@@ -52,7 +52,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @SpringBootTest
 class OrderIdempotencyTest {
 
-    private static final String ORDER_URL = "/api/v1/orders/orders";
+    private static final String ORDER_URL = "/api/v1/orders";
     private static final int INITIAL_STOCK = 10;
 
     @Autowired

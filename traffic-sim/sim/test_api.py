@@ -17,7 +17,7 @@ class FakeStyleHub(BaseHTTPRequestHandler):
             self._send(200, {"userId": 7}, cookie="SESSION=abc; Path=/; HttpOnly")
         elif self.path == "/api/v1/users/sign-up":
             self._send(409, {"code": "U001", "message": "이미 가입된 이메일"})
-        elif self.path == "/api/v1/orders/orders":
+        elif self.path == "/api/v1/orders":
             self._send(201, {"orderId": 1, "pgOrderId": "ORD-1", "finalAmount": 1000})
         else:
             self._send(404, {"code": "NOT_FOUND"})
@@ -88,8 +88,7 @@ class ApiTest(unittest.TestCase):
         self.assertIn("orderId=ORD-20260919-abc", echoed)
         self.assertIn("amount=39000", echoed)
 
-    def test_place_order_posts_to_doubled_orders_path(self):
-        # OrderController 는 클래스 레벨과 메서드 레벨 모두 "/orders" 라 실제 경로가 "/orders/orders" 로 겹친다
+    def test_place_order_posts_to_orders_path(self):
         order = Api(self.base).place_order(3, [{"productOptionId": 9, "quantity": 1}])
         self.assertEqual(order, {"orderId": 1, "pgOrderId": "ORD-1", "finalAmount": 1000})
 

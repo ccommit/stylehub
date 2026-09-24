@@ -19,6 +19,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @modified 2026/03/27 by WonJin - feat: 상품 조회 공개 API 경로 인증 제외 추가
  * @modified 2026/04/16 by WonJin - refactor: @RestController 공통 프리픽스 /api/v1 자동 부여
  * @modified 2026/09/17 by WonJin - fix: 결제 인증 제외 범위를 토스 콜백(success/fail)으로 축소 — 결제 취소 API 무인증 호출 차단
+ * @modified 2026/09/24 by WonJin - feat: 활성 쿠폰 이벤트 목록(GET /coupon-events)을 비로그인 공개 API 로 전환
  *
  * <p>
  * Spring MVC 커스텀 Converter, 인터셉터, 공통 경로 프리픽스를 등록한다.
@@ -55,6 +56,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/users/login",  // 로그인 — 비로그인 상태에서 호출
                         "/api/v1/users/oauth/**",  // OAuth — 비로그인 상태에서 호출
                         "/api/v1/products/**",     // 상품 조회 — 비인증 공개 API
+                        "/api/v1/coupon-events",   // 활성 쿠폰 이벤트 목록 — 이 경로에는 GET 만 있다
                         "/api/v1/payments/success", // 토스 결제 콜백 — 결제 취소 API는 로그인 필요
                         "/api/v1/payments/fail",    // 토스 결제 콜백
                         "/v3/api-docs/**",         // Swagger API 문서

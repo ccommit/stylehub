@@ -60,7 +60,7 @@ class DeliveryValidatorTest {
     }
 
     private UpdateDeliveryStatusRequest request(OrderStatus next) {
-        return new UpdateDeliveryStatusRequest(STORE_ID, STORE_ID, ORDER_ID, next);
+        return new UpdateDeliveryStatusRequest(STORE_ID, ORDER_ID, next);
     }
 
     @ParameterizedTest(name = "[{index}] {0} → {1}")

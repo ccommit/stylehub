@@ -332,7 +332,7 @@ class OrderPointIntegrationTest {
         MockHttpSession session = userSession(fx.userId());
 
         // when & then — 음수
-        mockMvc.perform(post("/api/v1/orders/orders")
+        mockMvc.perform(post("/api/v1/orders")
                         .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(orderJson(fx, -1)))
@@ -342,7 +342,7 @@ class OrderPointIntegrationTest {
         assertThat(balanceOf(fx.userId())).isEqualTo(WELCOME_POINT);
 
         // when & then — 양수
-        MvcResult result = mockMvc.perform(post("/api/v1/orders/orders")
+        MvcResult result = mockMvc.perform(post("/api/v1/orders")
                         .session(session)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(orderJson(fx, 300)))

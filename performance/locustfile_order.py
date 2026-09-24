@@ -249,7 +249,7 @@ class OrderUser(HttpUser):
             ],
         }
         with self.client.post(
-            "/api/v1/orders/orders",
+            "/api/v1/orders",
             json=payload,
             name=name,
             catch_response=True,

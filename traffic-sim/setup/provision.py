@@ -114,11 +114,11 @@ def sign_up_and_login(api, sign_up, email, password):
         raise
 
 
-def existing_products_by_name(api, store_id):
+def existing_products_by_name(api):
     # 이전 실행이 응답만 못 받았을 수 있으니, 없는 번호가 하나라도 있으면 서버 목록을 먼저 확인해 중복 생성을 막는다
     by_name, cursor = {}, None
     while True:
-        page = api.store_products(store_id, cursor)
+        page = api.store_products(cursor)
         for item in page["items"]:
             by_name[item["name"]] = item["productId"]
         if not page.get("hasNext"):
@@ -157,7 +157,7 @@ def run(cfg, api_factory, state, save, ask_admin_password, state_file=None):
         products = entry.setdefault("products", {})
         missing_numbers = [number for number in range(1, cfg.products_per_store + 1) if str(number) not in products]
         if missing_numbers:
-            existing_by_name = existing_products_by_name(api, entry["userId"])
+            existing_by_name = existing_products_by_name(api)
             for number in missing_numbers:
                 info_product = data.product(index, number)
                 product_id = existing_by_name.get(info_product["name"])
@@ -167,7 +167,7 @@ def run(cfg, api_factory, state, save, ask_admin_password, state_file=None):
                     products[str(number)] = {"productId": product_id,
                                              "optionIds": [option["productOptionId"] for option in fetched["options"]]}
                 else:
-                    created = api.register_product(entry["userId"], info_product)
+                    created = api.register_product(info_product)
                     products[str(number)] = {"productId": created["productId"],
                                              "optionIds": [option["productOptionId"] for option in created["options"]]}
                 save()
@@ -184,7 +184,7 @@ def run(cfg, api_factory, state, save, ask_admin_password, state_file=None):
             coupons[name] = "pending"
             save()
             try:
-                coupons[name] = api.create_coupon_event(entry["userId"], event)["couponEventId"]
+                coupons[name] = api.create_coupon_event(event)["couponEventId"]
             except ApiError as error:
                 if 400 <= error.status < 500:
                     # 명확한 거절이라 쿠폰이 만들어지지 않았다 — pending 표시를 남기지 않는다
