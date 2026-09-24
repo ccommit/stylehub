@@ -9,6 +9,8 @@ import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.service.PaymentApplicationService;
 import ccommit.stylehub.payment.service.PaymentService;
 import ccommit.stylehub.user.enums.UserRole;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ import java.util.regex.Pattern;
  * @modified 2026/09/17 by WonJin - fix: 결제 취소 API에 로그인·역할 검증 적용, 세션 사용자 정보를 서비스로 전달
  * @modified 2026/09/17 by WonJin - fix: 실패 콜백 응답에서 요청 파라미터 반사 제거, 사용자 취소를 오류(400)가 아닌 처리 결과(200)로 응답
  * @modified 2026/09/18 by WonJin - feat: 결제 취소에 Idempotency-Key 헤더 지원 (PaymentApplicationService 경유)
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 토스페이먼츠 결제 콜백 및 취소 API를 제공한다.
@@ -39,6 +42,7 @@ import java.util.regex.Pattern;
  * </p>
  */
 @RestController
+@Tag(name = "결제", description = "토스페이먼츠 결제 승인 콜백과 결제 취소")
 @RequestMapping("/payments")
 @RequiredArgsConstructor
 public class PaymentController {
@@ -52,6 +56,7 @@ public class PaymentController {
     private final PaymentApplicationService paymentApplicationService;
 
     // 토스 인증 성공 후 리다이렉트된다. 금액을 검증한 뒤 최종 승인을 요청한다.
+    @Operation(summary = "결제 승인 — 토스 결제창 성공 리다이렉트, 금액 검증 후 승인")
     @GetMapping("/success")
     public ResponseEntity<PaymentResponse> paymentSuccess(
             @RequestParam String paymentKey,
@@ -61,6 +66,7 @@ public class PaymentController {
     }
 
     // 토스 인증 실패·결제창 닫기 시 리다이렉트된다. 반사형 XSS 방지를 위해 요청 message는 응답에 담지 않는다.
+    @Operation(summary = "결제 실패 — 토스 결제창 실패 리다이렉트")
     @GetMapping("/fail")
     public ResponseEntity<PaymentFailResponse> paymentFail(
             @RequestParam(required = false) String code,
@@ -72,6 +78,7 @@ public class PaymentController {
     }
 
     // cancelAmount가 없으면 전액 취소, 있으면 부분 취소. Idempotency-Key 를 보내면 같은 키의 재요청을 한 번만 취소한다
+    @Operation(summary = "결제 취소(전액·부분) — Idempotency-Key 지원")
     @PostMapping("/{paymentId}/cancel")
     @RequiredRole({UserRole.USER, UserRole.ADMIN})
     public ResponseEntity<PaymentResponse> cancelPayment(

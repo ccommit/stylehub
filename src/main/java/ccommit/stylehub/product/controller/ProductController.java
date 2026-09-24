@@ -12,6 +12,8 @@ import ccommit.stylehub.product.enums.MainCategory;
 import ccommit.stylehub.product.enums.SubCategory;
 import ccommit.stylehub.product.service.ProductApplicationService;
 import ccommit.stylehub.user.enums.UserRole;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
  * @modified 2026/04/01 by WonJin - refactor: ProductViewController를 ProductController로 통합
  * @modified 2026/09/17 by WonJin - fix: 재고 변경 API 가 경로의 productId 를 바인딩해 옵션 소속 검증에 사용 (IDOR 차단)
  * @modified 2026/09/24 by WonJin - refactor: 스토어 API 를 세션 스토어 기준 /stores/me 로 변경 (경로의 storeId 제거)
+ * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
  *
  * <p>
  * 상품 관련 API를 제공한다.
@@ -39,12 +42,14 @@ import org.springframework.web.bind.annotation.RestController;
  * </p>
  */
 @RestController
+@Tag(name = "상품", description = "상품 조회(공개)와 스토어 상품 관리")
 @RequiredArgsConstructor
 public class ProductController {
 
     private final ProductApplicationService productApplicationService;
 
     //공개 API (비인증)
+    @Operation(summary = "상품 목록 조회(커서 페이징, 스토어·카테고리 필터)")
     @GetMapping("/products")
     public ResponseEntity<CursorResponse<ProductListResponse>> getProducts(
             @RequestParam(required = false) Long cursor,
@@ -55,12 +60,14 @@ public class ProductController {
         return ResponseEntity.ok(productApplicationService.getProducts(cursor, storeId, mainCategory, subCategory, pageSize));
     }
 
+    @Operation(summary = "상품 상세 조회(옵션 포함)")
     @GetMapping("/products/{productId}")
     public ResponseEntity<ProductResponse> getProduct(@PathVariable Long productId) {
         return ResponseEntity.ok(productApplicationService.getProduct(productId));
     }
 
     //  스토어 API (STORE 권한 필요)
+    @Operation(summary = "내 스토어 상품 목록 조회")
     @GetMapping("/stores/me/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<CursorResponse<ProductListResponse>> getMyStoreProducts(
@@ -71,6 +78,7 @@ public class ProductController {
         return ResponseEntity.ok(productApplicationService.getMyStoreProducts(userId, cursor, pageSize));
     }
 
+    @Operation(summary = "상품 등록(옵션 포함)")
     @PostMapping("/stores/me/products")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductResponse> registerProduct(
@@ -81,6 +89,7 @@ public class ProductController {
                 .body(productApplicationService.registerProduct(userId, request));
     }
 
+    @Operation(summary = "옵션 재고 수정")
     @PatchMapping("/stores/me/products/{productId}/options/{optionId}/stock")
     @RequiredRole(UserRole.STORE)
     public ResponseEntity<ProductOptionResponse> updateStock(
