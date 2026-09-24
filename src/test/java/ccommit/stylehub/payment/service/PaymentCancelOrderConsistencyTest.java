@@ -130,13 +130,13 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.PREPARING);
 
         // when
-        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null);
+        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null);
 
         // then
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
         assertThat(orderStatusOf(paid.orderId())).isEqualTo(OrderStatus.CANCELLED);
         assertThat(stockOf(paid.optionId())).isEqualTo(INITIAL_STOCK);
-        then(paymentClient).should(times(1)).cancelPayment(paid.paymentKey(), REASON, null);
+        then(paymentClient).should(times(1)).cancelPayment(paid.paymentKey(), REASON, null, null);
     }
 
     @Test
@@ -149,7 +149,7 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.DELIVERED);
 
         // when
-        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null);
+        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null);
 
         // then
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
@@ -166,10 +166,10 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.SHIPPING);
 
         // when & then
-        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null))
+        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING);
-        then(paymentClient).should(never()).cancelPayment(any(), any(), any());
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
         assertThat(orderStatusOf(paid.orderId())).isEqualTo(OrderStatus.SHIPPING);
     }
@@ -181,10 +181,10 @@ class PaymentCancelOrderConsistencyTest {
         PaidOrder paid = placePaidOrder();
         changeStatus(paid, OrderStatus.PREPARING);
         willThrow(new BusinessException(ErrorCode.PAYMENT_CANCEL_FAILED))
-                .given(paymentClient).cancelPayment(any(), any(), any());
+                .given(paymentClient).cancelPayment(any(), any(), any(), any());
 
         // when & then
-        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null))
+        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_CANCEL_FAILED);
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
@@ -209,7 +209,7 @@ class PaymentCancelOrderConsistencyTest {
             executor.submit(() -> {
                 try {
                     start.await();
-                    paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, 6000);
+                    paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, 6000, null);
                     success.incrementAndGet();
                 } catch (BusinessException e) {
                     failures.computeIfAbsent(e.getErrorCode(), code -> new AtomicInteger()).incrementAndGet();
@@ -227,7 +227,7 @@ class PaymentCancelOrderConsistencyTest {
         // then
         assertThat(success.get()).isEqualTo(1);
         assertThat(failures.get(ErrorCode.INVALID_CANCEL_AMOUNT)).hasValue(1);
-        then(paymentClient).should(times(1)).cancelPayment(any(), any(), any());
+        then(paymentClient).should(times(1)).cancelPayment(any(), any(), any(), any());
         Payment payment = paymentRepository.findById(paid.paymentId()).orElseThrow();
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PARTIAL_CANCELED);
         assertThat(payment.getBalanceAmount()).isEqualTo(4000);
