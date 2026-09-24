@@ -4,6 +4,8 @@ import ccommit.stylehub.common.constants.SessionConstants;
 import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.user.dto.response.OAuthUserInfo;
 import ccommit.stylehub.user.enums.UserRole;
+import ccommit.stylehub.support.OrderFixtureFactory;
+import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.repository.UserRepository;
 import ccommit.stylehub.user.service.GoogleOAuthClient;
 import jakarta.servlet.http.HttpSession;
@@ -23,6 +25,7 @@ import org.springframework.web.context.WebApplicationContext;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -58,6 +61,9 @@ class OAuthCallbackStateTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private OrderFixtureFactory fixtureFactory;
+
     private MockMvc mockMvc;
 
     private final List<String> createdEmails = new ArrayList<>();
@@ -71,7 +77,13 @@ class OAuthCallbackStateTest {
 
     @AfterEach
     void cleanUp() {
-        createdEmails.forEach(email -> userRepository.findByEmail(email).ifPresent(userRepository::delete));
+        // 로그인 적립이 포인트 이력을 남기므로 회원만 지우면 외래키에 걸린다
+        List<Long> userIds = createdEmails.stream()
+                .map(userRepository::findByEmail)
+                .flatMap(Optional::stream)
+                .map(User::getUserId)
+                .toList();
+        fixtureFactory.deleteByIds(List.of(), List.of(), userIds);
         createdEmails.clear();
     }
 

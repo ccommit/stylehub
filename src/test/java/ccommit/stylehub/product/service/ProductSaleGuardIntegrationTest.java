@@ -43,9 +43,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
  *
  * <p>
- * 재고 변경 IDOR 차단과 정지 스토어 상품의 노출·주문 차단을 실제 H2·트랜잭션으로 검증하는 통합 테스트이다.
+ * 재고 변경 IDOR 차단과 정지 스토어 상품의 노출·주문 차단을 실제 MySQL·트랜잭션으로 검증하는 통합 테스트이다.
  * 소속 검증은 컨트롤러의 경로 변수 바인딩부터 이어져야 의미가 있고, 스토어 승인 조건은 JPQL UPDATE 서브쿼리라 목 객체로는 검증할 수 없다.
  * </p>
  */
@@ -85,7 +86,7 @@ class ProductSaleGuardIntegrationTest {
     private final List<Long> productIds = new ArrayList<>();
     private final List<Long> userIds = new ArrayList<>();
 
-    // H2 ID는 컨텍스트마다 1부터 다시 시작하지만 Redis 캐시는 컨텍스트·실행 간에 공유된다.
+    // 테스트 DB는 컨텍스트가 뜰 때마다 스키마를 새로 만들어 ID가 1부터 다시 시작하지만 Redis 캐시는 공유된다.
     // 이전 실행이 남긴 같은 ID의 상품 캐시가 조회 결과에 섞이지 않도록 시작 전에도 비운다.
     @BeforeEach
     void setUp() {

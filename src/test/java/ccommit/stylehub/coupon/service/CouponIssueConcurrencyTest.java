@@ -49,10 +49,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * @created 2026/09/15
  * @modified 2026/09/17 by WonJin - test: 생성 데이터·Redis 키 정리, UUID 사용자명, 발급 중 수량 수정·수정 직후 카운터 복구·재동기화 API 시나리오 추가
  * @modified 2026/09/17 by WonJin - test: 시작일 과거 불가 규칙에 맞춰 생성 시작일을 허용 오차 안으로, 수량 수정은 저장된 기간을 그대로 보내도록 변경
+ * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
  *
  * <p>
  * 선착순 쿠폰 발급을 실제 Redis와 DB로 동시에 호출해, Redis 유실·오염이나 수량 변경에도 초과 없이 정확히 한도만큼 발급되는지 검증하는 통합 테스트이다.
- * 락 의미론은 운영(MySQL)이 아닌 H2 기준이라는 한계가 있다.
+ * 락은 운영과 같은 MySQL 8.0(InnoDB) 컨테이너에서 검증한다.
  * </p>
  */
 @SpringBootTest

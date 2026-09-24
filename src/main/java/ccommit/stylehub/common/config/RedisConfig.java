@@ -30,6 +30,7 @@ import java.util.Map;
  * @modified 2026/04/24 by WonJin - feat: Spring Cache 용 RedisCacheManager 추가 (first page 캐싱)
  * @modified 2026/04/24 by WonJin - feat: 캐시 범위 확대 + 상세 조회 캐시 추가 (Step 5 — 1,000/2,000 users 대응)
  * @modified 2026/09/17 by WonJin - fix: 캐시 전체 무효화를 KEYS 대신 SCAN 으로 수행, 캐시 이름을 ProductCacheEvictor 상수로 통일
+ * @modified 2026/09/19 by WonJin - fix: 캐시 저장을 비동기에서 동기(immediateWrites)로 변경
  *
  * Redis 설정을 담당한다. 분산 락/타임아웃에는 StringRedisTemplate, 응답 캐싱에는 RedisCacheManager 를 사용한다.
  *
@@ -65,8 +66,10 @@ public class RedisConfig {
         RedisCacheConfiguration listConfig = cacheConfig(typedJsonSerializer(mapper, listType));
         RedisCacheConfiguration detailConfig = cacheConfig(typedJsonSerializer(mapper, detailType));
 
-        RedisCacheWriter cacheWriter = RedisCacheWriter.nonLockingRedisCacheWriter(
-                connectionFactory, BatchStrategies.scan(CACHE_CLEAR_SCAN_BATCH_SIZE));
+        // 캐시 저장을 응답 전에 끝낸다. 기본값(Lettuce 비동기 저장)은 무효화 뒤에 늦은 SET 이 도착해 옛 값이 TTL 동안 남는 틈을 넓힌다
+        RedisCacheWriter cacheWriter = RedisCacheWriter.create(connectionFactory, writer -> writer
+                .batchStrategy(BatchStrategies.scan(CACHE_CLEAR_SCAN_BATCH_SIZE))
+                .immediateWrites());
 
         return RedisCacheManager.builder(cacheWriter)
                 .withInitialCacheConfigurations(Map.of(

@@ -50,9 +50,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
  *
  * <p>
- * 상품 조회 캐시의 무효화 시점, 키 정규화, 적중 시 커넥션 미사용을 실제 Redis·H2로 검증하는 통합 테스트이다.
+ * 상품 조회 캐시의 무효화 시점, 키 정규화, 적중 시 커넥션 미사용을 실제 Redis·MySQL로 검증하는 통합 테스트이다.
  * 프록시·트랜잭션이 실제로 돌아야 드러나는 동작이라 목 객체 대신 Redis 키와 getConnection 호출 수를 직접 확인한다.
  * </p>
  */
@@ -145,7 +146,7 @@ class ProductCacheIntegrationTest {
     private final List<Long> productIds = new ArrayList<>();
     private final List<Long> userIds = new ArrayList<>();
 
-    // H2 ID는 컨텍스트마다 1부터 다시 시작하지만 Redis 캐시는 컨텍스트·실행 간에 공유된다.
+    // 테스트 DB는 컨텍스트가 뜰 때마다 스키마를 새로 만들어 ID가 1부터 다시 시작하지만 Redis 캐시는 공유된다.
     // 이전 실행이 남긴 같은 ID의 상품 캐시가 키 검증에 섞이지 않도록 시작 전에도 비운다.
     @BeforeEach
     void setUp() {

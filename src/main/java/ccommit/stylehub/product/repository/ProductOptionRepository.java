@@ -20,6 +20,7 @@ import java.util.Optional;
  * @modified 2026/09/17 by WonJin - fix: increaseStockAtomic 추가 — 재고 복구가 먼저 읽어 둔 엔티티 값으로 덮어써 동시 차감을 잃던 문제 해결
  * @modified 2026/09/17 by WonJin - fix: decreaseStockAtomic 에 스토어 승인 조건(EXISTS 서브쿼리) 추가, 차감 실패 원인 판별용 findByIdWithProductAndStore 추가
  * @modified 2026/09/17 by WonJin - fix: 복구 후 재고를 DTO 로 읽는 findOptionStock 추가 (품절 해제 시 캐시 무효화 판단)
+ * @modified 2026/09/18 by WonJin - comment: 스토어 행 공유 락을 MySQL 테스트로 확인해 주석 갱신, 메서드 주석을 // 로 정리
  *
  * <p>
  * ProductOption 엔티티의 데이터 접근을 담당한다.
