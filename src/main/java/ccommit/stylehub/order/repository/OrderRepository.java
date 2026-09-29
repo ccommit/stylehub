@@ -28,8 +28,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.orderId = :orderId")
     Optional<Order> findByIdWithLock(@Param("orderId") Long orderId);
 
-    @Query("SELECT o FROM Order o WHERE o.orderStatus = :status AND o.createdAt < :expiredTime ORDER BY o.orderId")
-    List<Order> findExpiredOrders(@Param("status") OrderStatus status,
-                                 @Param("expiredTime") LocalDateTime expiredTime,
-                                 Pageable pageable);
+    // 결론을 미룬 주문은 PENDING 으로 남아 다시 조회되므로, 마지막으로 본 ID 다음부터 읽어 같은 주문을 반복해 꺼내지 않는다.
+    @Query("SELECT o.orderId FROM Order o WHERE o.orderStatus = :status AND o.createdAt < :expiredTime " +
+           "AND o.orderId > :lastOrderId ORDER BY o.orderId")
+    List<Long> findExpiredOrderIds(@Param("status") OrderStatus status,
+                                   @Param("expiredTime") LocalDateTime expiredTime,
+                                   @Param("lastOrderId") Long lastOrderId,
+                                   Pageable pageable);
 }

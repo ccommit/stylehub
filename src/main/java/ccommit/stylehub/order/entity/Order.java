@@ -52,7 +52,10 @@ import java.util.UUID;
 @Table(name = "orders", indexes = {
         // OrderQueryRepository.findMyOrdersWithCursor(user_id = ? AND order_id < ? ORDER BY order_id DESC)가 전제하는 인덱스다.
         // 운영 DB 는 ddl-auto=validate 라 이 선언으로 만들어지지 않는다. 운영 반영 DDL: scripts/db/create-cursor-paging-indexes.sql
-        @Index(name = "idx_orders_user_order_id", columnList = "user_id, order_id")
+        @Index(name = "idx_orders_user_order_id", columnList = "user_id, order_id"),
+        // OrderRepository.findExpiredOrderIds(order_status = ? AND order_id > ? ORDER BY order_id)가 전제하는 인덱스다.
+        // 결제 대기 주문은 10분 안의 소수라 created_at 조건은 이 범위에서 걸러진다. 운영 반영 DDL: scripts/db/create-order-status-index.sql
+        @Index(name = "idx_orders_status_order_id", columnList = "order_status, order_id")
 })
 @Getter
 @SuperBuilder
