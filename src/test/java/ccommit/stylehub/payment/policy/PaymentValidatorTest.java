@@ -264,6 +264,21 @@ class PaymentValidatorTest {
         }
 
         @Test
+        @DisplayName("배송 완료 후 주문 행이 다시 수정돼도 환불 기한은 배송 완료 시각부터 센다")
+        void 배송완료후_수정돼도_배송완료시각으로_기한을_센다() {
+            // given — 8일 전에 배송 완료, 이후 다른 변경으로 updated_at 이 오늘로 바뀐 주문
+            Order order = orderWithStatus(OrderStatus.DELIVERED, LocalDateTime.now());
+            ReflectionTestUtils.setField(order, "deliveredAt", LocalDateTime.now().minusDays(8));
+            Payment payment = paymentWith(PaymentStatus.DONE, order, 10000, 10000);
+
+            // when & then
+            assertThatThrownBy(() -> validator.validateCancel(payment, null))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                    .isEqualTo(ErrorCode.REFUND_PERIOD_EXPIRED);
+        }
+
+        @Test
         @DisplayName("결제 상태가 DONE/PARTIAL_CANCELED가 아니면 PAYMENT_ALREADY_PROCESSED 예외가 발생한다")
         void 취소불가능한_결제상태면_예외() {
             // given
