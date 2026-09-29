@@ -40,6 +40,7 @@ import java.util.function.Consumer;
  * @modified 2026/09/17 by WonJin - refactor: "BCrypt 를 트랜잭션 밖에서 실행해 커넥션 점유를 최소화한다" 주석을 실제 동작(회원가입/로그인 차이, OSIV 전제)에 맞게 정정
  * @modified 2026/09/17 by WonJin - feat: 포인트 변경을 PointService(원자 UPDATE + 이력)에 위임 — 로그인 적립이 엔티티 값에 더해 동시 차감을 덮어쓰던 구조 제거, UserPort 포인트 차감·이력·복구 구현
  * @modified 2026/09/24 by WonJin - refactor: 승인 스토어 검증에서 storeId 비교 제거, 관리자 스토어 상태 변경을 단일 진입점(updateStoreStatus)으로 통합
+ * @modified 2026/09/29 by WonJin - feat: 이메일·IP 별 로그인 실패 횟수 제한 — 한도를 넘으면 BCrypt 전에 429 로 거절
  *
  * <p>
  * 회원, 스토어의 비즈니스 로직을 처리하고, 포인트 변경은 PointService 에 위임해 UserPort 로 노출한다.
@@ -55,6 +56,7 @@ public class UserService implements UserPort {
     private final PasswordHasher passwordHasher;
     private final TransactionTemplate transactionTemplate;
     private final PointService pointService;
+    private final LoginAttemptLimiter loginAttemptLimiter;
 
     public User signUp(String name, String email, String password, LocalDate birthDate, UserRole role) {
         String hashedPassword = hashPassword(password);
@@ -112,7 +114,10 @@ public class UserService implements UserPort {
 
     // 미존재 이메일·비밀번호 없는 소셜 계정·비활성 계정도 INVALID_PASSWORD로 응답해 가입 여부와 계정 유형을 숨긴다.
     // 이때도 더미 해시로 BCrypt 검증을 수행해 응답 시간으로 가입 여부를 추정하지 못하게 한다.
-    public UserLoginResponse login(UserLoginRequest request) {
+    // 실패 횟수가 한도를 넘은 이메일·IP 는 조회와 BCrypt 전에 거절한다.
+    public UserLoginResponse login(UserLoginRequest request, String clientIp) {
+        loginAttemptLimiter.checkAllowed(request.email(), clientIp);
+
         Optional<User> found = Objects.requireNonNull(
                 transactionTemplate.execute(status -> userRepository.findByEmail(request.email()))
         );
@@ -120,18 +125,24 @@ public class UserService implements UserPort {
         User user = found.filter(this::canLoginWithPassword).orElse(null);
         if (user == null) {
             passwordHasher.verifyDummy(request.password());
-            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
+            throw loginFailure(request.email(), clientIp);
         }
 
         if (!passwordHasher.matches(request.password(), user.getPassword())) {
-            throw new BusinessException(ErrorCode.INVALID_PASSWORD);
+            throw loginFailure(request.email(), clientIp);
         }
+        loginAttemptLimiter.reset(request.email());
 
         if (user.getRole() == UserRole.USER) {
             rewardLoginPoint(user.getUserId(), LocalDate.now());
         }
 
         return UserLoginResponse.from(user);
+    }
+
+    private BusinessException loginFailure(String email, String clientIp) {
+        loginAttemptLimiter.recordFailure(email, clientIp);
+        return new BusinessException(ErrorCode.INVALID_PASSWORD);
     }
 
     // 소셜 가입 계정은 비밀번호가 없고, 비활성 계정은 로그인 대상이 아니다.

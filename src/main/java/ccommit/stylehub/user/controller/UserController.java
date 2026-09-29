@@ -43,6 +43,7 @@ import java.util.Map;
  * @modified 2026/09/17 by WonJin - fix: OAuth 인가 요청에 state 발급, 콜백에서 세션 state 를 검증한 뒤에만 로그인 세션 생성(로그인 CSRF 방지)
  * @modified 2026/09/24 by WonJin - refactor: 내 스토어 조회를 /stores/me 로 변경, 승인·거절·정지를 PATCH /admin/stores/{storeId}/status 하나로 통합
  * @modified 2026/09/24 by WonJin - docs: Swagger 태그·API 요약(@Tag, @Operation) 추가
+ * @modified 2026/09/29 by WonJin - feat: 로그인 실패 횟수 제한을 위해 클라이언트 IP 전달
  *
  * <p>
  * 회원, 스토어, 관리자 API를 제공한다.
@@ -74,7 +75,8 @@ public class UserController {
     public ResponseEntity<UserLoginResponse> login(
             @Valid @RequestBody UserLoginRequest request,
             HttpServletRequest httpRequest) {
-        UserLoginResponse loginResult = userService.login(request);
+        // 운영은 앱이 요청을 직접 받아 getRemoteAddr 가 클라이언트 IP 다. 앞에 프록시를 두면 신뢰하는 프록시의 X-Forwarded-For 로 바꿔야 한다.
+        UserLoginResponse loginResult = userService.login(request, httpRequest.getRemoteAddr());
         SessionUtils.createSession(httpRequest, loginResult.userId(), loginResult.role());
         return ResponseEntity.ok(loginResult);
     }
