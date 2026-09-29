@@ -9,6 +9,7 @@ import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.entity.PaymentRefundFailure;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.event.PaymentApprovedEvent;
 import ccommit.stylehub.payment.event.PaymentFailedEvent;
@@ -64,6 +65,7 @@ import static org.mockito.Mockito.mock;
  * @modified 2026/09/17 by WonJin - test: 실패 콜백이 락 조회를 쓰고 승인 대기 결제에만 반영되는지 검증
  * @modified 2026/09/17 by WonJin - test: 승인 3단계(선점·PG 호출·반영)와 만료 직전 대조 결과(APPROVED/IN_FLIGHT/NOT_APPROVED) 검증으로 재작성
  * @modified 2026/09/17 by WonJin - test: 결제 취소가 락 조회 후 DB 반영·flush 를 PG 호출보다 먼저 하는지 검증
+ * @modified 2026/09/29 by WonJin - test: 전액 취소 이벤트가 PG 성공 뒤 발행되는지, 고아 승인 환불 실패가 기록되는지 검증
  *
  * <p>
  * PaymentService의 승인·취소·실패 콜백·만료 직전 PG 대조를 검증하는 단위 테스트이다.
@@ -93,6 +95,9 @@ class PaymentServiceTest {
 
     @Mock
     private TransactionTemplate transactionTemplate;
+
+    @Mock
+    private PaymentRefundFailureRecorder refundFailureRecorder;
 
     @InjectMocks
     private PaymentService paymentService;
@@ -500,9 +505,33 @@ class PaymentServiceTest {
             assertThatThrownBy(() -> paymentService.confirmPayment(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
                     .isInstanceOf(BusinessException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ORDER_NOT_PAYABLE);
-            then(tossClient).should().cancelPayment(eq(PAYMENT_KEY), anyString(), isNull(), isNull());
+            then(tossClient).should().cancelPayment(eq(PAYMENT_KEY), anyString(), isNull(),
+                    eq(PaymentRefundFailure.refundIdempotencyKey(PAYMENT_KEY)));
+            then(refundFailureRecorder).should(never()).record(any(), any(), any());
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.EXPIRED);
             then(eventPublisher).should(never()).publishEvent(any());
+        }
+        @Test
+        @DisplayName("만료된 주문에 들어온 승인의 자동 환불이 실패하면 재시도 대상으로 기록한다")
+        void recordsRefundFailure_whenOrphanRefundFails() {
+            // given
+            Order order = orderWithPgOrderId(1L, OrderStatus.PENDING, PG_ORDER_ID);
+            Payment payment = payment(PaymentStatus.READY, order, AMOUNT, AMOUNT);
+            given(paymentRepository.findByOrderPgOrderIdWithLock(PG_ORDER_ID)).willReturn(Optional.of(payment));
+            stubOrderLock(order);
+            willAnswer(invocation -> {
+                payment.expire();
+                order.cancelUnpaid();
+                return null;
+            }).given(tossClient).confirmPayment(PAYMENT_KEY, PG_ORDER_ID, AMOUNT);
+            BusinessException refundFailure = new BusinessException(ErrorCode.PAYMENT_CANCEL_FAILED);
+            willThrow(refundFailure).given(tossClient).cancelPayment(any(), any(), any(), any());
+
+            // when & then
+            assertThatThrownBy(() -> paymentService.confirmPayment(PAYMENT_KEY, PG_ORDER_ID, AMOUNT))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.ORDER_NOT_PAYABLE);
+            then(refundFailureRecorder).should().record(PAYMENT_KEY, PG_ORDER_ID, refundFailure);
         }
     }
 
@@ -654,7 +683,8 @@ class PaymentServiceTest {
             // then
             assertThat(result).isEqualTo(PaymentReconcileResult.NOT_APPROVED);
             assertThat(payment.getStatus()).isEqualTo(PaymentStatus.EXPIRED);
-            then(tossClient).should().cancelPayment(eq("pk-late"), anyString(), isNull(), isNull());
+            then(tossClient).should().cancelPayment(eq("pk-late"), anyString(), isNull(),
+                    eq(PaymentRefundFailure.refundIdempotencyKey("pk-late")));
         }
     }
 

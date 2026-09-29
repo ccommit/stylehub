@@ -9,6 +9,7 @@ import ccommit.stylehub.payment.client.PaymentClientFactory;
 import ccommit.stylehub.payment.dto.response.PaymentResponse;
 import ccommit.stylehub.payment.dto.response.PgPaymentSnapshot;
 import ccommit.stylehub.payment.entity.Payment;
+import ccommit.stylehub.payment.entity.PaymentRefundFailure;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import ccommit.stylehub.payment.port.PaymentPort;
 import ccommit.stylehub.payment.port.PaymentReconcileResult;
@@ -46,6 +47,7 @@ import java.time.LocalDateTime;
  * @modified 2026/09/18 by WonJin - feat: 결제 취소에 PG 멱등 키 전달, 같은 키 재요청 응답용 getPayment 추가
  * @modified 2026/09/29 by WonJin - fix: PG 취소 멱등 키를 헤더와 무관하게 결제 상태로 만들어 응답 유실 뒤 재시도의 이중 환불·영구 불일치 차단
  * @modified 2026/09/29 by WonJin - fix: 전액 취소의 재고·포인트·쿠폰 복구를 PG 취소 성공 뒤로 옮겨 PG 대기 중 재고 행 락 미점유
+ * @modified 2026/09/29 by WonJin - fix: 고아 승인 환불 실패를 기록해 재시도 스케줄러가 같은 멱등 키로 다시 환불
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -66,14 +68,13 @@ public class PaymentService implements PaymentPort {
     // 이 시간이 지난 IN_PROGRESS 결제는 응답이 유실된 것으로 보고 PG 조회 결과로 결론 낸다.
     static final Duration APPROVAL_IN_FLIGHT_GRACE = Duration.ofSeconds(60);
 
-    private static final String ORPHAN_APPROVAL_CANCEL_REASON = "결제 대기 시간이 지나 취소된 주문의 승인 건 자동 환불";
-
     private final PaymentRepository paymentRepository;
     private final PaymentClientFactory paymentClientFactory;
     private final PaymentValidator paymentValidator;
     private final ApplicationEventPublisher eventPublisher;
     private final EntityManager em;
     private final TransactionTemplate transactionTemplate;
+    private final PaymentRefundFailureRecorder refundFailureRecorder;
 
     @Override
     public void createReady(Long orderId, int totalAmount, int finalAmount) {
@@ -212,14 +213,17 @@ public class PaymentService implements PaymentPort {
         }
     }
 
-    // 만료·취소된 주문에 대해 PG 승인이 이뤄진 경우 환불한다. 실패하면 자동으로 수렴할 경로가 없어 사람이 확인해야 한다.
+    // 만료·취소된 주문에 대해 PG 승인이 이뤄진 경우 환불한다. 결제가 이미 만료로 커밋돼 이후 대조로는 다시 찾을 수 없으므로,
+    // 실패하면 기록을 남겨 재시도 스케줄러가 같은 멱등 키로 다시 환불하게 한다.
     private void refundOrphanApproval(String paymentKey, String pgOrderId) {
         try {
-            paymentClientFactory.getClient(PG_TYPE).cancelPayment(paymentKey, ORPHAN_APPROVAL_CANCEL_REASON, null, null);
+            paymentClientFactory.getClient(PG_TYPE).cancelPayment(paymentKey, PaymentRefundFailure.REFUND_REASON, null,
+                    PaymentRefundFailure.refundIdempotencyKey(paymentKey));
             log.warn("만료·취소된 주문에 승인된 결제를 환불: pgOrderId={}", pgOrderId);
         } catch (RuntimeException e) {
-            log.error("[수동 환불 필요] 만료·취소된 주문에 승인된 결제 환불 실패: pgOrderId={}, paymentKey={}",
+            log.error("만료·취소된 주문에 승인된 결제 환불 실패, 재시도 대상으로 기록: pgOrderId={}, paymentKey={}",
                     pgOrderId, paymentKey, e);
+            refundFailureRecorder.record(paymentKey, pgOrderId, e);
         }
     }
 
