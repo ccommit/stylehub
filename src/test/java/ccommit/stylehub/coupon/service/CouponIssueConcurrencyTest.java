@@ -9,6 +9,7 @@ import ccommit.stylehub.coupon.entity.CouponEvent;
 import ccommit.stylehub.coupon.enums.DiscountType;
 import ccommit.stylehub.coupon.repository.CouponEventRepository;
 import ccommit.stylehub.coupon.repository.CouponIssueCounter;
+import ccommit.stylehub.coupon.scheduler.CouponCounterReconcileScheduler;
 import ccommit.stylehub.user.entity.User;
 import ccommit.stylehub.user.enums.UserRole;
 import ccommit.stylehub.user.repository.UserRepository;
@@ -72,6 +73,9 @@ class CouponIssueConcurrencyTest {
 
     @Autowired
     private CouponIssueCounter couponIssueCounter;
+
+    @Autowired
+    private CouponCounterReconcileScheduler reconcileScheduler;
 
     @Autowired
     private CouponEventRepository couponEventRepository;
@@ -248,6 +252,32 @@ class CouponIssueConcurrencyTest {
         assertThat(issuedRows(eventId)).isEqualTo(15);
         assertThat(issuedCount(eventId)).isEqualTo(15);
         assertThat(counter(eventId)).isEqualTo("0");
+    }
+
+    @Test
+    @DisplayName("자리가 샌 채로 두 회차 연속 어긋나면 대조 스케줄러가 카운터를 되돌려, 매진으로 막혔던 남은 쿠폰과 샌 사용자의 발급이 풀린다")
+    void reconcileSchedulerRecoversLeakedSlot() {
+        Long eventId = createEvent(2);
+        List<Long> users = createUsers(3);
+        Long leakedUser = users.get(0);
+
+        // 자리를 확보한 뒤 DB 커밋 전에 서버가 종료된 상황: Redis 에만 예약이 남는다.
+        LocalDateTime expiredAt = couponEventRepository.findById(eventId).orElseThrow().getExpiredAt();
+        couponIssueCounter.reserve(eventId, leakedUser, expiredAt);
+        assertThat(issueAndGetErrorCode(eventId, users.get(1))).isNull();
+        assertThat(issueAndGetErrorCode(eventId, users.get(2)))
+                .as("DB 에는 1장이 남았는데 Redis 는 매진으로 본다")
+                .isEqualTo(ErrorCode.COUPON_SOLD_OUT);
+
+        reconcileScheduler.reconcileActiveEvents();
+        assertThat(counter(eventId)).as("한 번 어긋난 것만으로는 진행 중 발급과 구분할 수 없어 되돌리지 않는다").isEqualTo("0");
+        reconcileScheduler.reconcileActiveEvents();
+
+        assertThat(counter(eventId)).isNull();
+        assertThat(issueAndGetErrorCode(eventId, leakedUser)).isNull();
+        assertThat(issueAndGetErrorCode(eventId, users.get(2))).isEqualTo(ErrorCode.COUPON_SOLD_OUT);
+        assertThat(issuedRows(eventId)).isEqualTo(2);
+        assertThat(issuedCount(eventId)).isEqualTo(2);
     }
 
     @Test
