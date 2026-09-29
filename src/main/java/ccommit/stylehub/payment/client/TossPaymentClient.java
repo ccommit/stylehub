@@ -27,6 +27,7 @@ import java.util.Map;
  * @created 2026/04/01
  * @modified 2026/09/17 by WonJin - fix: 승인 실패를 PG 거절(4xx)과 결과 불명(5xx·타임아웃)으로 구분
  * @modified 2026/09/18 by WonJin - feat: 결제 취소에 Idempotency-Key 헤더 전달 (응답 유실 후 재시도 시 이중 환불 차단)
+ * @modified 2026/09/29 by WonJin - fix: 승인 응답의 status·totalAmount 를 확인해 DONE·요청 금액이 아니면 결과 불명으로 처리
  *
  * <p>
  * 토스페이먼츠 결제 승인/취소 API를 호출하는 클라이언트이다.
@@ -46,6 +47,7 @@ public class TossPaymentClient implements PaymentClient {
     private final RestTemplate restTemplate;
 
     @Override
+    @SuppressWarnings("unchecked")
     public void confirmPayment(String paymentKey, String orderId, Integer amount) {
         HttpHeaders headers = createAuthHeaders();
 
@@ -55,13 +57,13 @@ public class TossPaymentClient implements PaymentClient {
                 "amount", amount
         );
 
+        Map<String, Object> result;
         try {
-            restTemplate.postForEntity(
+            result = restTemplate.postForObject(
                     tossProperties.getConfirmUrl(),
                     new HttpEntity<>(body, headers),
-                    String.class
+                    Map.class
             );
-            log.info("토스 결제 승인 성공: orderId={}", orderId);
         } catch (HttpClientErrorException e) {
             // 4xx 는 PG 가 요청을 거절했다는 명확한 응답이다. 결제는 일어나지 않았다.
             log.error("토스 결제 승인 거절: orderId={}, status={}, body={}", orderId, e.getStatusCode(), e.getResponseBodyAsString());
@@ -71,6 +73,21 @@ public class TossPaymentClient implements PaymentClient {
             log.error("토스 결제 승인 결과 불명: orderId={}, error={}", orderId, e.getMessage());
             throw new BusinessException(ErrorCode.PAYMENT_RESULT_UNKNOWN);
         }
+        verifyApproved(orderId, amount, result);
+        log.info("토스 결제 승인 성공: orderId={}", orderId);
+    }
+
+    // 2xx 라도 가상계좌 입금 대기처럼 돈이 들어오지 않은 상태이거나 금액이 다르면 결제 완료로 볼 수 없다.
+    // 결과를 모르는 것으로 처리해 결제를 IN_PROGRESS 로 남기고, 만료 직전 PG 대조가 DONE 여부와 금액으로 결론 내게 한다.
+    private void verifyApproved(String orderId, Integer amount, Map<String, Object> result) {
+        Object status = result == null ? null : result.get("status");
+        Object totalAmount = result == null ? null : result.get("totalAmount");
+        if (APPROVED_STATUS.equals(status) && totalAmount instanceof Number number && number.intValue() == amount) {
+            return;
+        }
+        log.error("토스 결제 승인 응답이 완료 상태가 아님: orderId={}, status={}, totalAmount={}, requested={}",
+                orderId, status, totalAmount, amount);
+        throw new BusinessException(ErrorCode.PAYMENT_RESULT_UNKNOWN);
     }
 
     // cancelAmount가 null이면 전액 취소, 있으면 부분 취소. 토스는 같은 Idempotency-Key 재요청에 첫 응답을 그대로 돌려준다(15일 유효).
