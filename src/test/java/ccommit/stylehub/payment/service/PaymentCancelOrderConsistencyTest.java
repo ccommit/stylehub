@@ -34,6 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,6 +46,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -192,6 +194,41 @@ class PaymentCancelOrderConsistencyTest {
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_CANCEL_FAILED);
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
         assertThat(orderStatusOf(paid.orderId())).isEqualTo(OrderStatus.PREPARING);
+        assertThat(stockOf(paid.optionId())).isEqualTo(INITIAL_STOCK - 1);
+    }
+
+    @Test
+    @DisplayName("전액 취소가 PG 응답을 기다리는 동안 같은 옵션의 다른 주문은 재고 행 락에 막히지 않는다")
+    void doesNotHoldStockLockWhileWaitingForPg() throws Exception {
+        // given
+        PaidOrder paid = placePaidOrder();
+        OrderFixtureFactory.Fixture otherBuyer = fixtureFactory.create(INITIAL_STOCK);
+        CountDownLatch pgEntered = new CountDownLatch(1);
+        CountDownLatch releasePg = new CountDownLatch(1);
+        willAnswer(invocation -> {
+            pgEntered.countDown();
+            releasePg.await(30, TimeUnit.SECONDS);
+            return null;
+        }).given(paymentClient).cancelPayment(any(), any(), any(), any());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            // when
+            Future<?> cancel = executor.submit(() ->
+                    paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null));
+            assertThat(pgEntered.await(10, TimeUnit.SECONDS)).isTrue();
+            Future<OrderResponse> otherOrder = executor.submit(() -> orderService.placeOrder(otherBuyer.userId(),
+                    new OrderCreateRequest(otherBuyer.addressId(), List.of(new OrderDetailRequest(paid.optionId(), 1)), null)));
+
+            // then
+            assertThat(otherOrder.get(5, TimeUnit.SECONDS)).isNotNull();
+            releasePg.countDown();
+            cancel.get(10, TimeUnit.SECONDS);
+        } finally {
+            releasePg.countDown();
+            executor.shutdownNow();
+        }
+        assertThat(orderStatusOf(paid.orderId())).isEqualTo(OrderStatus.CANCELLED);
         assertThat(stockOf(paid.optionId())).isEqualTo(INITIAL_STOCK - 1);
     }
 

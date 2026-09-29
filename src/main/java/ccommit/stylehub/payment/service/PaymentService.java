@@ -45,6 +45,7 @@ import java.time.LocalDateTime;
  * @modified 2026/09/17 by WonJin - fix: 결제 취소를 결제·주문 행 락 → 검증 → DB 반영(flush) → PG 취소 순서로 변경 (PG 환불 후 DB 롤백·동시 부분 취소 중복 환불 차단)
  * @modified 2026/09/18 by WonJin - feat: 결제 취소에 PG 멱등 키 전달, 같은 키 재요청 응답용 getPayment 추가
  * @modified 2026/09/29 by WonJin - fix: PG 취소 멱등 키를 헤더와 무관하게 결제 상태로 만들어 응답 유실 뒤 재시도의 이중 환불·영구 불일치 차단
+ * @modified 2026/09/29 by WonJin - fix: 전액 취소의 재고·포인트·쿠폰 복구를 PG 취소 성공 뒤로 옮겨 PG 대기 중 재고 행 락 미점유
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -270,9 +271,9 @@ public class PaymentService implements PaymentPort {
         }
     }
 
-    // DB 반영을 PG 취소보다 먼저 끝내 PG 환불 후 DB 만 롤백되는 불일치를 막고, 동시 부분 취소의 중복 환불을 막으려 PG 호출 동안 락을 유지한다.
-    // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
-    // PG 응답이 유실돼 여기서 롤백되면 PG 에서만 환불됐을 수 있다. 재시도는 결제 상태가 같아 같은 멱등 키가 되므로 PG 가 첫 결과를 돌려줘 이중 환불 없이 DB 가 따라간다.
+    // 결제 반영을 PG 취소보다 먼저 끝내 PG 환불 후 DB 만 롤백되는 경우를 줄이고, 동시 부분 취소의 중복 환불을 막으려 PG 호출 동안 결제·주문 행 락을 유지한다.
+    // 재고·포인트·쿠폰 복구는 PG 성공 뒤에 해, PG 를 기다리는 동안 같은 상품의 주문이 재고 행 락에 막히지 않게 한다. 취소 가능 여부는 주문 행을 잠근 채 이미 검증했다.
+    // PG 성공 뒤 복구나 커밋이 실패해 롤백되면 PG 에서만 환불된 상태가 된다. 재시도는 결제 상태가 같아 같은 멱등 키가 되므로 PG 가 첫 결과를 돌려줘 이중 환불 없이 DB 가 따라간다.
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
                                          String cancelReason, Integer cancelAmount) {
@@ -284,13 +285,16 @@ public class PaymentService implements PaymentPort {
         paymentValidator.validateCancel(payment, cancelAmount);
         String pgIdempotencyKey = payment.cancelIdempotencyKey(cancelAmount);
 
-        PaymentResponse response = applyCancellation(payment, cancelReason, cancelAmount);
+        payment.cancel(cancelReason, cancelAmount);
         em.flush();
 
         paymentClientFactory.getClient(PG_TYPE)
                 .cancelPayment(payment.getPaymentKey(), cancelReason, cancelAmount, pgIdempotencyKey);
 
-        return response;
+        if (payment.isFullyCanceled()) {
+            eventPublisher.publishEvent(new PaymentFullyCanceledEvent(payment.getOrder().getOrderId()));
+        }
+        return PaymentResponse.from(payment);
     }
 
     // 같은 Idempotency-Key 로 다시 온 취소 요청에 현재 결제 상태를 돌려준다. 키는 요청자별이라 원래 요청의 권한 검증을 이미 통과했다.
@@ -299,16 +303,6 @@ public class PaymentService implements PaymentPort {
         return paymentRepository.findById(paymentId)
                 .map(PaymentResponse::from)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
-    }
-
-    // 토스 취소 성공 후 우리 DB에 취소를 반영한다.
-    private PaymentResponse applyCancellation(Payment payment, String cancelReason, Integer cancelAmount) {
-        payment.cancel(cancelReason, cancelAmount);
-        if (payment.isFullyCanceled()) {
-            eventPublisher.publishEvent(new PaymentFullyCanceledEvent(payment.getOrder().getOrderId()));
-        }
-
-        return PaymentResponse.from(payment);
     }
 
     // 인증 없이 열린 콜백이라 결제창 단계(READY) 결제에만 반영한다. IN_PROGRESS 는 이미 PG 에 승인을 요청한 상태라 반영하면 승인된 결제를 잃는다.

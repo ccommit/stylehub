@@ -122,7 +122,7 @@ public class OrderService {
         return buildOrderResponse(savedOrder, savedDetails);
     }
 
-    // 결제 취소 트랜잭션에 참여하므로 여기서 거절되면 PG 호출 전에 전체가 롤백된다. 사용 포인트·재고·쿠폰을 함께 복구한다.
+    // 결제 취소 트랜잭션에서 PG 취소가 성공한 뒤 호출된다. 여기서 실패해 롤백되면 같은 멱등 키 재시도로 수렴한다. 사용 포인트·재고·쿠폰을 함께 복구한다.
     // 만료 처리가 이 경로를 타면 결제된 주문을 환불 없이 취소하게 되므로 결제 전 취소(cancelUnpaidOrder)와 나눈다.
     @Transactional
     public void cancelPaidOrder(Long orderId) {

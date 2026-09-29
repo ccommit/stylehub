@@ -242,7 +242,7 @@ class PaymentServiceTest {
 
         // PG 실패 시의 롤백은 트랜잭션이 하므로 실제 DB로 PaymentCancelOrderConsistencyTest에서 검증한다.
         @Test
-        @DisplayName("DB 반영(전액취소 이벤트 → 주문 취소)과 flush 를 마친 뒤 PG 취소를 호출하고, PG 실패는 그대로 전파한다")
+        @DisplayName("결제 반영과 flush 를 마친 뒤 PG 취소를 호출하고, PG 가 실패하면 주문 취소·자원 복구 이벤트 없이 실패를 전파한다")
         void DB반영후_PG를_호출하고_실패는_전파한다() {
             // given
             Order order = orderWithStatus(1L, OrderStatus.PREPARING);
@@ -258,10 +258,30 @@ class PaymentServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(ex -> ((BusinessException) ex).getErrorCode())
                     .isEqualTo(ErrorCode.PAYMENT_CANCEL_FAILED);
-            InOrder inOrder = inOrder(eventPublisher, em, tossClient);
-            inOrder.verify(eventPublisher).publishEvent(new PaymentFullyCanceledEvent(1L));
+            InOrder inOrder = inOrder(em, tossClient);
             inOrder.verify(em).flush();
             inOrder.verify(tossClient).cancelPayment(any(), any(), any(), any());
+            verify(eventPublisher, never()).publishEvent(any(PaymentFullyCanceledEvent.class));
+        }
+
+        @Test
+        @DisplayName("전액 취소의 주문 취소·자원 복구 이벤트는 PG 취소가 성공한 뒤에 발행된다")
+        void 전액취소_이벤트는_PG성공후_발행된다() {
+            // given
+            Order order = orderWithStatus(1L, OrderStatus.PREPARING);
+            Payment payment = payment(PaymentStatus.DONE, order, 10000, 10000);
+            when(paymentRepository.findByIdWithLock(1L)).thenReturn(Optional.of(payment));
+            stubOrderLock(order);
+            when(paymentClientFactory.getClient("TOSS")).thenReturn(tossClient);
+
+            // when
+            paymentService.cancelPayment(1L, REQUESTER_ID, UserRole.USER, "사유", null);
+
+            // then
+            InOrder inOrder = inOrder(em, tossClient, eventPublisher);
+            inOrder.verify(em).flush();
+            inOrder.verify(tossClient).cancelPayment(any(), any(), any(), any());
+            inOrder.verify(eventPublisher).publishEvent(new PaymentFullyCanceledEvent(1L));
         }
     }
 
