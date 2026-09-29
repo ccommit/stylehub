@@ -32,6 +32,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -156,6 +157,44 @@ class PaymentCancelIdempotencyTest {
     }
 
     @Test
+    @DisplayName("Idempotency-Key 없이 보낸 취소가 PG 응답 유실로 롤백된 뒤 다시 와도 PG 에는 같은 멱등 키가 전달돼 이중 환불되지 않는다")
+    void resendsSamePgKey_withoutClientKey() throws Exception {
+        // given
+        PaidPayment paid = placePaidPayment();
+        willThrow(new BusinessException(ErrorCode.PAYMENT_CANCEL_FAILED))
+                .willDoNothing()
+                .given(paymentClient).cancelPayment(any(), any(), any(), any());
+
+        // when
+        MockHttpServletResponse failed = cancel(paid, PARTIAL_AMOUNT, null);
+        MockHttpServletResponse retried = cancel(paid, PARTIAL_AMOUNT, null);
+
+        // then
+        assertThat(failed.getStatus()).isEqualTo(502);
+        assertThat(retried.getStatus()).isEqualTo(200);
+        assertThat(balanceOf(paid)).isEqualTo(paid.totalAmount() - PARTIAL_AMOUNT);
+
+        List<String> pgKeys = capturePgKeys(2);
+        assertThat(pgKeys.get(0)).isNotNull().isEqualTo(pgKeys.get(1));
+    }
+
+    @Test
+    @DisplayName("Idempotency-Key 없이 같은 금액을 두 번 부분 취소하면 잔액이 달라 PG 에 서로 다른 멱등 키가 전달된다")
+    void usesNewPgKey_forNextCancelWithoutClientKey() throws Exception {
+        // given
+        PaidPayment paid = placePaidPayment();
+
+        // when
+        cancel(paid, PARTIAL_AMOUNT, null);
+        cancel(paid, PARTIAL_AMOUNT, null);
+
+        // then
+        assertThat(balanceOf(paid)).isEqualTo(paid.totalAmount() - PARTIAL_AMOUNT * 2);
+        List<String> pgKeys = capturePgKeys(2);
+        assertThat(pgKeys.get(0)).isNotNull().isNotEqualTo(pgKeys.get(1));
+    }
+
+    @Test
     @DisplayName("다른 키로 같은 금액을 두 번 부분 취소하면 두 번 모두 취소되고 PG 에는 서로 다른 멱등 키가 전달된다")
     void cancelsTwice_forDifferentKeys() throws Exception {
         // given
@@ -206,14 +245,16 @@ class PaymentCancelIdempotencyTest {
         MockHttpSession session = new MockHttpSession();
         session.setAttribute(SessionConstants.SESSION_USER_ID, paid.buyerId());
         session.setAttribute(SessionConstants.SESSION_USER_ROLE, UserRole.USER);
-        return mockMvc.perform(post(CANCEL_URL, paid.paymentId())
-                        .session(session)
-                        .header(IdempotencyRequest.HEADER, idempotencyKey)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"cancelReason": "%s", "cancelAmount": %d}
-                                """.formatted(REASON, amount)))
-                .andReturn().getResponse();
+        MockHttpServletRequestBuilder request = post(CANCEL_URL, paid.paymentId())
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"cancelReason": "%s", "cancelAmount": %d}
+                        """.formatted(REASON, amount));
+        if (idempotencyKey != null) {
+            request.header(IdempotencyRequest.HEADER, idempotencyKey);
+        }
+        return mockMvc.perform(request).andReturn().getResponse();
     }
 
     private List<String> capturePgKeys(int expectedCalls) {

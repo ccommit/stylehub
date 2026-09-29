@@ -44,6 +44,7 @@ import java.time.LocalDateTime;
  * @modified 2026/09/17 by WonJin - fix: 승인을 선점·PG 호출·반영 3단계로 분리(PG 호출 중 커넥션·락 미점유), 만료·취소된 주문 승인 차단, 만료 직전 대조 결과 세분화
  * @modified 2026/09/17 by WonJin - fix: 결제 취소를 결제·주문 행 락 → 검증 → DB 반영(flush) → PG 취소 순서로 변경 (PG 환불 후 DB 롤백·동시 부분 취소 중복 환불 차단)
  * @modified 2026/09/18 by WonJin - feat: 결제 취소에 PG 멱등 키 전달, 같은 키 재요청 응답용 getPayment 추가
+ * @modified 2026/09/29 by WonJin - fix: PG 취소 멱등 키를 헤더와 무관하게 결제 상태로 만들어 응답 유실 뒤 재시도의 이중 환불·영구 불일치 차단
  *
  * <p>
  * 결제 승인, 취소, 부분 취소를 담당한다.
@@ -271,16 +272,17 @@ public class PaymentService implements PaymentPort {
 
     // DB 반영을 PG 취소보다 먼저 끝내 PG 환불 후 DB 만 롤백되는 불일치를 막고, 동시 부분 취소의 중복 환불을 막으려 PG 호출 동안 락을 유지한다.
     // 권한을 먼저 확인해 타인에게 주문·결제 상태가 노출되지 않게 한다
-    // PG 응답이 유실돼 여기서 롤백되면 PG 에서만 환불됐을 수 있다. 같은 pgIdempotencyKey 로 재시도하면 PG 가 첫 결과를 돌려줘 이중 환불 없이 DB 가 따라간다.
+    // PG 응답이 유실돼 여기서 롤백되면 PG 에서만 환불됐을 수 있다. 재시도는 결제 상태가 같아 같은 멱등 키가 되므로 PG 가 첫 결과를 돌려줘 이중 환불 없이 DB 가 따라간다.
     @Transactional
     public PaymentResponse cancelPayment(Long paymentId, Long requesterId, UserRole requesterRole,
-                                         String cancelReason, Integer cancelAmount, String pgIdempotencyKey) {
+                                         String cancelReason, Integer cancelAmount) {
         Payment payment = paymentRepository.findByIdWithLock(paymentId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
         lockOrder(payment);
 
         paymentValidator.validateCancelAuthority(payment, requesterId, requesterRole);
         paymentValidator.validateCancel(payment, cancelAmount);
+        String pgIdempotencyKey = payment.cancelIdempotencyKey(cancelAmount);
 
         PaymentResponse response = applyCancellation(payment, cancelReason, cancelAmount);
         em.flush();

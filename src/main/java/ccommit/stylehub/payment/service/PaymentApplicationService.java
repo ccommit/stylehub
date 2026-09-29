@@ -29,11 +29,10 @@ public class PaymentApplicationService {
                                          String idempotencyKey, PaymentCancelRequest request) {
         IdempotencyRequest idempotency = IdempotencyRequest.of(requesterId, IdempotentOperation.PAYMENT_CANCEL,
                 idempotencyKey, paymentId, request.cancelReason(), request.cancelAmount());
-        String pgIdempotencyKey = idempotency == null ? null : idempotency.derivedKey();
 
         return idempotencyGuard.execute(idempotency,
                 () -> paymentService.cancelPayment(paymentId, requesterId, requesterRole,
-                        request.cancelReason(), request.cancelAmount(), pgIdempotencyKey),
+                        request.cancelReason(), request.cancelAmount()),
                 PaymentResponse::paymentId,
                 paymentService::getPayment);
     }

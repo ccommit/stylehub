@@ -58,17 +58,4 @@ class IdempotencyRequestTest {
         assertThat(first.requestHash()).isEqualTo(same.requestHash()).hasSize(64);
         assertThat(first.requestHash()).isNotEqualTo(otherAmount.requestHash());
     }
-
-    @Test
-    @DisplayName("PG 멱등 키는 같은 사용자·키·요청이면 같고, 키나 요청 내용이 바뀌면 달라진다")
-    void derivesStablePgKey() {
-        IdempotencyRequest first = IdempotencyRequest.of(USER_ID, IdempotentOperation.PAYMENT_CANCEL, KEY, 10L, "사유", 1000);
-        IdempotencyRequest retry = IdempotencyRequest.of(USER_ID, IdempotentOperation.PAYMENT_CANCEL, KEY, 10L, "사유", 1000);
-        IdempotencyRequest otherKey = IdempotencyRequest.of(USER_ID, IdempotentOperation.PAYMENT_CANCEL, "other-key", 10L, "사유", 1000);
-        IdempotencyRequest otherAmount = IdempotencyRequest.of(USER_ID, IdempotentOperation.PAYMENT_CANCEL, KEY, 10L, "사유", 2000);
-
-        assertThat(first.derivedKey()).isEqualTo(retry.derivedKey());
-        assertThat(first.derivedKey()).isNotEqualTo(otherKey.derivedKey());
-        assertThat(first.derivedKey()).isNotEqualTo(otherAmount.derivedKey());
-    }
 }

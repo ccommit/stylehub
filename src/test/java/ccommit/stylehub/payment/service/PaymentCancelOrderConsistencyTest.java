@@ -40,6 +40,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -130,13 +133,13 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.PREPARING);
 
         // when
-        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null);
+        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null);
 
         // then
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
         assertThat(orderStatusOf(paid.orderId())).isEqualTo(OrderStatus.CANCELLED);
         assertThat(stockOf(paid.optionId())).isEqualTo(INITIAL_STOCK);
-        then(paymentClient).should(times(1)).cancelPayment(paid.paymentKey(), REASON, null, null);
+        then(paymentClient).should(times(1)).cancelPayment(eq(paid.paymentKey()), eq(REASON), isNull(), anyString());
     }
 
     @Test
@@ -149,7 +152,7 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.DELIVERED);
 
         // when
-        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null);
+        paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null);
 
         // then
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
@@ -166,7 +169,7 @@ class PaymentCancelOrderConsistencyTest {
         changeStatus(paid, OrderStatus.SHIPPING);
 
         // when & then
-        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null))
+        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CANCEL_NOT_ALLOWED_SHIPPING);
         then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
@@ -184,7 +187,7 @@ class PaymentCancelOrderConsistencyTest {
                 .given(paymentClient).cancelPayment(any(), any(), any(), any());
 
         // when & then
-        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null, null))
+        assertThatThrownBy(() -> paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.PAYMENT_CANCEL_FAILED);
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.DONE);
@@ -209,7 +212,7 @@ class PaymentCancelOrderConsistencyTest {
             executor.submit(() -> {
                 try {
                     start.await();
-                    paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, 6000, null);
+                    paymentService.cancelPayment(paid.paymentId(), paid.buyerId(), UserRole.USER, REASON, 6000);
                     success.incrementAndGet();
                 } catch (BusinessException e) {
                     failures.computeIfAbsent(e.getErrorCode(), code -> new AtomicInteger()).incrementAndGet();
