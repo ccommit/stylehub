@@ -6,6 +6,7 @@ import ccommit.stylehub.common.exception.ErrorCode;
 import ccommit.stylehub.coupon.enums.CouponType;
 import ccommit.stylehub.coupon.enums.DiscountType;
 import ccommit.stylehub.user.entity.User;
+import jakarta.persistence.CheckConstraint;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -36,6 +37,7 @@ import java.util.Map;
  * @modified 2026/05/08 by WonJin - feat: calculateDiscount 에 minOrderAmount 검증 추가 (쿠폰 사용 주문 시 최소 주문 금액 미달 거절)
  * @modified 2026/09/15 by WonJin - refactor: increaseIssuedCount 를 조건부 UPDATE 로 이관하고 남은 수량 계산 메서드 추가
  * @modified 2026/09/17 by WonJin - fix: 쿠폰 유형에 따라 할인 기준 금액을 고르는 discountBaseAmount 추가 (스토어 쿠폰은 발행 스토어 상품 금액만)
+ * @modified 2026/09/29 by WonJin - feat: 발급 수가 발급 한도를 넘지 않게 막는 CHECK 제약 선언
  *
  * <p>
  * 관리자 또는 스토어가 발행하는 쿠폰 이벤트를 관리한다.
@@ -45,7 +47,9 @@ import java.util.Map;
  */
 
 @Entity
-@Table(name = "coupon_events")
+// 발급 수 증가는 조건부 UPDATE 가 한도를 지키지만, 수량 수정 등 다른 경로에서도 발급 수가 한도를 넘지 않게 DB 가 막는다.
+@Table(name = "coupon_events",
+        check = @CheckConstraint(name = "chk_coupon_events_issued_within_limit", constraint = "issued_count <= issue_count"))
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

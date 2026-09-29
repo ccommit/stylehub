@@ -54,6 +54,8 @@ import static org.mockito.Mockito.never;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class UserServiceTest {
 
+    private static final String CLIENT_IP = "127.0.0.1";
+
     @Mock
     private UserRepository userRepository;
 
@@ -65,6 +67,9 @@ class UserServiceTest {
 
     @Mock
     private PointService pointService;
+
+    @Mock
+    private LoginAttemptLimiter loginAttemptLimiter;
 
     @InjectMocks
     private UserService userService;
@@ -91,7 +96,7 @@ class UserServiceTest {
             given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
 
             // when
-            UserLoginResponse response = userService.login(request);
+            UserLoginResponse response = userService.login(request, CLIENT_IP);
 
             // then
             assertThat(response.userId()).isEqualTo(1L);
@@ -118,7 +123,7 @@ class UserServiceTest {
             given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
 
             // when
-            UserLoginResponse response = userService.login(request);
+            UserLoginResponse response = userService.login(request, CLIENT_IP);
 
             // then
             assertThat(response.role()).isEqualTo(UserRole.STORE);
@@ -134,7 +139,7 @@ class UserServiceTest {
             given(userRepository.findByEmail("none@test.com")).willReturn(Optional.empty());
 
             // when / then
-            assertThatThrownBy(() -> userService.login(request))
+            assertThatThrownBy(() -> userService.login(request, CLIENT_IP))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
@@ -156,7 +161,7 @@ class UserServiceTest {
             given(userRepository.findByEmail("social@test.com")).willReturn(Optional.of(socialUser));
 
             // when / then
-            assertThatThrownBy(() -> userService.login(request))
+            assertThatThrownBy(() -> userService.login(request, CLIENT_IP))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
@@ -179,7 +184,7 @@ class UserServiceTest {
             given(passwordHasher.matches("raw-pw", "hashed-pw")).willReturn(true);
 
             // when / then
-            assertThatThrownBy(() -> userService.login(request))
+            assertThatThrownBy(() -> userService.login(request, CLIENT_IP))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);
@@ -202,7 +207,7 @@ class UserServiceTest {
             given(passwordHasher.matches("wrong-pw", "hashed-pw")).willReturn(false);
 
             // when / then
-            assertThatThrownBy(() -> userService.login(request))
+            assertThatThrownBy(() -> userService.login(request, CLIENT_IP))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.INVALID_PASSWORD);

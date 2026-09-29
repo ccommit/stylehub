@@ -2,6 +2,7 @@ package ccommit.stylehub.payment.entity;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.common.util.HashUtils;
 import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.payment.enums.PaymentStatus;
 import jakarta.persistence.Column;
@@ -31,6 +32,7 @@ import java.time.LocalDateTime;
  * @modified 2026/03/21 08:17 by WonJin - refactor: bwj 패키지명 ccommit으로 변경
  * @modified 2026/09/17 by WonJin - fix: 승인 대기 상태에서만 실패 처리(abort)되도록 불변식 추가
  * @modified 2026/09/17 by WonJin - fix: 승인 선점(IN_PROGRESS)·되돌림·만료 전이 추가, 승인은 대기 상태에서만 허용
+ * @modified 2026/09/29 by WonJin - feat: 잔액·금액 기반 취소 멱등 키 생성 추가
  *
  * <p>
  * 주문에 대한 결제 정보를 관리한다.
@@ -179,6 +181,12 @@ public class Payment {
         }
         this.cancelReason = reason;
         this.updatedAt = LocalDateTime.now();
+    }
+
+    // 같은 잔액에서 같은 금액을 취소하면 누가 몇 번 재시도해도 같은 키가 되고, 취소가 반영돼 잔액이 바뀌면 다음 취소는 새 키를 쓴다.
+    public String cancelIdempotencyKey(Integer cancelAmount) {
+        String amount = cancelAmount == null ? "FULL" : String.valueOf(cancelAmount);
+        return HashUtils.sha256Hex("cancel|" + this.paymentKey + "|" + this.balanceAmount + "|" + amount);
     }
 
     public boolean isFullyCanceled() {

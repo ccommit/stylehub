@@ -91,7 +91,7 @@ class LoginPointPersistenceTest {
         assertThat(reload(userId).getLastLoginDate()).isNull();
 
         // when — login() 이 내부적으로 rewardLoginPoint() 를 호출한다
-        userService.login(new UserLoginRequest(signedUp.getEmail(), rawPassword()));
+        userService.login(new UserLoginRequest(signedUp.getEmail(), rawPassword()), "127.0.0.1");
 
         // then — 응답이 아니라 DB 를 다시 읽어 확인한다
         User reloaded = reload(userId);
@@ -129,7 +129,7 @@ class LoginPointPersistenceTest {
         int afterFirst = reload(userId).getPointBalance();
 
         // when — 같은 날 다시 로그인
-        userService.login(new UserLoginRequest(signedUp.getEmail(), rawPassword()));
+        userService.login(new UserLoginRequest(signedUp.getEmail(), rawPassword()), "127.0.0.1");
 
         // then — 잔액이 그대로이고 이력도 늘지 않아야 한다
         assertThat(reload(userId).getPointBalance()).isEqualTo(afterFirst);

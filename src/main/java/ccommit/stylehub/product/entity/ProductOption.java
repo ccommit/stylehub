@@ -1,5 +1,6 @@
 package ccommit.stylehub.product.entity;
 
+import jakarta.persistence.CheckConstraint;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -28,6 +29,7 @@ import java.util.Objects;
  * @modified 2026/03/27 by WonJin - feat: 주문 시 재고 차감/복구 메서드 추가
  * @modified 2026/09/17 by WonJin - fix: isOwnedBy 추가 (재고 변경 요청의 옵션이 요청 상품·스토어에 속하는지 검증)
  * @modified 2026/09/17 by WonJin - fix: isSoldOut 추가 (판매 가능 여부가 바뀌는 순간에만 상품 상세 캐시를 무효화하기 위한 판단)
+ * @modified 2026/09/29 by WonJin - feat: 재고 음수를 막는 CHECK 제약 선언
  *
  * <p>
  * 상품의 색상/사이즈별 옵션과 재고를 관리한다.
@@ -36,7 +38,9 @@ import java.util.Objects;
  */
 
 @Entity
-@Table(name = "products_options")
+// 재고 차감은 조건부 UPDATE 가 음수를 막지만, 그 경로를 거치지 않는 변경(수동 SQL, 이후 추가될 코드)까지 DB 가 막게 한다.
+@Table(name = "products_options",
+        check = @CheckConstraint(name = "chk_products_options_stock_nonnegative", constraint = "stock_quantity >= 0"))
 @Getter
 @SuperBuilder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

@@ -2,7 +2,6 @@ package ccommit.stylehub.order.scheduler;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
-import ccommit.stylehub.order.entity.Order;
 import ccommit.stylehub.order.enums.OrderStatus;
 import ccommit.stylehub.order.repository.OrderRepository;
 import ccommit.stylehub.order.service.OrderService;
@@ -45,8 +44,11 @@ public class OrderTimeoutScheduler {
     private static final int TIMEOUT_MINUTES = 10;
     private static final int BATCH_SIZE = 100;
 
-    // 한 회차는 BATCH_SIZE 건만 꺼낸다. 주기가 1분이면 분당 100건이 처리 상한이라, 그보다 많이 만료되면 적체되고 그동안 재고가 묶인다.
+    // 한 회차는 BATCH_SIZE 건만 꺼낸다. 주기가 1초라 초당 100건이 처리 상한이지만, 건마다 PG 조회를 순차로 하므로 PG 가 느리면 실제 상한은 그보다 낮다.
     private static final long POLL_DELAY_MILLIS = 1_000;
+
+    // 보정 한 번에 훑는 최대 회차. 누락이 쌓여도 BATCH_SIZE × 이 값까지는 한 번에 처리하고, 남은 주문은 다음 보정이 이어 받는다.
+    private static final int MAX_COMPENSATION_ROUNDS = 50;
 
     // 결론을 미룬 주문을 PG 에 다시 조회하기까지의 간격. 폴링 주기와 별개로, 같은 주문의 PG 재조회가 몰리지 않게 1분 뒤로 미룬다.
     private static final long RETRY_DELAY_MILLIS = 60_000;
@@ -137,18 +139,23 @@ public class OrderTimeoutScheduler {
     @Scheduled(fixedDelay = 3600000)
     public void compensateOrphanedOrders() {
         LocalDateTime expiredTime = LocalDateTime.now().minusMinutes(TIMEOUT_MINUTES);
-        List<Order> orphanedOrders = orderRepository.findExpiredOrders(
-                OrderStatus.PENDING, expiredTime, PageRequest.of(0, BATCH_SIZE)
-        );
+        long lastOrderId = 0L;
+        int found = 0;
 
-        if (orphanedOrders.isEmpty()) {
-            return;
+        for (int round = 0; round < MAX_COMPENSATION_ROUNDS; round++) {
+            List<Long> orphanedOrderIds = orderRepository.findExpiredOrderIds(
+                    OrderStatus.PENDING, expiredTime, lastOrderId, PageRequest.of(0, BATCH_SIZE)
+            );
+            if (orphanedOrderIds.isEmpty()) {
+                break;
+            }
+            orphanedOrderIds.forEach(this::expireIfUnpaid);
+            found += orphanedOrderIds.size();
+            lastOrderId = orphanedOrderIds.get(orphanedOrderIds.size() - 1);
         }
 
-        log.warn("Redis 타이머 누락 보정: {}건 발견", orphanedOrders.size());
-
-        for (Order order : orphanedOrders) {
-            expireIfUnpaid(order.getOrderId());
+        if (found > 0) {
+            log.warn("Redis 타이머 누락 보정: {}건 처리", found);
         }
     }
 }

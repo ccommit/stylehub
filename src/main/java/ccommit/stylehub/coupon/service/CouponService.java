@@ -119,7 +119,7 @@ public class CouponService implements CouponPort {
     }
 
     // 비동기 저장은 처리량 이득이 크지 않았고 실패하면 성공 응답을 받고도 쿠폰이 없을 수 있어, 응답 전에 저장을 끝낸다.
-    // 초과·중복 발급은 DB 조건부 UPDATE와 유니크 제약이 막고, 커밋 전 종료·보상 실패로 샌 자리는 resyncIssueCounter로 복구한다.
+    // 초과·중복 발급은 DB 조건부 UPDATE와 유니크 제약이 막고, 커밋 전 종료·보상 실패로 샌 자리는 CouponCounterReconcileScheduler 가 찾아 resyncIssueCounter로 복구한다.
     public void issueCoupon(User user, Long couponEventId) {
         Long userId = user.getUserId();
         rejectIfUnavailable(couponIssueCounter.precheck(couponEventId, userId));

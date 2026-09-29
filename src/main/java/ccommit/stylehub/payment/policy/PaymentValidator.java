@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
  * @modified 2026/09/17 by WonJin - fix: validateCancelAuthority 추가 — 주문자 본인/관리자만 결제 취소 허용
  * @modified 2026/09/17 by WonJin - fix: 승인 시작은 READY 결제·결제 대기 주문에서만 허용 (만료·취소된 주문 승인 차단)
  * @modified 2026/09/17 by WonJin - fix: 결제 취소 허용 주문 상태를 Order.isCancelableAfterPayment 와 일치시킴 (PG 환불 후 주문 취소 거절로 롤백되던 문제)
+ * @modified 2026/09/29 by WonJin - fix: 환불 기한 기준을 마지막 수정 시각에서 배송 완료 시각으로 변경
  *
  * <p>
  * 결제 승인/취소 전 검증 로직을 담당한다.
@@ -86,7 +87,7 @@ public class PaymentValidator {
         }
 
         if (orderStatus == OrderStatus.DELIVERED) {
-            LocalDateTime refundDeadline = order.getUpdatedAt().plusDays(REFUND_DAYS);
+            LocalDateTime refundDeadline = order.refundPeriodStartedAt().plusDays(REFUND_DAYS);
             if (LocalDateTime.now().isAfter(refundDeadline)) {
                 throw new BusinessException(ErrorCode.REFUND_PERIOD_EXPIRED);
             }

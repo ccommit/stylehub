@@ -23,7 +23,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -101,6 +103,9 @@ class OrderTimeoutSchedulerTest {
 
     @Autowired
     private OrderFixtureFactory fixtureFactory;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     /**
      * 테스트 간 isolation 보장:
@@ -252,6 +257,26 @@ class OrderTimeoutSchedulerTest {
         );
         assertThat(score).isNotNull();
         assertThat(score).isGreaterThan(System.currentTimeMillis());
+    }
+
+    @Test
+    @DisplayName("Redis 타이머가 누락된 결제 대기 주문이 한 번에 꺼내는 수(100건)보다 많아도 보정 한 번에 모두 취소된다")
+    void compensatesAllOrphanedOrdersBeyondOneBatch() {
+        // given
+        int orderCount = 150;
+        OrderFixtureFactory.Fixture fx = fixtureFactory.create(orderCount + 10);
+        List<Long> orderIds = placeOrdersAndGetIds(fx.userId(), fx.addressId(), fx.optionId(), orderCount, 1);
+        redisTemplate.delete(OrderTimeoutScheduler.ORDER_TIMEOUT_KEY);
+        jdbcTemplate.update("UPDATE orders SET created_at = ? WHERE user_id = ?",
+                LocalDateTime.now().minusMinutes(11), fx.userId());
+
+        // when
+        scheduler.compensateOrphanedOrders();
+
+        // then
+        assertThat(countByStatus(orderIds, OrderStatus.CANCELLED)).isEqualTo(orderCount);
+        assertThat(productOptionRepository.findById(fx.optionId()).orElseThrow().getStockQuantity())
+                .isEqualTo(orderCount + 10);
     }
 
     private List<Long> placeOrdersAndGetIds(Long userId, Long addressId, Long optionId, int count, int qtyPerOrder) {

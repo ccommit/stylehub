@@ -2,18 +2,16 @@ package ccommit.stylehub.common.idempotency;
 
 import ccommit.stylehub.common.exception.BusinessException;
 import ccommit.stylehub.common.exception.ErrorCode;
+import ccommit.stylehub.common.util.HashUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * @author WonJin Bae
  * @created 2026/09/18
+ * @modified 2026/09/29 by WonJin - refactor: PG 멱등 키 파생을 결제 상태 기반 키로 옮기며 derivedKey 제거
  *
  * <p>
  * 한 사용자가 한 작업에 보낸 Idempotency-Key 와 요청 내용의 해시를 묶는다.
@@ -35,20 +33,6 @@ public record IdempotencyRequest(Long userId, IdempotentOperation operation, Str
             throw new BusinessException(ErrorCode.INVALID_IDEMPOTENCY_KEY);
         }
         String canonical = Arrays.stream(requestParts).map(String::valueOf).collect(Collectors.joining("|"));
-        return new IdempotencyRequest(userId, operation, key, sha256(canonical));
-    }
-
-    // 같은 사용자·작업·키·요청 내용이면 항상 같은 값이다. PG 처럼 멱등 키를 받는 외부 API 에 넘겨 재시도가 중복 처리되지 않게 한다.
-    public String derivedKey() {
-        return sha256(userId + "|" + operation + "|" + key + "|" + requestHash);
-    }
-
-    private static String sha256(String value) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest);
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 을 지원하지 않는 JVM 입니다", e);
-        }
+        return new IdempotencyRequest(userId, operation, key, HashUtils.sha256Hex(canonical));
     }
 }

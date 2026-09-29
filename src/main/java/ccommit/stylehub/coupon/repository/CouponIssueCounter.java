@@ -159,6 +159,12 @@ public class CouponIssueCounter {
         execute(couponEventId, RESET_SCRIPT, String.valueOf(issueCount), expireAtEpochSecond(eventExpiredAt));
     }
 
+    // 카운터가 아직 없으면 null 을 돌려준다. 대조용 읽기라 값을 바꾸지 않는다.
+    public Long remaining(Long couponEventId) {
+        String value = callRedis(couponEventId, () -> redisTemplate.opsForValue().get(counterKey(couponEventId)));
+        return value == null ? null : Long.valueOf(value);
+    }
+
     // 카운터만 비워 다음 발급 요청이 DB 기준 남은 수량으로 다시 만들게 한다. 발급자 기록은 유지한다.
     public void invalidate(Long couponEventId) {
         callRedis(couponEventId, () -> redisTemplate.delete(counterKey(couponEventId)));

@@ -41,6 +41,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -175,7 +178,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(jsonPath("$.paymentId").value(paid.paymentId()))
                 .andExpect(jsonPath("$.status").value(PaymentStatus.CANCELED.name()));
 
-        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null, null);
+        then(paymentClient).should().cancelPayment(eq(paid.paymentKey()), eq(CANCEL_REASON), isNull(), anyString());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
     }
 
@@ -191,7 +194,7 @@ class PaymentCancelAuthorizationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(PaymentStatus.CANCELED.name()));
 
-        then(paymentClient).should().cancelPayment(paid.paymentKey(), CANCEL_REASON, null, null);
+        then(paymentClient).should().cancelPayment(eq(paid.paymentKey()), eq(CANCEL_REASON), isNull(), anyString());
         assertThat(paymentStatusOf(paid.paymentId())).isEqualTo(PaymentStatus.CANCELED);
     }
 

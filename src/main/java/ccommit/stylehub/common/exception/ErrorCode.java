@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
  * @modified 2026/09/17 by WonJin - feat: 주문 포인트 사용 거절 코드 추가 — 잔액 부족(U008), 최소 주문 금액 미달(U009), 결제 금액 이상 사용(U010)
  * @modified 2026/09/18 by WonJin - feat: Idempotency-Key 형식 오류(C009)·다른 요청에 키 재사용(C010, 422)·같은 키 처리 중(C011) 코드 추가
  * @modified 2026/09/24 by WonJin - remove: 스토어 API 에서 storeId 입력이 사라져 쓰이지 않는 UNAUTHORIZED_STORE_ACCESS(S004) 제거
+ * @modified 2026/09/29 by WonJin - feat: 로그인 실패 횟수 초과(U011, 429) 코드 추가
  *
  * <p>
  * 애플리케이션 전역에서 사용하는 에러 코드를 정의한다.
@@ -58,6 +59,7 @@ public enum ErrorCode {
     // 금액은 Order.MIN_ORDER_AMOUNT_FOR_POINT 와 함께 바꿔야 한다
     POINT_MIN_ORDER_AMOUNT_NOT_MET(HttpStatus.BAD_REQUEST, "U009", "상품 금액 합계가 10,000원 이상인 주문에만 포인트를 사용할 수 있습니다"),
     POINT_EXCEEDS_PAYMENT_AMOUNT(HttpStatus.BAD_REQUEST, "U010", "사용 포인트는 쿠폰 할인 후 결제 금액보다 적어야 합니다"),
+    TOO_MANY_LOGIN_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "U011", "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요"),
 
     // OAuth
     ALREADY_REGISTERED_EMAIL(HttpStatus.CONFLICT, "O001", "이미 일반 회원가입으로 등록된 이메일입니다"),
