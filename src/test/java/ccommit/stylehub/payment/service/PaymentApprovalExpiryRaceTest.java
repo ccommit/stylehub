@@ -50,6 +50,7 @@ import static org.mockito.Mockito.never;
 /**
  * @author WonJin Bae
  * @created 2026/09/17
+ * @modified 2026/09/30 by WonJin - test: PG 승인 뒤 반영 전 서버 중단으로 IN_PROGRESS 에 남은 결제의 만료 대조 검증 추가
  *
  * <p>
  * 결제 승인과 주문 만료 처리가 겹치는 상황을 실제 DB·Redis·트랜잭션으로 재현하는 통합 테스트이다.
@@ -260,6 +261,32 @@ class PaymentApprovalExpiryRaceTest {
         assertThat(paymentStatusOf(placed.pgOrderId())).isEqualTo(PaymentStatus.EXPIRED);
         assertThat(orderStatusOf(placed.orderId())).isEqualTo(OrderStatus.CANCELLED);
         assertThat(stockOf(placed.optionId())).isEqualTo(INITIAL_STOCK);
+    }
+
+    @Test
+    @DisplayName("PG 가 승인한 뒤 서버가 반영 전에 멈춰 IN_PROGRESS 로 남은 결제는, 유예 시간 안이어도 만료 처리가 PG 대조로 결제 완료로 맞춘다")
+    void settlesApprovedPayment_leftInProgressByServerStop() {
+        // given — 1단계 선점은 커밋됐고, PG 승인 뒤 3단계 반영 전에 서버가 멈춘 상태. 처리되지 않는 예외로 3단계를 건너뛰어 같은 DB 상태를 만든다.
+        PlacedOrder placed = placeOrder();
+        willThrow(new IllegalStateException("서버 중단 가정"))
+                .given(paymentClient).confirmPayment(any(), any(), any());
+        assertThatThrownBy(() -> paymentService.confirmPayment("pk-stopped", placed.pgOrderId(), placed.amount()))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(paymentStatusOf(placed.pgOrderId())).isEqualTo(PaymentStatus.IN_PROGRESS);
+        assertThat(orderStatusOf(placed.orderId())).isEqualTo(OrderStatus.PENDING);
+
+        given(paymentClient.findPayment(placed.pgOrderId()))
+                .willReturn(new PgPaymentSnapshot(true, "pk-stopped", placed.amount()));
+
+        // when — 선점 직후라 유예 시간 안에서 만료 처리
+        moveTimeoutToPast(placed.orderId());
+        scheduler.cancelExpiredOrders();
+
+        // then — 취소하지 않고 결제 완료, 재고는 차감된 채 유지
+        assertThat(paymentStatusOf(placed.pgOrderId())).isEqualTo(PaymentStatus.DONE);
+        assertThat(orderStatusOf(placed.orderId())).isEqualTo(OrderStatus.PAID);
+        assertThat(stockOf(placed.optionId())).isEqualTo(INITIAL_STOCK - 1);
+        then(paymentClient).should(never()).cancelPayment(any(), any(), any(), any());
     }
 
     private record PlacedOrder(Long orderId, String pgOrderId, Integer amount, Long optionId) {
