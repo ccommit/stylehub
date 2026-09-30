@@ -38,6 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @author WonJin Bae
  * @created 2026/09/17
  * @modified 2026/09/19 by WonJin - test: 테스트 DB 가 H2 에서 MySQL 컨테이너로 바뀐 것에 맞춰 설명 정정
+ * @modified 2026/09/30 by WonJin - test: 기본 배송지 동시 변경 검증 추가
  *
  * <p>
  * 배송지 규칙을 실제 MySQL 트랜잭션·락·FK 위에서 검증한다. 동시 등록 직렬화와 FK 위반 변환은 목으로 재현되지 않기 때문이다.
@@ -171,6 +172,49 @@ class AddressServiceIntegrationTest {
                 .containsExactly(third.addressId(), second.addressId());
         assertThat(remaining).extracting(AddressResponse::isDefault)
                 .containsExactly(true, false);
+    }
+
+    @Test
+    @DisplayName("같은 사용자가 10개 스레드로 동시에 서로 다른 배송지를 기본으로 바꿔도 오류 없이 기본 배송지는 1개다")
+    void concurrentDefaultChange_keepsSingleDefault() throws InterruptedException {
+        // given
+        Long userId = createUser();
+        List<Long> addressIds = new ArrayList<>();
+        for (int i = 0; i < AddressService.MAX_ADDRESS_COUNT; i++) {
+            addressIds.add(addressService.registerAddress(userId, createRequest("배송지" + i)).addressId());
+        }
+        int threadCount = 10;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch finish = new CountDownLatch(threadCount);
+        AtomicInteger unexpectedErrorCount = new AtomicInteger();
+
+        // when — 잠금이 없으면 각자 옛 기본만 해제하고 서로 다른 배송지를 기본으로 남겨 2개가 될 수 있는 상황이다
+        for (int i = 0; i < threadCount; i++) {
+            Long target = addressIds.get(i % addressIds.size());
+            executor.submit(() -> {
+                try {
+                    start.await();
+                    addressService.changeDefaultAddress(userId, target);
+                } catch (Exception e) {
+                    log.error("동시 기본 변경 중 예상하지 못한 예외", e);
+                    unexpectedErrorCount.incrementAndGet();
+                } finally {
+                    finish.countDown();
+                }
+            });
+        }
+        start.countDown();
+        boolean finished = finish.await(30, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        // then
+        long defaultCount = addressRepository.findAllByUserIdOrderByDefaultFirst(userId).stream()
+                .filter(Address::isDefault)
+                .count();
+        assertThat(finished).isTrue();
+        assertThat(unexpectedErrorCount.get()).isZero();
+        assertThat(defaultCount).isEqualTo(1);
     }
 
     // ===== Helper =====
