@@ -1,0 +1,5 @@
+issue_count=100 db_issued_count=100 user_coupons=100
+duplicates=0
+redis_counter=0 redis_issued=100
+logged_in=1000/1000
+gate_waited_sec=60
