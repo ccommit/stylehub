@@ -13,7 +13,7 @@ m < $H/../seed-test-coupons.sql > /dev/null
 docker exec spike-redis sh -c "redis-cli --scan --pattern 'coupon:*' | xargs -r redis-cli DEL" > /dev/null
 ID=$(m -N -e "SELECT coupon_event_id FROM coupon_events WHERE name='PERF_C_$K'")
 MAXP=$(m -N -e "SELECT MAX(product_id) FROM products")
-# 진단용: PREWARM=1 이면 Redis 수량을 미리 만들어 둔다(지금 코드에는 없는 조건. 원인 확인용)
+# PREWARM=1 이면 Redis 수량을 미리 만들어 둔다. 운영에서는 이벤트 생성 커밋 뒤 수량을 올려 두므로(resetIssueCounterAfterCommit) 이 조건이 운영과 같다
 if [ -n "$PREWARM" ]; then
   docker exec spike-redis redis-cli SET coupon:counter:$ID $K EX 864000 > /dev/null
   echo "prewarm=1 counter=$(docker exec spike-redis redis-cli GET coupon:counter:$ID)" > $OUT/prewarm.txt
@@ -34,7 +34,7 @@ echo "gate_waited_sec=$waited" > $OUT/gate.txt
 
 ( while true; do echo "$(date +%s) $($H/foreign.sh)"; sleep 2; done ) > $OUT/foreign.log 2>&1 &
 MON=$!
-( while true; do echo "$($PY -c 'import time;print(int(time.time()*1000))') $(curl -s 127.0.0.1:$MPORT/actuator/prometheus | grep -E '^(hikaricp_connections_pending|hikaricp_connections_active|tomcat_threads_busy_threads)' | awk '{printf "%s=%s ", $1, $2}')"; sleep 1; done ) > $OUT/metrics.log 2>&1 &
+( while true; do echo "$($PY -c 'import time;print(int(time.time()*1000))') $(curl -s 127.0.0.1:$MPORT/actuator/prometheus | grep -E '^(hikaricp_connections_pending|hikaricp_connections_active|tomcat_threads_busy_threads)' | awk '{printf "%s=%s ", $1, $2}')"; sleep 0.2; done ) > $OUT/metrics.log 2>&1 &
 MET=$!
 
 # 4) 부하: 시작 25초 뒤 쿠폰 1,000명이 동시에 첫 요청, 전체 60초
