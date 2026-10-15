@@ -1,5 +1,4 @@
 
- (!! 이 문서는 작성중인 문서입니다.)
  # [Stylehub](https://bwj1207.tistory.com/category/stylehub%20%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8) 
 ---
 
@@ -26,7 +25,7 @@
 > 화면의 흐름을 따라가며 예외 상황을 미리 시뮬레이션했고, 이를 통해 요구사항에 최적화된 견고한 백엔드 아키텍처를 구축했습니다.
  
 ---
-<details><summary><b> 개발 철학 및 마음가짐</b></summary>
+## 💡 개발 철학
 
 ### 1. 협업의 시작은 '문서화'로부터
 > **"기억은 기록을 이길 수 없고, 기록은 삭제를 이길 수 없다. 하지만 기록된 지식은 팀의 문화를 만든다."**
@@ -48,22 +47,21 @@
 > **"테스트는 버그가 없음을 증명하는 것이 아니라, 버그가 있음을 찾아내는 과정이다."**
 
   * **철저한 단위 테스트(Unit Test) 수행:** 로직의 가장 작은 단위부터 견고하게 구축하기 위해 핵심 비즈니스 로직에 대한 단위 테스트를 수행했습니다. 이는 코드 변경 시 발생할 수 있는 사이드 이펙트를 방지하고, 리팩토링의 심리적 안정감을 확보하는 기반이 되었습니다.
-* **실패 케이스 중심의 검증:** 단순히 기능이 작동하는 '성공 케이스(Happy Path)'에만 만족하지 않았습니다. 의도적으로 잘못된 입력값이나 예외 상황(Edge Case)을 설정한 **실패 테스트를 병행**하여, 어떤 극한의 상황에서도 시스템이 안전하게 대응할 수 있도록 설계했습니다.
+* **실패 케이스 중심의 검증:** 단순히 기능이 작동하는 '성공 케이스(Happy Path)'에만 만족하지 않았습니다. 의도적으로 잘못된 입력값이나 예외 상황(Edge Case)을 설정한 **실패 테스트를 병행**하여, 예외 상황에서도 데이터가 어긋나지 않는지 테스트로 확인했습니다.
 * **추적 가능한 구조와 완결성:** 테스트를 통해 발견된 취약점을 즉각 보완하며 코드의 기술적 완결성을 높였습니다. 검증 가능한 구조를 유지함으로써 문제 발생 시 원인을 빠르게 파악할 수 있는 환경을 조성했습니다.
 
-</details>
 
 ---
 
 ## 📌 목차
 1. [프로젝트 소개](#1-프로젝트-소개)
 2. [기술 스택](#2-기술-스택)
-3. [해결하고자 한 핵심 기술 과제](#3-해결하고자-한-핵심-기술-과제)
-4. [API 문서](#4-api-문서)
-5. [테스트 전략](#5-테스트-전략)
-6. [트러블슈팅](#6-트러블슈팅)
-8. [시퀀스 다이어그램](#8-시퀀스-다이어그램)
-9. [협업 방식](#9-협업-방식)
+3. [주요 기술 과제](#3-주요-기술-과제)
+4. [트러블슈팅](#4-트러블슈팅)
+5. [API 문서](#5-api-문서)
+6. [시퀀스 다이어그램](#6-시퀀스-다이어그램)
+7. [개발 기록](#7-개발-기록)
+8. [협업 방식](#8-협업-방식)
 
 
 ---
@@ -71,19 +69,18 @@
 
 ## [1. 프로젝트 소개](https://github.com/ccommit/stylehub/wiki/%EA%B8%B0%ED%9A%8D%EC%84%9C)
 
-“**동시에 10만 명이 몰려도, 데이터는 절대 틀리지 않는다.**”
+“**1,000명이 동시에 몰려도 쿠폰은 정해진 수량만, 한 사람에 한 장씩.**”
 
- 대용량 쿠폰 발급과 주문/결제 동시성 문제를 해결하기 위해 설계한 트래픽 대응형 커머스 백엔드 프로젝트입니다.
+ 선착순 쿠폰 발급, 재고 차감, PG 결제처럼 요청이 겹치는 곳의 정합성을 다룬 패션 커머스 백엔드 프로젝트입니다.
  
-> 대용량 트래픽 환경에서 발생하는 동시성 문제와 데이터 정합성 이슈를 직접 설계로 해결하고,
-> 테스트 코드 기반 검증과 CI/CD 자동화를 통해 실제 운영 환경을 가정한 시스템 안정성을 구현했습니다.
+> 요청이 몰리거나 외부 결제 응답이 끊기는 상황을 테스트로 재현했고, 고친 뒤에는 같은 조건으로 다시 측정해 확인했습니다.
+> 테스트와 배포는 GitHub Actions와 Jenkins로 자동화했습니다.
  
 * 🎯 **주제 선정 이유** : [프로젝트 배경 및 계기 확인](https://bwj1207.tistory.com/116) `Ctrl + 마우스 좌클릭`</br>
 * 📝 **상세 기능 명세** : [기획서 바로가기](https://github.com/ccommit/stylehub/wiki/%EA%B8%B0%ED%9A%8D%EC%84%9C) `Ctrl + 마우스 좌클릭`</br>
 ---
 
-<details>
-<summary><b> 주요 기능 </b></summary>
+### 주요 기능
 
 - 일반 회웝가입과 구글 로그인을 할수 있다.
   
@@ -101,84 +98,9 @@
 
 ---
 
-</details> 
 
 
-<details>
-<summary><b>📂 프로젝트 폴더 구조</b></summary>
-
-```
-StyleHub 프로젝트의 패키지 구조는 다음과 같은 목표를 가지고 설계되었습니다.
-
-- 도메인 중심 설계를 통해 비즈니스 로직의 응집도 향상
-
-- 도메인 간 의존성을 최소화하여 유지보수성 개선
-
-- 새로운 기능이 추가되더라도 기존 구조를 크게 변경하지 않는 확장 가능한 구조
-
-이러한 구조를 통해 프로젝트 규모가 커지더라도 도메인 단위로 기능을 이해하고 관리할 수 있도록 설계했습니다.
-```
----
-```
-src
-└── main
-    └── java
-        └── com.stylehub
-            ├── domain
-            │   ├── user
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   ├── store
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   ├── product
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   ├── order
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   ├── payment
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   ├── coupon
-            │   │   ├── controller
-            │   │   ├── service
-            │   │   ├── repository
-            │   │   ├── entity
-            │   │   └── dto
-            │   └── point
-            │       ├── controller
-            │       ├── service
-            │       ├── repository
-            │       ├── entity
-            │       └── dto
-            └── global
-                ├── config
-                ├── exception
-                ├── response
-                └── security
-```
----
-</details>
-
-
-<details>
-<summary><b>🏗️ 프로젝트 아키텍처</b></summary>
+### 🏗️ 프로젝트 아키텍처
 
 <img src="docs/images/architecture.png" alt="StyleHub 서버 아키텍처" width="100%">
 
@@ -191,11 +113,9 @@ src
 
 
  ---
-</details> 
 
  
-<details>
-<summary><b>🗄️ ERD </b></summary>
+### 🗄️ ERD
 
 <img src="docs/images/erd.png" alt="StyleHub ERD" width="100%">
 
@@ -210,7 +130,7 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 
 - 이커머스 서비스 특성을 고려하여 확장 가능한 구조로 모델링
 
-### 주요 도메인 관계
+#### 주요 도메인 관계
 
 - User → Order (1:N)
   하나의 사용자는 여러 개의 주문을 생성할 수 있습니다.
@@ -227,7 +147,6 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 - User(스토어) → Product (1:N), Product → ProductOption (1:N)
   스토어 회원은 여러 상품을 판매하고, 재고는 상품 옵션(색상·사이즈) 단위로 관리합니다.
 
-</details>
 
 ---
 
@@ -239,25 +158,82 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 |------|-----------|----------------|
 | Language | Java 17| LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
 | Framework | Spring Boot 4.0.3 | 생태계 확장성 우수, 의존성 관리 최적화 |
-| Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
-| ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
-| Cache · Session | [Redis](https://bwj1207.tistory.com/116) | 로그인 세션과 상품 캐시 저장, 선착순 쿠폰 수량을 Lua 스크립트로 한 번에 확인, 미결제 주문 만료 대기열 |
-| Infrastructure | [AWS EC2](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
+| Database | MySQL (InnoDB) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
+| ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/137) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
+| Cache · Session | [Redis](https://bwj1207.tistory.com/139) | 로그인 세션과 상품 캐시 저장, 선착순 쿠폰 수량을 Lua 스크립트로 한 번에 확인, 미결제 주문 만료 대기열 |
+| Infrastructure | [AWS EC2](https://bwj1207.tistory.com/152) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
 
 ---
 
 
-## 3. 해결하고자 한 핵심 기술 과제
-   - 대용량 쿠폰 발급 동시성 제어
-   - 재고 선점 경쟁 해결 전략
-   - 주문/결제 트랜잭션 정합성 보장
+## 3. 주요 기술 과제
+
+### 선착순 쿠폰 발급
+- **고민**: 열리는 순간 요청이 몰려도 정해진 수량만 한 사람에 한 장씩 나가야 했습니다. 쿠폰 행에 비관적 락만 걸었더니 받지 못할 요청까지 줄을 서서 매진 응답이 2.65초 걸렸습니다.
+- **해결**: Redis Lua 스크립트로 중복 확인과 수량 차감을 한 번에 처리해 받지 못할 요청을 먼저 돌려보냈습니다. 최종 기준은 DB로 두고 발급 수가 한도보다 적을 때만 1을 올렸습니다.
+- **결과**: 1,000명 동시 요청에서 매진 응답 2.65초 → 0.46초 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%84%A0%EC%B0%A9%EC%88%9C-%EC%BF%A0%ED%8F%B0-%EB%B0%9C%EA%B8%89)
+
+### PG 결제 승인 정합성
+- **고민**: PG 응답이 끊기면 승인 여부를 알 수 없습니다. 실패로 처리해 주문을 취소하면 승인된 결제의 돈만 빠져나간 채 남습니다.
+- **해결**: 승인을 "진행 중 저장 → PG 호출 → 결과 반영" 세 단계로 나눴습니다. 응답이 없으면 실패로 단정하지 않고 PG에 다시 확인해 정리합니다. 금액은 주문 생성 때 저장한 값과 비교합니다.
+- **결과**: PG 응답 2초 지연 때 주문 목록 조회 1.4초 → 28ms, 같은 결제에 승인 10번 동시 요청에도 PG는 한 번만 호출 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EA%B2%B0%EC%A0%9C-%EC%8A%B9%EC%9D%B8-3%EB%8B%A8%EA%B3%84)
+
+### 상품 목록 조회 성능
+- **고민**: 상품 100만 건에 1,000명이 조회하자 P95가 510ms였습니다. 스토어 이름 하나를 위해 판매자 엔티티를 통째로 읽어 32개 컬럼을 가져오고 있었습니다.
+- **해결**: 화면에 필요한 8개 컬럼만 DTO로 조회하고 첫 페이지와 상세는 Redis에 60초 캐시했습니다. 캐시 확인은 트랜잭션 밖으로 옮겼습니다.
+- **결과**: P95 510ms → 43ms (캐시 적중률 99.5%) · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%84%B1%EB%8A%A5-%ED%85%8C%EC%8A%A4%ED%8A%B8) · [시나리오 설계 글](https://bwj1207.tistory.com/140)
+
+### 주문·결제 도메인 분리
+- **고민**: 주문 서비스가 결제 저장소까지 직접 참조해서 결제를 고치면 주문도 고쳐야 했고, 포트로 바꾸자 두 서비스가 서로를 주입받는 순환 참조가 생겼습니다.
+- **해결**: 주문은 "주문이 생겼다"는 이벤트만 알리고 결제 생성은 결제 쪽이 맡게 했습니다. DB를 바꾸는 리스너는 같은 트랜잭션에서 실행해 결제 기록 없는 주문이 남지 않게 했습니다.
+- **결과**: 순환 참조 제거 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%8F%84%EB%A9%94%EC%9D%B8-%EA%B2%BD%EA%B3%84)
+
+### 배포 자동화와 실패 시 자동 복구
+- **고민**: JAR를 그대로 덮어쓰면 새 버전이 뜨지 못할 때 서비스가 내려간 채 남았습니다.
+- **해결**: 테스트는 GitHub Actions, 배포는 Jenkins로 나누고, 교체 전 JAR를 보관해 60초 안에 헬스체크가 통과하지 않으면 되돌리게 했습니다.
+- **결과**: 실제 배포 실패에서 자동으로 이전 버전 복구 (아래 트러블슈팅 빌드 #34) · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%B0%B0%ED%8F%AC-%EC%9A%B4%EC%98%81)
 
 ---
 
- 
+## 4. 트러블슈팅
 
-## 4. API 문서
+### 주문 취소 중 다른 주문의 재고 차감이 사라짐
+- **문제**: 재고 8에서 2개짜리 주문을 취소하는 사이 다른 주문이 1개를 사면 9가 되어야 하는데 10이 저장될 수 있었습니다.
+- **원인**: 취소 쪽이 재고를 읽고 더해서 저장했는데, JPA가 한 트랜잭션 안에서 먼저 읽은 객체를 다시 써서 잠금을 걸고 다시 읽어도 처음 값 8을 돌려줬습니다.
+- **해결**: 복구도 차감처럼 `stock = stock + :qty` UPDATE 한 문장으로 바꿔 DB가 현재 값에 더하게 했습니다.
+- **검증**: 같은 순서를 재현한 테스트에서 고치기 전 10, 고친 뒤 9 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%9E%AC%EA%B3%A0-%EB%8F%99%EC%8B%9C%EC%84%B1)
+
+### 일반 로그인에서만 포인트 적립이 빠짐
+- **문제**: 하루 첫 로그인 포인트가 일반 로그인에서만 반영되지 않았습니다. 에러도 로그도 없었고 구글 로그인은 정상이었습니다.
+- **원인**: @Transactional 적립 메서드를 같은 클래스 안에서 바로 불러 프록시를 건너뛰었습니다(self-invocation). 트랜잭션이 열리지 않아 UPDATE가 나가지 않았습니다.
+- **해결**: TransactionTemplate으로 적립 블록이 트랜잭션이 되게 했고, "오늘 아직 안 받았으면 더한다"는 조건을 UPDATE 한 문장에 넣었습니다.
+- **검증**: 실제 DB로 로그인한 뒤 DB를 다시 읽어 확인하고, 같은 날 로그인 10건이 동시에 와도 1회만 적립 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%A1%9C%EA%B7%B8%EC%9D%B8-%ED%8F%AC%EC%9D%B8%ED%8A%B8-OSIV)
+
+### 로그인 없이 남의 결제를 취소할 수 있었음
+- **문제**: 결제 취소 API가 로그인도 본인 확인도 없이 열려 있었고, 실패 콜백을 직접 부르면 승인된 결제도 실패로 바뀌었습니다.
+- **원인**: 결제 콜백을 열려고 공개 경로를 /payments/** 묶음으로 넓혀 같은 경로의 취소까지 열렸습니다. 기능 테스트는 정상 사용자 경로만 봐서 통과했습니다.
+- **해결**: 공개 경로를 콜백 두 개로 좁히고 소유권은 결제 서비스가 PG 호출 전에 확인하게 했습니다. 실패 콜백은 승인 전 결제만 실패로 바꿉니다.
+- **검증**: 등록된 모든 API의 접근 정책을 검사하는 테스트를 만들었고, 공개 경로를 다시 넓히자 이 테스트가 바로 실패 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%9D%B8%EA%B0%80-%EC%A0%90%EA%B2%80)
+
+### 주문 부하 테스트의 500 에러
+- **문제**: 주문 API에 100명 부하를 걸자 500 에러가 났습니다.
+- **원인**: 잠금 경쟁이 가장 심한 인기 상품 요청은 한 건도 실패하지 않아 테스트 데이터를 의심했습니다. 실패 1,482건이 모두 무작위 상품 요청에서 났고, 실패율 66.8%가 판매자 없는 상품의 비율 67.0%와 거의 같았습니다.
+- **해결**: 지금 스키마에서는 외래 키가 막는 데이터라 부하 스크립트가 판매자 있는 상품만 고르게 고쳤습니다.
+- **검증**: 같은 조건에서 실패 0건 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%84%B1%EB%8A%A5-%ED%85%8C%EC%8A%A4%ED%8A%B8)
+
+### 배포 실패 — 빌드 #34
+- **문제**: 주문 멱등 키 기능을 배포하자 새 버전이 기동에 실패했습니다.
+- **원인**: 새 테이블이 생겼는데 운영은 앱이 스키마를 만들지 않는 설정(`ddl-auto=validate`)이었습니다.
+- **해결**: 헬스체크 실패로 이전 JAR로 자동 롤백됐고, 이후 배포 스크립트가 JAR 교체 전에 안전한 DDL 목록을 먼저 적용하게 했습니다.
+- **검증**: Jenkins 빌드 #34에서 헬스체크 실패 후 이전 버전으로 복구 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%B0%B0%ED%8F%AC-%EC%9A%B4%EC%98%81)
+
+### EC2 첫 배포 — OOM · MySQL 인증 · Swap
+- 처음 EC2(t3.micro)에 올릴 때 메모리 부족과 MySQL 인증 문제를 겪은 과정입니다 · [블로그 글](https://bwj1207.tistory.com/152)
+
+---
+
+## 5. API 문서
 
 - **명세 파일**: [`docs/api/openapi.json`](docs/api/openapi.json) (OpenAPI 3.1, API 35개). [Swagger Editor](https://editor.swagger.io)에 붙여 넣으면 화면으로 볼 수 있습니다.
 - **로컬 Swagger UI**: `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun` 후 `http://localhost:8080/swagger-ui/index.html`. 운영 서버에서는 명세와 UI 를 끕니다.
@@ -266,207 +242,100 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 
 ---
 
-## 5. 테스트 전략
+## 6. 시퀀스 다이어그램
+### 주문 생성
 
----
-
-## 6. 트러블슈팅
-
----
-
-
----
-
-## 8. 시퀀스 다이어그램
-<details>
-<summary><b>주문 단건 처리 시퀀스</b></summary>
-
- ``` mermaid
-
+```mermaid
 sequenceDiagram
-    actor Client as Client
-    participant Controller as OrderController
-    participant Service as OrderService
-    participant Repository as OrderRepository (JPA)
-    participant DB as DB
-
-    Client->>Controller: POST /api/v1/orders
-    activate Controller
-    Note over Controller: @Valid 요청값 검증
-    Controller->>Service: 주문 생성 요청
-    activate Service
-    Note over Service: @Transactional
-
-    Service->>Repository: 상품 옵션 조회
-    activate Repository
-    Repository->>DB: SELECT FROM product_options
-    activate DB
-    DB-->>Repository: ProductOption 엔티티 반환
-    deactivate DB
-    Repository-->>Service: Optional(ProductOption)
-    deactivate Repository
-
-    Service->>Repository: 쿠폰 / 포인트 조회
-    activate Repository
-    Repository->>DB: SELECT FROM user_coupons, users
-    activate DB
-    DB-->>Repository: 쿠폰 / 포인트 정보 반환 (없으면 0)
-    deactivate DB
-    Repository-->>Service: CouponAndPointResult
-    deactivate Repository
-
-    Note over Service: 최종 결제금액 계산<br/>(상품가 - 쿠폰할인 - 등급할인 - 포인트)
-
-    Service->>Repository: 재고 차감 요청 (비관적 락)
-    activate Repository
-    Repository->>DB: SELECT FROM product_options FOR UPDATE
-    activate DB
-
-    alt 동시 주문으로 인한 재고 부족 or 락 타임아웃
-        DB-->>Repository: LockTimeoutException or 재고 0
-        Repository-->>Service: 예외 전파 (StockLockTimeoutException)
-        Service-->>Controller: 예외 전파
-        Controller-->>Client: 503 주문이 집중되고 있습니다. 잠시 후 다시 시도해주세요
-    else 재고 차감 성공
-        DB-->>Repository: 재고 차감 완료
-        deactivate DB
-        Repository-->>Service: 재고 차감 완료
-        deactivate Repository
-
-        Service->>Repository: 주문 저장
-        activate Repository
-        Repository->>DB: INSERT INTO orders status=PENDING
-        activate DB
-        DB-->>Repository: 저장 완료
-        deactivate DB
-        Repository-->>Service: Order 엔티티 반환
-        deactivate Repository
-
-        Service-->>Controller: 주문 생성 완료
-        Controller-->>Client: 201 Created (orderId, tossOrderId, finalAmount)
+    actor C as Client
+    participant OC as OrderController
+    participant OS as OrderService
+    participant DB as MySQL
+    participant PS as PaymentService
+    C->>OC: POST /api/v1/orders (Idempotency-Key 선택)
+    OC->>OS: placeOrder
+    Note over OS: @Transactional
+    OS->>DB: 포인트 차감 · 주문 저장
+    loop 상품 옵션 ID 오름차순
+        OS->>DB: UPDATE stock = stock - qty WHERE stock >= qty
+        alt 0행 갱신
+            DB-->>OS: 재고 부족
+            OS-->>C: 주문 실패 (전체 롤백)
+        end
     end
-
-    deactivate Service
-    deactivate Controller
-
-    Note over Client: 결제하기 버튼 클릭
-    Note over Client: tossOrderId, finalAmount로<br/>토스 결제 위젯 호출
-
-
- ```
-</details> 
-
-<details>
-<summary><b>토스 결제 시퀀스</b></summary>
-
-``` mermaid
-   sequenceDiagram
-    actor Client as 클라이언트
-    participant CT as PaymentController
-    participant SV as PaymentService
-    participant Repo as PaymentRepository (JPA)
-    participant DB as DB
-
-    Note over Client,DB: ① 결제 준비
-
-    Client->>CT: POST /api/payments/prepare
-    Note over CT: @Valid 요청값 검증<br/>(orderName, amount, customerEmail)
-    CT->>SV: preparePayment(request)
-    Note over SV: orderId 생성 / status = READY
-    SV->>Repo: 결제 정보 저장
-    Repo->>DB: INSERT payments
-    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
-    alt DB 타임아웃 발생
-        DB-->>Repo: DataAccessException
-        Repo-->>SV: DB_TIMEOUT
-        SV-->>CT: CustomException (DB_TIMEOUT)
-        CT-->>Client: 503 Service Unavailable
-    end
-    DB-->>Repo: 저장 완료
-    Repo-->>SV: 결제 저장 완료
-    SV-->>CT: 결제 준비 완료
-    CT-->>Client: 200 OK (orderId, amount)
-
-    Note over Client,DB: ② 결제 승인
-
-    Client->>CT: POST /api/payments/confirm
-    Note over CT: @Valid 요청값 검증<br/>(paymentKey, orderId, amount)
-    CT->>SV: confirmPayment(request)
-    SV->>Repo: 결제 정보 조회
-    Repo->>DB: SELECT payments WHERE orderId
-    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
-    alt DB 타임아웃 발생
-        DB-->>Repo: DataAccessException
-        Repo-->>SV: DB_TIMEOUT
-        SV-->>CT: CustomException (DB_TIMEOUT)
-        CT-->>Client: 503 Service Unavailable
-    end
-    DB-->>Repo: 조회 완료
-    Repo-->>SV: Payment(READY)
-    Note over SV: 금액 검증 (amount 비교)
-    alt 주문 없음 / 금액 불일치
-        SV-->>CT: CustomException
-        CT-->>Client: 400 / 404
-    end
-    alt 결제 인증 후 10분 초과
-        SV-->>CT: CustomException (PAYMENT_EXPIRED)
-        CT-->>Client: 400 Bad Request
-    end
-    Note over SV: POST /v1/payments/confirm<br/>Authorization: Basic {secretKey:Base64}
-    SV->>Repo: 결제 상태 업데이트
-    Repo->>DB: UPDATE payments SET paymentKey
-    Note over DB: 커넥션 타임아웃: 5s<br/>쿼리 타임아웃: 5s
-    alt DB 타임아웃 발생
-        DB-->>Repo: DataAccessException
-        Repo-->>SV: DB_TIMEOUT
-        SV-->>CT: CustomException (DB_TIMEOUT)
-        CT-->>Client: 503 Service Unavailable
-    end
-    DB-->>Repo: 저장 완료
-    Repo-->>SV: 결제 상태 업데이트 완료
-    SV-->>CT: 결제 승인 완료
-    CT-->>Client: 200 OK  
+    OS->>DB: 쿠폰 사용 처리 (비관적 락)
+    OS-)PS: OrderPlacedEvent
+    PS->>DB: 결제 생성 READY (같은 트랜잭션)
+    OC-->>C: 201 Created
+    Note over OS: 커밋 뒤 Redis에 10분 만료 타이머 등록
 ```
- 
-</details> 
 
-<details>
-<summary><b>쿠폰 발행 시퀀스</b></summary>
 
-``` mermaid
+### 결제 승인 (3단계)
 
+```mermaid
 sequenceDiagram
-    actor Client as Client (STORE or Admin)
-    participant Controller as CouponController
-    participant Service as CouponService
-    participant Repository as CouponRepository (JPA)
-    participant DB as DB
-    Client->>Controller: POST /api/v1/coupons<br/>CouponCreateRequest(discountType, quantity, startAt, endAt)
-    activate Controller
-    Note over Controller: @Valid 요청값 검증<br/>(할인타입, 발급수량, 시작일/종료일)
-    Controller->>Service: createCoupon(role, storeId, CouponCreateRequest)
-    activate Service
-    Note over Service: @Transactional<br/>role=STORE: storeId 쿠폰 발행<br/>role=ADMIN: 플랫폼 전체 쿠폰 발행
-    Service->>Repository: save(Coupon)
-    activate Repository
-    Repository->>DB: INSERT INTO coupons
-    activate DB
-    DB-->>Repository: 저장 완료
-    deactivate DB
-    Repository-->>Service: Coupon (저장된 엔티티)
-    deactivate Repository
-    Service-->>Controller: CouponResponse(couponId, discountType, quantity, startAt, endAt)
-    deactivate Service
-    Controller-->>Client: 201 Created CouponResponse
-    deactivate Controller
+    actor C as 토스 결제창
+    participant PS as PaymentService
+    participant DB as MySQL
+    participant PG as 토스페이먼츠
+    C->>PS: GET /api/v1/payments/success (paymentKey, orderId, amount)
+    PS->>DB: ① 결제·주문 상태와 금액 검증 (주문 생성 때 저장한 금액과 비교)
+    PS->>DB: ② 결제를 IN_PROGRESS로 선점 후 커밋
+    PS->>PG: 승인 요청 (DB 연결 없이 호출)
+    alt 승인 응답
+        PG-->>PS: 승인
+        PS->>DB: ③ 결제 DONE · 주문 PAID 반영
+        PS-->>C: 200 OK
+    else 응답 없음
+        Note over PS,DB: IN_PROGRESS로 남기고 실패로 단정하지 않음
+        Note over PS,PG: 만료 처리 때 PG 상태를 조회해 결제 완료나 취소로 정리
+    end
 ```
- 
-</details> 
+
+
+### 선착순 쿠폰 발급
+
+```mermaid
+sequenceDiagram
+    actor C as Client
+    participant CS as CouponService
+    participant R as Redis
+    participant DB as MySQL
+    C->>CS: POST /api/v1/coupon-events/{id}/issue
+    CS->>R: PRECHECK (이미 받음 · 매진이면 바로 거절)
+    CS->>DB: 쿠폰 이벤트 조회 (락 없음)
+    CS->>R: RESERVE Lua (중복 확인 + 수량 차감을 한 번에)
+    alt 매진 · 중복
+        R-->>CS: 거절
+        CS-->>C: 실패 응답 (DB까지 가지 않음)
+    else 자리 확보
+        CS->>DB: UPDATE issued_count + 1 WHERE issued_count < issue_count
+        CS->>DB: INSERT user_coupons
+        alt 저장 실패
+            CS->>R: 확보한 자리 반환
+        end
+        CS-->>C: 발급 완료
+    end
+    Note over R,DB: 어긋난 수량은 대조 스케줄러가 DB 기준으로 다시 맞춤
+```
+
 
 ---
 
 
-## 9. 협업 방식
+## 7. 개발 기록
+
+- [JPA 실전 경험 — 편리한 JPA가 장애가 되는 순간](https://bwj1207.tistory.com/137)
+- [성능 테스트 도구 비교 — Locust vs nGrinder vs Gatling vs JMeter](https://bwj1207.tistory.com/138)
+- [HTTP 세션 기반 인증 구현과 설계 의사결정](https://bwj1207.tistory.com/139)
+- [성능 테스트 시나리오 설계](https://bwj1207.tistory.com/140)
+- [4개의 파일로 시스템 전역의 예외 흐름 제어하기](https://bwj1207.tistory.com/151)
+- [AWS EC2 배포 — OOM, MySQL 인증, Swap 트러블슈팅](https://bwj1207.tistory.com/152)
+
+---
+
+## 8. 협업 방식
 - [1. 컨벤션(issue, pull request, code convention)](https://github.com/ccommit/stylehub/wiki/convention)  
 - [2. 브렌치 관리 전략](https://github.com/ccommit/stylehub/wiki/%EB%B8%8C%EB%A0%8C%EC%B9%98-%EA%B4%80%EB%A6%AC-%EC%A0%84%EB%9E%B5)
 
