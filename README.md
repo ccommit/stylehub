@@ -235,10 +235,8 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 
 ## 5. API 문서
 
-- **명세 파일**: [`docs/api/openapi.json`](docs/api/openapi.json) (OpenAPI 3.1, API 35개). [Swagger Editor](https://editor.swagger.io)에 붙여 넣으면 화면으로 볼 수 있습니다.
-- **로컬 Swagger UI**: `SPRING_PROFILES_ACTIVE=local ./gradlew bootRun` 후 `http://localhost:8080/swagger-ui/index.html`. 운영 서버에서는 명세와 UI 를 끕니다.
-- **인증**: 로그인이 필요한 API 는 `POST /api/v1/users/login` 응답의 `SESSION` 쿠키로 인증합니다. 각 API 설명에 필요 역할(USER·STORE·ADMIN)이 표시됩니다.
-- 로그인 필요 여부와 필요 역할은 인증 인터셉터의 공개 경로 목록과 `@RequiredRole` 에서 자동으로 표시되고, 명세 파일이 코드와 어긋나면 `OpenApiDocumentTest` 가 실패합니다.
+- [API 명세 바로 보기](https://editor.swagger.io/?url=https://raw.githubusercontent.com/ccommit/stylehub/develop/docs/api/openapi.json) — API 35개, 각 API에 필요한 로그인·역할 표시
+- 명세는 코드에서 만들고, 코드와 어긋나면 `OpenApiDocumentTest`가 실패해 문서가 낡지 않게 했습니다.
 
 ---
 
