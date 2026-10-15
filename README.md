@@ -60,7 +60,7 @@
 4. [트러블슈팅](#4-트러블슈팅)
 5. [API 문서](#5-api-문서)
 6. [시퀀스 다이어그램](#6-시퀀스-다이어그램)
-7. [개발 기록](#7-개발-기록)
+7. [주요 아티클](#7-주요-아티클)
 8. [협업 방식](#8-협업-방식)
 
 
@@ -119,7 +119,7 @@
 
 <img src="docs/images/erd.png" alt="StyleHub ERD" width="100%">
 
-StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상품, 주문, 결제, 쿠폰을 중심으로 데이터 모델을 설계했습니다.
+StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상품, 주문, 결제, 쿠폰을 중심으로 데이터 모델을 설계했습니다. 설계하며 고민한 내용은 [ERD 설계 글](https://bwj1207.tistory.com/118)에 정리했습니다.
 
 주요 설계 기준은 다음과 같습니다.
 
@@ -159,7 +159,7 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 | Language | Java 17| LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
 | Framework | Spring Boot 4.0.3 | 생태계 확장성 우수, 의존성 관리 최적화 |
 | Database | MySQL (InnoDB) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
-| ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/137) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
+| ORM / Query | [Spring Data JPA](https://bwj1207.tistory.com/121) + [QueryDSL](https://bwj1207.tistory.com/122) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
 | Cache · Session | [Redis](https://bwj1207.tistory.com/139) | 로그인 세션과 상품 캐시 저장, 선착순 쿠폰 수량을 Lua 스크립트로 한 번에 확인, 미결제 주문 만료 대기열 |
 | Infrastructure | [AWS EC2](https://bwj1207.tistory.com/152) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
@@ -182,7 +182,7 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 ### 상품 목록 조회 성능
 - **고민**: 상품 100만 건에 1,000명이 조회하자 P95가 510ms였습니다. 스토어 이름 하나를 위해 판매자 엔티티를 통째로 읽어 32개 컬럼을 가져오고 있었습니다.
 - **해결**: 화면에 필요한 8개 컬럼만 DTO로 조회하고 첫 페이지와 상세는 Redis에 60초 캐시했습니다. 캐시 확인은 트랜잭션 밖으로 옮겼습니다.
-- **결과**: P95 510ms → 43ms (캐시 적중률 99.5%) · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%84%B1%EB%8A%A5-%ED%85%8C%EC%8A%A4%ED%8A%B8) · [시나리오 설계 글](https://bwj1207.tistory.com/140)
+- **결과**: P95 510ms → 43ms (캐시 적중률 99.5%) · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EC%84%B1%EB%8A%A5-%ED%85%8C%EC%8A%A4%ED%8A%B8) · [시나리오 설계 글](https://bwj1207.tistory.com/140) · [커서 페이징 글](https://bwj1207.tistory.com/130)
 
 ### 주문·결제 도메인 분리
 - **고민**: 주문 서비스가 결제 저장소까지 직접 참조해서 결제를 고치면 주문도 고쳐야 했고, 포트로 바꾸자 두 서비스가 서로를 주입받는 순환 참조가 생겼습니다.
@@ -208,7 +208,7 @@ StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상�
 - **문제**: 하루 첫 로그인 포인트가 일반 로그인에서만 반영되지 않았습니다. 에러도 로그도 없었고 구글 로그인은 정상이었습니다.
 - **원인**: @Transactional 적립 메서드를 같은 클래스 안에서 바로 불러 프록시를 건너뛰었습니다(self-invocation). 트랜잭션이 열리지 않아 UPDATE가 나가지 않았습니다.
 - **해결**: TransactionTemplate으로 적립 블록이 트랜잭션이 되게 했고, "오늘 아직 안 받았으면 더한다"는 조건을 UPDATE 한 문장에 넣었습니다.
-- **검증**: 실제 DB로 로그인한 뒤 DB를 다시 읽어 확인하고, 같은 날 로그인 10건이 동시에 와도 1회만 적립 · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%A1%9C%EA%B7%B8%EC%9D%B8-%ED%8F%AC%EC%9D%B8%ED%8A%B8-OSIV)
+- **검증**: 실제 DB로 로그인한 뒤 DB를 다시 읽어 확인하고, 같은 날 로그인 10건이 동시에 와도 1회만 적립 · [블로그 글](https://bwj1207.tistory.com/127) · [근거](https://github.com/ccommit/stylehub/wiki/%EA%B7%BC%EA%B1%B0-%EB%A1%9C%EA%B7%B8%EC%9D%B8-%ED%8F%AC%EC%9D%B8%ED%8A%B8-OSIV)
 
 ### 로그인 없이 남의 결제를 취소할 수 있었음
 - **문제**: 결제 취소 API가 로그인도 본인 확인도 없이 열려 있었고, 실패 콜백을 직접 부르면 승인된 결제도 실패로 바뀌었습니다.
@@ -324,13 +324,27 @@ sequenceDiagram
 ---
 
 
-## 7. 개발 기록
+## 7. 주요 아티클
 
-- [JPA 실전 경험 — 편리한 JPA가 장애가 되는 순간](https://bwj1207.tistory.com/137)
-- [성능 테스트 도구 비교 — Locust vs nGrinder vs Gatling vs JMeter](https://bwj1207.tistory.com/138)
-- [HTTP 세션 기반 인증 구현과 설계 의사결정](https://bwj1207.tistory.com/139)
-- [성능 테스트 시나리오 설계](https://bwj1207.tistory.com/140)
+개발하며 직접 정리한 기술 블로그 글입니다.
+
+**기획 · 설계**
+- [프로젝트 주제 선정 이유](https://bwj1207.tistory.com/116)
+- [커머스 DB 설계: ERD 설계하면서 가장 많이 고민했던 9가지](https://bwj1207.tistory.com/118)
 - [4개의 파일로 시스템 전역의 예외 흐름 제어하기](https://bwj1207.tistory.com/151)
+
+**기술적 의사결정**
+- [Spring이라서 JPA를 선택하지 않았습니다 — JDBC, MyBatis, JPA 비교](https://bwj1207.tistory.com/121)
+- [왜 QueryDSL을 도입했는가](https://bwj1207.tistory.com/122)
+- [100만 건 상품 목록에서 Offset 대신 커서 페이징을 선택한 이유](https://bwj1207.tistory.com/130)
+- [HTTP 세션 기반 인증 구현과 설계 의사결정](https://bwj1207.tistory.com/139)
+- [성능 테스트 도구 비교 — Locust vs nGrinder vs Gatling vs JMeter](https://bwj1207.tistory.com/138)
+
+**성능 · 트러블슈팅**
+- [성능 테스트 시나리오 설계](https://bwj1207.tistory.com/140)
+- [@Transactional 범위 최소화로 커넥션 점유 시간을 줄인 과정](https://bwj1207.tistory.com/126)
+- [@Transactional이 동작하지 않는다? — Self-Invocation 버그 발견과 해결](https://bwj1207.tistory.com/127)
+- [JPA 실전 경험 — 편리한 JPA가 장애가 되는 순간](https://bwj1207.tistory.com/137)
 - [AWS EC2 배포 — OOM, MySQL 인증, Swap 트러블슈팅](https://bwj1207.tistory.com/152)
 
 ---
