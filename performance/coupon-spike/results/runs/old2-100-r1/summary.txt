@@ -1,0 +1,106 @@
+{
+ "coupon_requests": 1000,
+ "status_counts": {
+  "200": 100,
+  "409": 900
+ },
+ "success_ms": {
+  "n": 100,
+  "p50": 550.7,
+  "p99": 1368.5,
+  "max": 1368.5
+ },
+ "reject_ms": {
+  "n": 900,
+  "p50": 1366.0,
+  "p99": 2431.9,
+  "max": 2446.0
+ },
+ "server_5xx": 0,
+ "first_request_vs_start_at_ms": 40,
+ "all_requests_arrived_within_ms": 3137,
+ "last_success_after_send_ms": 1429,
+ "last_response_after_send_ms": 4456,
+ "product_baseline_ms": {
+  "n": 2000,
+  "p50": 24.2,
+  "p99": 131.6,
+  "max": 148.7
+ },
+ "product_during_spike_ms": {
+  "n": 100,
+  "p50": 67.0,
+  "p99": 961.0,
+  "max": 961.0
+ },
+ "product_after_ms": {
+  "n": 2750,
+  "p50": 18.5,
+  "p99": 194.8,
+  "max": 231.9
+ },
+ "metrics_peak": {
+  "hikaricp_connections_pending": 300.0,
+  "hikaricp_connections_active": 100.0,
+  "tomcat_threads_busy_threads": 400.0
+ },
+ "client_ms": {
+  "issue attempt1": {
+   "n": 1000,
+   "fail": 0,
+   "p50": 2900.0,
+   "p99": 4400.0,
+   "max": 4417.53870199318
+  },
+  "products cursor": {
+   "n": 5700,
+   "fail": 0,
+   "p50": 25.0,
+   "p99": 230.0,
+   "max": 3771.5293090004707
+  }
+ },
+ "client_first_try_ms": {
+  "success": {
+   "n": 100,
+   "p50": 594.8,
+   "p99": 1422.2,
+   "max": 1422.2
+  },
+  "reject": {
+   "n": 900,
+   "p50": 2998.5,
+   "p99": 4394.3,
+   "max": 4417.5
+  },
+  "error": {
+   "n": 0,
+   "p50": null,
+   "p99": null,
+   "max": null
+  }
+ },
+ "client_retries": 0,
+ "client_last_success_after_send_ms": 1429,
+ "client_last_coupon_response_after_send_ms": 4456,
+ "client_product_baseline_ms": {
+  "n": 2000,
+  "p50": 26.5,
+  "p99": 151.9,
+  "max": 165.3
+ },
+ "client_product_during_spike_ms": {
+  "n": 100,
+  "p50": 67.6,
+  "p99": 3771.5,
+  "max": 3771.5
+ },
+ "client_product_after_ms": {
+  "n": 2750,
+  "p50": 19.3,
+  "p99": 208.1,
+  "max": 236.5
+ },
+ "foreign_cpu_max": 491,
+ "jenkins_cpu_max": 0
+}

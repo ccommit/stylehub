@@ -1,0 +1,13 @@
+diff --git a/build.gradle b/build.gradle
+index e2011a8..ac8b2f7 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -30,6 +30,8 @@ repositories {
+ 
+ dependencies {
+     implementation 'org.springframework.boot:spring-boot-starter-web'
++    implementation 'org.springframework.boot:spring-boot-starter-actuator' // spike measurement only
++    implementation 'io.micrometer:micrometer-registry-prometheus' // spike measurement only
+     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+     runtimeOnly 'com.mysql:mysql-connector-j' // MySQL JDBC 드라이버 — 컴파일 시 불필요, 런타임에 JPA가 DB 연결 시 사용
+     implementation 'org.springframework.boot:spring-boot-starter-validation'
