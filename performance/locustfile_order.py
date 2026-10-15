@@ -14,7 +14,7 @@
 
 사전 준비
   1. seed-test-buyers.sql 실행
-       mysql -u root -p stylehub < performance/seed-test-buyers.sql
+       mysql -u root -p stylehub < performance/seed/seed-test-buyers.sql
   2. 상품/옵션 데이터 존재 확인 (product-bulk-insert.sql 로 사전 생성 가정)
   3. pymysql / requests / locust 설치
        pip install pymysql locust requests

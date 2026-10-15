@@ -13,7 +13,7 @@
 - 두 버전 모두 같은 MySQL·Redis 컨테이너(데이터베이스만 다름), 힙 1GB, Hikari 100, Tomcat 스레드 400과 accept-count 200, 같은 JDBC 설정(`old.properties`, `new.properties`).
 - OSIV는 다르다. 비관적 락 버전은 당시 기본값(켜짐), 지금 구조는 운영 설정(꺼짐)이다. 옛 코드는 OSIV를 끄면 깨질 수 있어 맞추지 않았다.
 - 한 버전을 잴 때 다른 버전 앱은 내려 두었다. 버전마다 예열 회차를 먼저 돌리고 버렸다.
-- 데이터: 판매자 1명, 상품 10,000개(`seed-base.sql`), 구매자 1,000명(`../seed-test-buyers.sql`), 쿠폰 이벤트(`../seed-test-coupons.sql`, 회차마다 초기화).
+- 데이터: 판매자 1명, 상품 10,000개(`seed-base.sql`), 구매자 1,000명(`../seed/seed-test-buyers.sql`), 쿠폰 이벤트(`../seed/seed-test-coupons.sql`, 회차마다 초기화).
 
 ## 부하 (`locust_spike.py`)
 - 구매자 1,000명을 측정 전에 미리 로그인시킨다(`login.py`). 로그인(BCrypt) 비용이 측정에 섞이지 않게 하려는 것이다.
@@ -70,5 +70,5 @@
 1. 측정용 컨테이너: `docker run -d --name spike-mysql -p 127.0.0.1:13317:3306 -e MYSQL_ROOT_PASSWORD=perf mysql:8.0 --max-connections=500`, `docker run -d --name spike-redis -p 127.0.0.1:16389:6379 redis:7-alpine`
 2. 두 버전의 jar를 빌드한다. 비관적 락은 `git worktree add <dir> fcb4011` 뒤 `old-build-gradle.patch`를 적용하고 `./gradlew bootJar -x test`.
 3. 이 폴더에서 `SPIKE_HOME=$(pwd)`로 앱을 띄우고 PID를 적는다. 예: `SPIKE_HOME=$(pwd) java -Xms1g -Xmx1g -jar <old.jar> --spring.config.location=file:old.properties & echo $! > app-old.pid`
-4. 앱이 스키마를 만든 뒤 시드를 넣는다: `seed-base.sql`, `../seed-test-buyers.sql`
+4. 앱이 스키마를 만든 뒤 시드를 넣는다: `seed-base.sql`, `../seed/seed-test-buyers.sql`
 5. `./run.sh old 100 old-100-r1`, `PREWARM=1 ./run.sh new 100 newp-100-r1` 처럼 회차를 돌리고 `python3 aggregate.py old+old2 newp`로 모은다. `PY`, `LOCUST` 환경 변수로 파이썬과 Locust 경로를 바꿀 수 있다.

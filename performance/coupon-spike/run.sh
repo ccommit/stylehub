@@ -9,7 +9,7 @@ PY=${PY:-python3}  # requests 가 설치된 파이썬. Locust 와 같은 환경�
 m() { docker exec -i spike-mysql mysql -uroot -pperf $DB "$@" 2>&1 | grep -v "Using a password"; }
 
 # 1) 쿠폰 상태 초기화 (Redis는 쿠폰 키만 지우고 세션은 남긴다)
-m < $H/../seed-test-coupons.sql > /dev/null
+m < $H/../seed/seed-test-coupons.sql > /dev/null
 docker exec spike-redis sh -c "redis-cli --scan --pattern 'coupon:*' | xargs -r redis-cli DEL" > /dev/null
 ID=$(m -N -e "SELECT coupon_event_id FROM coupon_events WHERE name='PERF_C_$K'")
 MAXP=$(m -N -e "SELECT MAX(product_id) FROM products")
