@@ -6,7 +6,7 @@
 --   - 모든 perf_buyer 에게 4 종 쿠폰 사전 발급 (1000 buyer × 4 = 4000 UserCoupon)
 --
 -- 사용:
---   mysql -u root -p stylehub < performance/seed-test-coupon-usage.sql
+--   mysql -u root -p stylehub < performance/seed/seed-test-coupon-usage.sql
 --
 -- 매 측정 *시작 전* 에 실행 — issued_count + user_coupons 모두 RESET 후 재발급.
 -- ============================================

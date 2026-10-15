@@ -11,7 +11,7 @@
 --   $2a, $2b, $2y prefix 모두 지원하므로 호환된다.
 --
 -- 사용:
---   mysql -u root -p stylehub < performance/seed-test-buyers.sql
+--   mysql -u root -p stylehub < performance/seed/seed-test-buyers.sql
 --
 -- 멱등성:
 --   기존 perf_buyer_*@perf.test 행을 먼저 삭제 후 재생성하므로 반복 실행 안전.

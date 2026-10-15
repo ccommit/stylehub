@@ -2,7 +2,7 @@
 -- 시나리오 4 (선착순 쿠폰 발급) 부하 테스트용 시드
 --
 -- 사용법:
---   mysql -u root -p stylehub < performance/seed-test-coupons.sql
+--   mysql -u root -p stylehub < performance/seed/seed-test-coupons.sql
 --
 -- 매 측정 사이클 *시작 전* 에 실행하면 깨끗한 상태로 RESET 됨.
 -- (기존 PERF_* 쿠폰 이벤트 + UserCoupon 모두 삭제 후 새로 생성)

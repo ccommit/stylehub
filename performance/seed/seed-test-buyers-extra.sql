@@ -5,7 +5,7 @@
 -- 기존 buyer 데이터는 보존하고 *없는 buyer 만 INSERT IGNORE* 로 추가.
 --
 -- 사용:
---   mysql -u root -p stylehub < performance/seed-test-buyers-extra.sql
+--   mysql -u root -p stylehub < performance/seed/seed-test-buyers-extra.sql
 -- ============================================
 
 -- 1. buyer 501~1000 INSERT (email UNIQUE constraint 로 기존 skip)
