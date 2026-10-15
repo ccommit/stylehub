@@ -179,7 +179,15 @@ src
 
 <details>
 <summary><b>🏗️ 프로젝트 아키텍처</b></summary>
-ㅁㄴㅇㄻㄴㅇㄻㄴㅇㄻ
+
+<img src="docs/images/architecture.png" alt="StyleHub 서버 아키텍처" width="100%">
+
+- **애플리케이션**: 사용자 요청은 AWS EC2의 Spring Boot 앱으로 들어옵니다. 회원·상품·주문·결제·쿠폰 도메인이 한 앱 안에 있고, 도메인끼리는 포트(인터페이스)로 호출하며 주문과 결제 사이만 이벤트로 연결합니다.
+- **MySQL 8.0**: 주문·결제·재고와 쿠폰의 최종 발급 한도를 책임집니다.
+- **Redis 7**: 로그인 세션, 상품 목록·상세 캐시, 선착순 쿠폰 남은 수량과 발급자 목록, 미결제 주문 만료 대기열을 맡습니다.
+- **외부 연동**: 결제는 토스페이먼츠, 소셜 로그인은 구글 OAuth를 사용합니다.
+- **CI/CD**: 푸시·PR마다 GitHub Actions가 테스트를 돌리고, 배포는 Jenkins가 JAR를 교체한 뒤 헬스체크에 실패하면 이전 JAR로 되돌립니다.
+- **모니터링**: Prometheus가 지표를 모으고 Grafana 알림과 배포 결과를 Slack으로 받습니다.
 
 
  ---
@@ -188,8 +196,10 @@ src
  
 <details>
 <summary><b>🗄️ ERD </b></summary>
- 
-```StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상품, 주문, 결제, 쿠폰을 중심으로 데이터 모델을 설계했습니다.
+
+<img src="docs/images/erd.png" alt="StyleHub ERD" width="100%">
+
+StyleHub는 패션 이커머스 서비스의 핵심 도메인인 사용자, 상품, 주문, 결제, 쿠폰을 중심으로 데이터 모델을 설계했습니다.
 
 주요 설계 기준은 다음과 같습니다.
 
@@ -202,21 +212,21 @@ src
 
 ### 주요 도메인 관계
 
-- User → Order (1)
+- User → Order (1:N)
   하나의 사용자는 여러 개의 주문을 생성할 수 있습니다.
 
-- Order → OrderItem (1)
-  하나의 주문에는 여러 개의 상품이 포함될 수 있습니다.
+- Order → OrderDetail (1:N)
+  하나의 주문에는 상품 옵션별 주문 상세가 여러 개 포함될 수 있습니다.
 
 - Order → Payment (1:1)
   하나의 주문은 하나의 결제 정보를 가집니다.
 
-- User → Coupon (1)
-  하나의 사용자는 여러 개의 쿠폰을 보유할 수 있습니다.
+- User → UserCoupon (1:N), CouponEvent → UserCoupon (1:N)
+  사용자는 여러 쿠폰을 보유할 수 있고, 쿠폰 이벤트 하나로 여러 장의 쿠폰이 발급됩니다.
 
-- Store → Product (1)
-  하나의 스토어는 여러 개의 상품을 판매할 수 있습니다.
-```
+- User(스토어) → Product (1:N), Product → ProductOption (1:N)
+  스토어 회원은 여러 상품을 판매하고, 재고는 상품 옵션(색상·사이즈) 단위로 관리합니다.
+
 </details>
 
 ---
@@ -228,10 +238,10 @@ src
 | 분류 | 기술 스택 | 기술 선택 이유 |
 |------|-----------|----------------|
 | Language | Java 17| LTS 버전으로 안정성이 높고, 최신 기능 활용 가능 |
-| Framework | Spring Boot 3.5.6 | 생태계 확장성 우수, 의존성 관리 최적화 |
+| Framework | Spring Boot 4.0.3 | 생태계 확장성 우수, 의존성 관리 최적화 |
 | Database | [MySQL (InnoDB)](https://bwj1207.tistory.com/116) | 트랜잭션 ACID 보장, 인덱스 최적화로 안정적 데이터 처리 |
 | ORM / Query | [Spring Data JPA + QueryDSL](https://bwj1207.tistory.com/116) | 객체 중심 설계, 타입 안정성 확보, 동적 쿼리 지원 |
-| Caching | [Redis](https://bwj1207.tistory.com/116) | 분산 락 기반 동시성 제어, 빠른 캐싱 처리 |
+| Cache · Session | [Redis](https://bwj1207.tistory.com/116) | 로그인 세션과 상품 캐시 저장, 선착순 쿠폰 수량을 Lua 스크립트로 한 번에 확인, 미결제 주문 만료 대기열 |
 | Infrastructure | [AWS EC2](https://bwj1207.tistory.com/116) | 클라우드 기반 확장성, 안정적 파일 스토리지 제공 |
 
 
